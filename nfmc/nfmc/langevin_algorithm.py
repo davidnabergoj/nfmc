@@ -12,6 +12,7 @@ def base(x0: torch.Tensor,
          n_jumps: int = 25,
          jump_period: int = 100,
          batch_size: int = 128,
+         burnin: int = 1000,
          full_output: bool = False,
          nf_adjustment: bool = False,
          **kwargs):
@@ -19,8 +20,19 @@ def base(x0: torch.Tensor,
 
     xs = []
     x = deepcopy(x0)
+
+    # Burnin to get to the typical set
+    x = base_langevin(
+        x0=x,
+        n_iterations=burnin,
+        full_output=False,
+        potential=potential,
+        **kwargs
+    )
+
+    # Langevin with NF jumps
     for i in range(n_jumps):
-        x_train = base_langevin(
+        x_lng = base_langevin(
             x0=x,
             n_iterations=jump_period - 1,
             full_output=True,
@@ -28,8 +40,9 @@ def base(x0: torch.Tensor,
             **kwargs
         )
         if full_output:
-            xs.append(x_train)
+            xs.append(x_lng)
 
+        x_train = x_lng.view(-1, n_dim)
         flow.fit(x_train, n_epochs=1, batch_size=batch_size)
         x_proposed = flow.sample(n_chains).detach().cpu()
         if nf_adjustment:
