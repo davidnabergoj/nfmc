@@ -9,14 +9,14 @@ from nfmc.util import metropolis_acceptance_log_ratio
 def proposal_potential(x_prime: torch.Tensor,
                        x: torch.Tensor,
                        grad_u_x: torch.Tensor,
+                       a_diag: torch.Tensor,
                        tau: float):
     """
     Compute the Langevin algorithm proposal potential q(x_prime | x).
     """
     assert x_prime.shape == x.shape == grad_u_x.shape
-    term = x_prime - x + tau * grad_u_x
-    norm_sq = term.square().sum(dim=-1)
-    return norm_sq / (4 * tau)
+    term = x_prime - x + tau * a_diag.view(1, -1) * grad_u_x
+    return (term * (1 / a_diag.view(1, -1)) * term).sum(dim=-1) / (4 * tau)
 
 
 def base(x0: torch.Tensor,
@@ -25,11 +25,13 @@ def base(x0: torch.Tensor,
          tau: float = None,
          full_output: bool = False,
          adjustment: bool = False):
+    # TODO tune tau in MALA
     assert len(x0.shape) == 2
     n_chains, n_dim = x0.shape
     if tau is None:
         tau = n_dim ** (-1 / 3)
     xs = []
+    sqrt_a = torch.std(x0, dim=0)  # root of the preconditioning matrix diagonal
 
     x = deepcopy(x0)
     for i in range(n_iterations):
@@ -44,7 +46,7 @@ def base(x0: torch.Tensor,
         x.grad = None  # Clear gradients
 
         # Compute new state
-        x_prime = x - tau * grad_u_x + math.sqrt(2 * tau) * noise
+        x_prime = x - tau * sqrt_a.view(1, -1).square() * grad_u_x + math.sqrt(2 * tau) * sqrt_a.view(1, -1) * noise
 
         if adjustment:
             # Compute potential and gradient at proposed state
@@ -59,14 +61,16 @@ def base(x0: torch.Tensor,
             log_ratio = metropolis_acceptance_log_ratio(
                 log_prob_curr=-u_x,
                 log_prob_prime=-u_x_prime,
-                log_proposal_curr=-proposal_potential(x, x_prime, grad_u_x_prime, tau),
-                log_proposal_prime=-proposal_potential(x_prime, x, grad_u_x, tau)
+                log_proposal_curr=-proposal_potential(x, x_prime, grad_u_x_prime, sqrt_a ** 2, tau),
+                log_proposal_prime=-proposal_potential(x_prime, x, grad_u_x, sqrt_a ** 2, tau)
             )
             adjustment_mask = torch.log(torch.rand(n_chains)) < log_ratio
         else:
             # No adjustment (ULA)
             adjustment_mask = torch.ones(n_chains, dtype=torch.bool)
         x[adjustment_mask] = x_prime[adjustment_mask]
+
+        sqrt_a = torch.std(x, dim=0)
 
         if full_output:
             xs.append(deepcopy(x))
