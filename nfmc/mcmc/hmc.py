@@ -1,37 +1,86 @@
+import math
 from copy import deepcopy
 
 import torch
+
+from nfmc.util import metropolis_acceptance_log_ratio, DualAveraging
+
+
+def grad_potential(x: torch.Tensor, potential: callable):
+    with torch.enable_grad():
+        x.requires_grad_(True)
+        grad = torch.autograd.grad(potential(x).sum(), x)[0]
+        x = x.detach()
+        x.requires_grad_(False)
+        grad = grad.detach()
+        grad.requires_grad_(False)
+    return grad
+
+
+def hmc_step_b(x: torch.Tensor, momentum: torch.Tensor, step_size: float, potential: callable):
+    # momentum update
+    return momentum - step_size / 2 * grad_potential(x, potential)
+
+
+def hmc_step_a(x: torch.Tensor, momentum: torch.Tensor, inv_mass_diag, step_size: float):
+    # position update
+    return x + step_size * inv_mass_diag * momentum
+
+
+def hmc_trajectory(x: torch.Tensor,
+                   momentum: torch.Tensor,
+                   mass_diag: torch.Tensor,
+                   step_size: float,
+                   n_leapfrog_steps: int,
+                   potential: callable,
+                   full_output: bool = False):
+    xs = []
+    for j in range(n_leapfrog_steps):
+        momentum = hmc_step_b(x, momentum, step_size, potential)
+        x = hmc_step_a(x, momentum, 1 / mass_diag, step_size)
+        momentum = hmc_step_b(x, momentum, step_size, potential)
+        if full_output:
+            xs.append(x)
+
+    if full_output:
+        return torch.stack(xs), x, momentum
+    return x, momentum
 
 
 def hmc(x0: torch.Tensor,
         potential: callable,
         n_iterations: int = 1000,
         n_leapfrog_steps: int = 15,
-        step_size: int = 1.0,
-        full_output: bool = False):
+        step_size: float = None,
+        full_output: bool = False,
+        target_acceptance_rate: float = 0.651):
     x = deepcopy(x0)
-    xs = [x0]
+    n_dim = x.shape[-1]
+    if step_size is None:
+        step_size = n_dim ** (-1 / 4)
+    dual_avg = DualAveraging(math.log(step_size))
+    mass_diag = 1 / torch.var(x0, dim=0).view(1, -1)
+
+    xs = []
     for i in range(n_iterations):
-        x_proposed = deepcopy(x)
-        initial_momentum = torch.randn_like(x_proposed)
-        momentum = deepcopy(initial_momentum)
-        for j in range(n_leapfrog_steps):
-            grad = torch.autograd.grad(potential(x_proposed).sum(), x_proposed)[0]
-            momentum = momentum - step_size / 2 * grad
-            x_proposed = x_proposed + step_size * momentum
-            grad = torch.autograd.grad(potential(x_proposed).sum(), x_proposed)[0]
-            momentum = momentum - step_size / 2 * grad
+        initial_momentum = torch.randn_like(x) * mass_diag.view(1, -1).sqrt()
+        x_prime, momentum_prime = hmc_trajectory(x, initial_momentum, mass_diag, step_size, n_leapfrog_steps, potential)
 
         with torch.no_grad():
-            log_alpha = (
-                    - potential(x_proposed)
-                    - 0.5 * torch.linalg.norm(momentum, dim=1) ** 2
-                    + potential(x)
-                    + 0.5 * torch.linalg.norm(initial_momentum, dim=1) ** 2
+            log_alpha = metropolis_acceptance_log_ratio(
+                log_prob_curr=-potential(x) - 0.5 * (initial_momentum ** 2 / mass_diag).sum(dim=-1),
+                log_prob_prime=-potential(x_prime) - 0.5 * (momentum_prime ** 2 / mass_diag).sum(dim=-1),
+                log_proposal_curr=0.0,
+                log_proposal_prime=0.0
             )
             log_u = torch.rand_like(log_alpha).log()
-            accepted_mask = torch.where(torch.less(log_u, log_alpha))
-            x[accepted_mask] = x_proposed[accepted_mask]
+            accepted_mask = torch.less(log_u, log_alpha)
+            x[accepted_mask] = x_prime[accepted_mask]
+
+            mass_diag = 1 / torch.var(x, dim=0).view(1, -1)
+            acceptance_rate = float(torch.mean(accepted_mask.float()))
+            dual_avg.step(target_acceptance_rate - acceptance_rate)
+            step_size = math.exp(dual_avg.value)
 
             if full_output:
                 xs.append(deepcopy(x))
