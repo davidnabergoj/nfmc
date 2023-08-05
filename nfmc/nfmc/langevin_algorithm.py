@@ -43,7 +43,7 @@ def base(x0: torch.Tensor,
             xs.append(x_lng)
 
         x_train = x_lng.view(-1, n_dim)
-        flow.fit(x_train, n_epochs=1, batch_size=batch_size)
+        flow.fit(x_train, n_epochs=1, batch_size=batch_size, shuffle=False)
         x_proposed = flow.sample(n_chains).detach().cpu()
         if nf_adjustment:
             x_current = x_train[-1]
