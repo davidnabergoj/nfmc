@@ -8,13 +8,14 @@ import matplotlib.pyplot as plt
 if __name__ == '__main__':
     torch.manual_seed(0)
 
-    n_dim = 100
+    n_dim = 2
     n_chains = 200
-    potential = StandardGaussian(event_shape=(n_dim,))
+    potential = StandardGaussian(event_shape=(n_dim,)).cuda()
     gt = potential.sample((10000,))
     flow = Flow(IAF(n_dim)).cuda()
 
     ret = neutra_hmc(flow, potential, n_chains).cpu()
+    print(f'{ret.shape = }')
 
     xf = flow.sample(1000).detach().cpu()
     plt.figure()
@@ -29,8 +30,7 @@ if __name__ == '__main__':
     plt.figure()
     plt.scatter(gt[:, 0], gt[:, 1], label='Ground truth')
     plt.scatter(xf[:, 0], xf[:, 1], label='Flow')
-    plt.scatter(ret[chain_id, 0], ret[chain_id, 1], label='NeuTra HMC')
+    plt.scatter(ret[:, chain_id, 0], ret[:, chain_id, 1], label='NeuTra HMC')
     plt.legend()
     plt.tight_layout()
     plt.show()
-    print(f'{ret.shape = }')

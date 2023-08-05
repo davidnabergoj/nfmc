@@ -2,7 +2,7 @@ import torch
 
 from nfmc.nfmc.neutra import neutra_hmc
 from normalizing_flows import Flow, IAF
-from potentials.synthetic.gaussian import StandardGaussian, DiagonalGaussian
+from potentials.synthetic.gaussian import DiagonalGaussian
 import matplotlib.pyplot as plt
 
 if __name__ == '__main__':
@@ -14,9 +14,10 @@ if __name__ == '__main__':
     sigma = torch.linspace(-3, 3, n_dim).exp()
     potential = DiagonalGaussian(mu, sigma).cuda()
     gt = potential.sample((10000,)).cpu()
-    flow = Flow(IAF(n_dim)).cuda()
+    flow = Flow(IAF(n_dim, n_layers=3)).cuda()
 
     ret = neutra_hmc(flow, potential, n_chains).cpu()
+    print(f'{ret.shape = }')
 
     xf = flow.sample(1000).detach().cpu()
     plt.figure()
@@ -30,8 +31,7 @@ if __name__ == '__main__':
 
     plt.figure()
     plt.scatter(gt[:, 0], gt[:, 1], label='Ground truth')
-    plt.scatter(ret[chain_id, 0], ret[chain_id, 1], label='NeuTra HMC')
+    plt.scatter(ret[:, chain_id, 0], ret[:, chain_id, 1], label='NeuTra HMC')
     plt.legend()
     plt.tight_layout()
     plt.show()
-    print(f'{ret.shape = }')
