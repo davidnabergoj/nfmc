@@ -1,6 +1,7 @@
 import torch
 import matplotlib.pyplot as plt
 from normalizing_flows import Flow, RealNVP
+from normalizing_flows.src.bijections.finite.linear import PositiveDiagonal
 from potentials.synthetic.gaussian import DiagonalGaussian
 from nfmc.nfmc.langevin_algorithm import mala
 
@@ -19,16 +20,16 @@ if __name__ == '__main__':
 
     x0 = torch.randn(size=(n_chains, n_dim))
     target = DiagonalGaussian(mu, sigma)
-    flow = Flow(RealNVP(n_dim, n_layers=1))
+    flow = Flow(RealNVP(n_dim, n_layers=3))
+    # flow = Flow(PositiveDiagonal(event_shape=(n_dim,)))
 
-    ret = mala(x0, flow, target, full_output=True, jump_period=jump_period)
+    ret = mala(x0, flow, target, full_output=True, jump_period=jump_period, nf_adjustment=True)
     print(f'{ret.shape = }')
     nf_resample_mask = (torch.arange(1, len(ret) + 1) % jump_period) == 0
-    ret = ret[:, :4, :]  # first four chains only
 
     gt = target.sample(batch_shape=(10000,))
 
-    chain_id = 0
+    chain_id = 1
 
     plt.figure()
     plt.scatter(gt[..., 0], gt[..., 1], label='Ground truth', alpha=0.3)
@@ -39,4 +40,17 @@ if __name__ == '__main__':
     # lim = 50
     # plt.xlim(-lim, lim)
     # plt.ylim(-lim, lim)
+    plt.show()
+
+    # Plot the first chain from the beginning until the second jump
+    plt.figure()
+    plt.plot(ret[:2 * jump_period, chain_id, 0], ret[:2 * jump_period, chain_id, 1], '-o', label='Chain trajectory')
+    plt.scatter(
+        ret[:2 * jump_period][::jump_period, chain_id, 0],
+        ret[:2 * jump_period][::jump_period, chain_id, 1],
+        label='Jump',
+        c='tab:orange',
+        zorder=2
+    )
+    plt.legend()
     plt.show()
