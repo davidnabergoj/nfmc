@@ -32,5 +32,6 @@ class DualAveraging:
         x_new_bar = eta * x_new + (1 - eta) * self.x_bar
         self.x_bar = x_new_bar
 
-    def __call__(self):
+    @property
+    def value(self):
         return self.x_bar

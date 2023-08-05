@@ -69,7 +69,7 @@ def base(x0: torch.Tensor,
             adjustment_mask = torch.as_tensor(torch.log(torch.rand(n_chains)) < log_ratio)
             acceptance_rate = float(torch.mean(adjustment_mask.float()))
             dual_avg.step(target_acceptance_rate - acceptance_rate)
-            tau = math.exp(dual_avg())
+            tau = math.exp(dual_avg.value)
         else:
             # No adjustment (ULA)
             adjustment_mask = torch.ones(n_chains, dtype=torch.bool)
