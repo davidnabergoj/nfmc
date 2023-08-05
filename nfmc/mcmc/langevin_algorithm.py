@@ -2,6 +2,8 @@ from copy import deepcopy
 import math
 import torch
 
+from nfmc.util import metropolis_acceptance_log_ratio
+
 
 @torch.no_grad()
 def proposal_potential(x_prime: torch.Tensor,
@@ -12,8 +14,9 @@ def proposal_potential(x_prime: torch.Tensor,
     Compute the Langevin algorithm proposal potential q(x_prime | x).
     """
     assert x_prime.shape == x.shape == grad_u_x.shape
-    norm = torch.linalg.norm(x_prime - x - tau * grad_u_x)
-    return norm ** 2 / (4 * tau)
+    term = x_prime - x + tau * grad_u_x
+    norm_sq = term.square().sum(dim=-1)
+    return norm_sq / (4 * tau)
 
 
 def base(x0: torch.Tensor,
@@ -53,11 +56,11 @@ def base(x0: torch.Tensor,
             x_prime.grad = None  # Clear gradients
 
             # Perform metropolis adjustment (MALA)
-            log_ratio = (
-                    - u_x_prime
-                    + u_x
-                    - proposal_potential(x, x_prime, grad_u_x_prime, tau)
-                    + proposal_potential(x_prime, x, grad_u_x, tau)
+            log_ratio = metropolis_acceptance_log_ratio(
+                log_prob_curr=-u_x,
+                log_prob_prime=-u_x_prime,
+                log_proposal_curr=-proposal_potential(x, x_prime, grad_u_x_prime, tau),
+                log_proposal_prime=-proposal_potential(x_prime, x, grad_u_x, tau)
             )
             adjustment_mask = torch.log(torch.rand(n_chains)) < log_ratio
         else:
