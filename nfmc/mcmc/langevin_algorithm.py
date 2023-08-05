@@ -2,7 +2,7 @@ from copy import deepcopy
 import math
 import torch
 
-from nfmc.util import metropolis_acceptance_log_ratio
+from nfmc.util import metropolis_acceptance_log_ratio, DualAveraging
 
 
 @torch.no_grad()
@@ -24,7 +24,8 @@ def base(x0: torch.Tensor,
          n_iterations: int = 1000,
          tau: float = None,
          full_output: bool = False,
-         adjustment: bool = False):
+         adjustment: bool = False,
+         target_acceptance_rate: float = 0.574):
     # TODO tune tau in MALA
     assert len(x0.shape) == 2
     n_chains, n_dim = x0.shape
@@ -32,6 +33,7 @@ def base(x0: torch.Tensor,
         tau = n_dim ** (-1 / 3)
     xs = []
     sqrt_a = torch.std(x0, dim=0)  # root of the preconditioning matrix diagonal
+    dual_avg = DualAveraging(math.log(tau))
 
     x = deepcopy(x0)
     for i in range(n_iterations):
@@ -64,7 +66,10 @@ def base(x0: torch.Tensor,
                 log_proposal_curr=-proposal_potential(x, x_prime, grad_u_x_prime, sqrt_a ** 2, tau),
                 log_proposal_prime=-proposal_potential(x_prime, x, grad_u_x, sqrt_a ** 2, tau)
             )
-            adjustment_mask = torch.log(torch.rand(n_chains)) < log_ratio
+            adjustment_mask = torch.as_tensor(torch.log(torch.rand(n_chains)) < log_ratio)
+            acceptance_rate = float(torch.mean(adjustment_mask.float()))
+            dual_avg.step(target_acceptance_rate - acceptance_rate)
+            tau = math.exp(dual_avg())
         else:
             # No adjustment (ULA)
             adjustment_mask = torch.ones(n_chains, dtype=torch.bool)
