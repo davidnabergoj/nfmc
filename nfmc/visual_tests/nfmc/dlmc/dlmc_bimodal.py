@@ -22,7 +22,15 @@ if __name__ == '__main__':
 
     flow = Flow(RealNVP(n_dim)).cuda()
 
-    ret = dlmc(x_prior, potential, negative_log_likelihood, flow, step_size=0.1, full_output=True, n_iterations=10)
+    ret = dlmc(
+        x_prior,
+        potential,
+        negative_log_likelihood,
+        flow,
+        step_size=0.1,
+        full_output=True,
+        n_iterations=10
+    )
     print(f'{ret.shape = }')
 
     chain_id = 5

@@ -14,6 +14,7 @@ def dlmc(x_prior: torch.Tensor,
          n_iterations: int = 20,
          latent_updates: bool = False,
          full_output: bool = False):
+    # FIXME latent = True does not work
     n_chains, n_dim = x_prior.shape
 
     # Initial update
@@ -26,10 +27,10 @@ def dlmc(x_prior: torch.Tensor,
         print(f'{i = }')
         flow.fit(x.detach(), n_epochs=100)
         if latent_updates:
-            z, _ = flow.forward(x)
+            z, _ = flow.bijection.forward(x)
             grad = compute_grad(potential, x)
             z = z - step_size * (grad - z)
-            x, _ = flow.inverse(z)
+            x, _ = flow.bijection.inverse(z)
         else:
             grad = compute_grad(lambda v: potential(v) + flow.log_prob(v), x)
             x = x - step_size * grad
@@ -44,9 +45,10 @@ def dlmc(x_prior: torch.Tensor,
         log_u = torch.rand(n_chains).log().to(log_alpha)
         accepted_mask = torch.where(torch.less(log_u, log_alpha))
         x[accepted_mask] = x_tilde[accepted_mask]
+        x = x.detach()
 
         if full_output:
-            xs.append(deepcopy(x))
+            xs.append(deepcopy(x.detach()))
 
     if full_output:
         return torch.stack(xs)
