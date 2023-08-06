@@ -9,9 +9,11 @@ if __name__ == '__main__':
     potential = StandardGaussian(event_shape=(n_dim,))
     x = torch.randn(1, n_dim)
     momentum = torch.randn_like(x)
-    x, _, _ = hmc_trajectory(x, momentum, step_size=0.1, n_leapfrog_steps=100, potential=potential, full_output=True)
+    inv_mass_diag = torch.ones(n_dim).view(1, -1)
+    x, _, _ = hmc_trajectory(x, momentum, inv_mass_diag, step_size=0.1, n_leapfrog_steps=100, potential=potential, full_output=True)
     x = x.detach()
     print(f'{x.shape = }')
+    print(x)
 
     gt = potential.sample((1000,))
 

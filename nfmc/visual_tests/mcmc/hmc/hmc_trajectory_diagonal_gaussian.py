@@ -8,16 +8,15 @@ if __name__ == '__main__':
     n_dim = 2
     mu = torch.zeros(n_dim)
     sigma = torch.linspace(-3, 3, n_dim).exp()
-    m = 1 / sigma[None] ** 2
+    inv_mass_diag = sigma[None] ** 2
     potential = DiagonalGaussian(mu, sigma)
     x = torch.tensor([[0.5, 40.0]])
     print(f'{x = }')
     noise = torch.randn_like(x)
     print(f'{noise = }')
-    momentum = noise * torch.sqrt(m)
+    momentum = noise / inv_mass_diag.sqrt()
     print(f'{momentum = }')
-    x, _, _ = hmc_trajectory(x, momentum, step_size=0.1, n_leapfrog_steps=100, potential=potential, full_output=True,
-                             mass_diag=m)
+    x, _, _ = hmc_trajectory(x, momentum, inv_mass_diag, step_size=0.1, n_leapfrog_steps=100, potential=potential, full_output=True)
     x = x.detach()
     print(f'{x.shape = }')
 
