@@ -46,3 +46,7 @@ def compute_grad(fn_batched: callable, x: torch.Tensor):
         out = torch.autograd.grad(fn_batched(x_clone).sum(), x_clone)[0]
     out = out.detach()
     return out
+
+
+def relative_error(x_true, x_approx):
+    return (x_true - x_approx) / x_true
