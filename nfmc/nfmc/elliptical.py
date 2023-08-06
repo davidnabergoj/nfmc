@@ -12,6 +12,7 @@ def tess_base(u, flow: Flow, potential: callable, max_iterations: int = 5):
 
     log_phi = flow.base.log_prob
 
+    @torch.no_grad()
     def log_pi_hat(latent):
         target, log_det = flow.bijection.inverse(latent)
         return -potential(target) + log_det
@@ -64,16 +65,6 @@ def tess(u: torch.Tensor,
     # Warmup
     for _ in tqdm(range(n_warmup_iterations), desc='Warmup'):
         x, u = tess_base(u, flow, potential)
-
-        # import matplotlib.pyplot as plt
-        # plt.figure()
-        # plt.scatter(x[:, 0], x[:, 1])
-        # plt.xlim(-10, 10)
-        # plt.ylim(-10, 10)
-        # plt.legend()
-        # plt.tight_layout()
-        # plt.show()
-
         flow.fit(x.detach())
 
     # Sampling

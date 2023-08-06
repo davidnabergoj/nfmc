@@ -8,7 +8,7 @@ from potentials.synthetic.gaussian import DiagonalGaussian
 if __name__ == '__main__':
     torch.manual_seed(0)
     n_dim = 2
-    n_chains = 100
+    n_chains = 1000  # Need a lot of chains to make TESS work
 
     x0 = torch.randn(size=(n_chains, n_dim))
     mu = torch.zeros(n_dim)
