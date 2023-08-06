@@ -11,19 +11,20 @@ def dlmc(x_prior: torch.Tensor,
          negative_log_likelihood: callable,
          flow: Flow,
          step_size: float = 1.0,
-         n_iterations: int = 100,
+         n_iterations: int = 20,
          latent_updates: bool = False,
          full_output: bool = False):
     n_chains, n_dim = x_prior.shape
 
     # Initial update
     grad = compute_grad(negative_log_likelihood, x_prior)
-    x = x_prior + step_size * grad
+    x = x_prior - step_size * grad
+    x.requires_grad_(False)
 
-    xs = []
+    xs = [x_prior, x]
     for i in range(n_iterations):
         print(f'{i = }')
-        flow.fit(x.detach())
+        flow.fit(x.detach(), n_epochs=100)
         if latent_updates:
             z, _ = flow.forward(x)
             grad = compute_grad(potential, x)
@@ -33,7 +34,7 @@ def dlmc(x_prior: torch.Tensor,
             grad = compute_grad(lambda v: potential(v) + flow.log_prob(v), x)
             x = x - step_size * grad
 
-        x_tilde = flow.sample(n_chains)
+        x_tilde = flow.sample(n_chains, no_grad=True)
         log_alpha = metropolis_acceptance_log_ratio(
             log_prob_curr=-potential(x),
             log_prob_prime=-potential(x_tilde),
@@ -48,5 +49,5 @@ def dlmc(x_prior: torch.Tensor,
             xs.append(deepcopy(x))
 
     if full_output:
-        return xs
+        return torch.stack(xs)
     return x
