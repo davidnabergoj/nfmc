@@ -29,7 +29,7 @@ def hmc_step_a(x: torch.Tensor, momentum: torch.Tensor, inv_mass_diag, step_size
 
 def hmc_trajectory(x: torch.Tensor,
                    momentum: torch.Tensor,
-                   mass_diag: torch.Tensor,
+                   inv_mass_diag: torch.Tensor,
                    step_size: float,
                    n_leapfrog_steps: int,
                    potential: callable,
@@ -37,7 +37,7 @@ def hmc_trajectory(x: torch.Tensor,
     xs = []
     for j in range(n_leapfrog_steps):
         momentum = hmc_step_b(x, momentum, step_size, potential)
-        x = hmc_step_a(x, momentum, 1 / mass_diag, step_size)
+        x = hmc_step_a(x, momentum, inv_mass_diag, step_size)
         momentum = hmc_step_b(x, momentum, step_size, potential)
         if full_output:
             xs.append(x)
@@ -59,17 +59,17 @@ def hmc(x0: torch.Tensor,
     if step_size is None:
         step_size = n_dim ** (-1 / 4)
     dual_avg = DualAveraging(math.log(step_size))
-    mass_diag = 1 / torch.var(x0, dim=0).view(1, -1)
+    inv_mass_diag = torch.var(x0, dim=0).view(1, -1)
 
     xs = []
     for i in range(n_iterations):
-        initial_momentum = torch.randn_like(x) * mass_diag.view(1, -1).sqrt()
-        x_prime, momentum_prime = hmc_trajectory(x, initial_momentum, mass_diag, step_size, n_leapfrog_steps, potential)
+        initial_momentum = torch.randn_like(x) / inv_mass_diag.sqrt()
+        x_prime, momentum_prime = hmc_trajectory(x, initial_momentum, inv_mass_diag, step_size, n_leapfrog_steps, potential)
 
         with torch.no_grad():
             log_alpha = metropolis_acceptance_log_ratio(
-                log_prob_curr=-potential(x) - 0.5 * (initial_momentum ** 2 / mass_diag).sum(dim=-1),
-                log_prob_prime=-potential(x_prime) - 0.5 * (momentum_prime ** 2 / mass_diag).sum(dim=-1),
+                log_prob_curr=-potential(x) - 0.5 * (initial_momentum ** 2 * inv_mass_diag).sum(dim=-1),
+                log_prob_prime=-potential(x_prime) - 0.5 * (momentum_prime ** 2 * inv_mass_diag).sum(dim=-1),
                 log_proposal_curr=0.0,
                 log_proposal_prime=0.0
             )
@@ -77,7 +77,7 @@ def hmc(x0: torch.Tensor,
             accepted_mask = torch.less(log_u, log_alpha)
             x[accepted_mask] = x_prime[accepted_mask]
 
-            mass_diag = 1 / torch.var(x, dim=0).view(1, -1)
+            inv_mass_diag = torch.var(x0, dim=0).view(1, -1)
             acceptance_rate = float(torch.mean(accepted_mask.float()))
             dual_avg.step(target_acceptance_rate - acceptance_rate)
             step_size = math.exp(dual_avg.value)
