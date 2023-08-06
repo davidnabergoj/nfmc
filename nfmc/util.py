@@ -1,5 +1,7 @@
 import math
 
+import torch
+
 
 def metropolis_acceptance_log_ratio(
         log_prob_curr,
@@ -35,3 +37,12 @@ class DualAveraging:
     @property
     def value(self):
         return self.x_bar
+
+
+def compute_grad(fn_batched: callable, x: torch.Tensor):
+    with torch.enable_grad():
+        x_clone = torch.clone(x)
+        x_clone.requires_grad_(True)
+        out = torch.autograd.grad(fn_batched(x_clone).sum(), x_clone)[0]
+    out = out.detach()
+    return out
