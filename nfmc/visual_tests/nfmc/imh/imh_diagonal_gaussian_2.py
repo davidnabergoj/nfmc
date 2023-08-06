@@ -81,6 +81,9 @@ if __name__ == '__main__':
     plt.show()
 
     print(f'Uniform, variance relative error: {relative_error(sigma ** 2, ret_unif[burnin_idx:].var(dim=(0, 1)))}')
-    print(
-        f'Approximate geometric, variance relative error: {relative_error(sigma ** 2, ret_geom_approx[burnin_idx:].var(dim=(0, 1)))}')
+    print(f'Approx geometric, variance relative error: {relative_error(sigma ** 2, ret_geom_approx[burnin_idx:].var(dim=(0, 1)))}')
     print(f'Geometric, variance relative error: {relative_error(sigma ** 2, ret_geom[burnin_idx:].var(dim=(0, 1)))}')
+
+    print(f'Uniform, variance: {ret_unif[burnin_idx:].var(dim=(0, 1))}')
+    print(f'Approx geometric, variance: {ret_geom_approx[burnin_idx:].var(dim=(0, 1))}')
+    print(f'Geometric, variance: {ret_geom[burnin_idx:].var(dim=(0, 1))}')
