@@ -59,8 +59,9 @@ class MCMCLayer(SNFLayer):
 
 
 class HMCLayer(MCMCLayer):
-    def __init__(self):
+    def __init__(self, n_leapfrog_steps: int = 10):
         super().__init__()
+        self.n_leapfrog_steps = n_leapfrog_steps
 
     def trajectory(self, x, potential: callable):
         # Keeping the kernel parameters constant to avoid problems.
@@ -68,7 +69,6 @@ class HMCLayer(MCMCLayer):
         n_dim = x.shape[-1]
         inv_mass_diag = torch.ones(size=(1, n_dim))
         step_size = n_dim ** (-1 / 4)
-        n_leapfrog_steps = 10
 
         momentum = torch.randn_like(x)
         x_prime, _ = hmc_trajectory(
@@ -76,7 +76,7 @@ class HMCLayer(MCMCLayer):
             momentum=momentum,
             inv_mass_diag=inv_mass_diag,
             step_size=step_size,
-            n_leapfrog_steps=n_leapfrog_steps,
+            n_leapfrog_steps=self.n_leapfrog_steps,
             potential=potential
         )
         return x_prime
