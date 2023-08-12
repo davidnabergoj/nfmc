@@ -49,7 +49,7 @@ def aft(
         prev_potential = lambda v: (1 - prev_lambda) * prior_potential(v) + prev_lambda * target_potential(v)
 
         log_G = next_potential(x_tilde) + log_det - prev_potential(x)
-        log_w = torch.logaddexp(log_W + log_G)
+        log_w = torch.logaddexp(log_W, log_G)
         log_Z += torch.sum(log_w)
 
         log_W = log_w - torch.logsumexp(log_w, dim=0)
