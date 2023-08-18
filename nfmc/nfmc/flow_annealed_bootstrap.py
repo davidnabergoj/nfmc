@@ -1,6 +1,7 @@
 import torch
 import torch.optim as optim
 
+from nfmc.mcmc.ais import ais, ais_base
 from normalizing_flows import Flow
 from potentials.base import Potential
 
@@ -25,10 +26,6 @@ class Buffer:
             self.index = len(x) - slots_left
 
 
-def fab_ais(x, target_log_prob):
-    raise NotImplementedError
-
-
 def fab(target_potential: Potential,
         flow: Flow,
         K: int,
@@ -46,7 +43,11 @@ def fab(target_potential: Potential,
 
     for i in range(K):
         x, log_prob_flow = flow.sample(M, return_log_prob=True)
-        x, log_w = fab_ais(x, target_log_prob=lambda v: -2 * target_potential(v) - flow.log_prob(v))
+        x, log_w = ais_base(
+            x,
+            prior_potential=lambda v: -flow.log_prob(v),
+            target_potential=lambda v: 2 * target_potential(v) - (-flow.log_prob(v))
+        )
 
         buffer_x.add(x)
         buffer_log_w.add(log_w)
