@@ -33,20 +33,21 @@ def imh(x0: torch.Tensor,
     n_chains, n_dim = x0.shape
     x = deepcopy(x0)
     for i in (pbar := tqdm(range(n_iterations))):
-        x_proposed = flow.sample(n_chains, no_grad=True)
-        log_alpha = metropolis_acceptance_log_ratio(
-            log_prob_curr=-potential(x),
-            log_prob_prime=-potential(x_proposed),
-            log_proposal_curr=flow.log_prob(x),
-            log_proposal_prime=flow.log_prob(x_proposed)
-        )
-        log_u = torch.rand(n_chains).log().to(log_alpha)
-        accepted_mask = torch.less(log_u, log_alpha)
-        x[accepted_mask] = x_proposed[accepted_mask]
-        x = x.detach()
+        with torch.no_grad():
+            x_proposed = flow.sample(n_chains, no_grad=True)
+            log_alpha = metropolis_acceptance_log_ratio(
+                log_prob_curr=-potential(x),
+                log_prob_prime=-potential(x_proposed),
+                log_proposal_curr=flow.log_prob(x),
+                log_proposal_prime=flow.log_prob(x_proposed)
+            )
+            log_u = torch.rand(n_chains).log().to(log_alpha)
+            accepted_mask = torch.less(log_u, log_alpha)
+            x[accepted_mask] = x_proposed[accepted_mask]
+            x = x.detach()
 
-        xs_all.append(deepcopy(x))
-        xs_accepted.append(deepcopy(x[accepted_mask]))
+            xs_all.append(deepcopy(x))
+            xs_accepted.append(deepcopy(x[accepted_mask]))
 
         n_accepted += int(torch.sum(accepted_mask.long()))
         n_total += n_chains
