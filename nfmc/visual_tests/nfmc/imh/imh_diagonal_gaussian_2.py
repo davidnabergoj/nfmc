@@ -19,7 +19,7 @@ if __name__ == '__main__':
     torch.manual_seed(0)
     flow = Flow(RealNVP(n_dim, n_layers=3)).cuda()
     ret_geom_approx = imh(x0, flow, potential, full_output=True, n_iterations=500,
-                          train_dist='bounded_geom_approx').cpu()
+                          train_dist='bounded_geom_approx')[0].cpu()
 
     gt = potential.sample((1000,)).cpu()
     xf = flow.sample(1000, no_grad=True).cpu()
@@ -44,7 +44,7 @@ if __name__ == '__main__':
 
     torch.manual_seed(0)
     flow = Flow(RealNVP(n_dim, n_layers=3)).cuda()  # Many layers make the flow unstable
-    ret_unif = imh(x0, flow, potential, full_output=True, n_iterations=500, train_dist='uniform').cpu()
+    ret_unif = imh(x0, flow, potential, full_output=True, n_iterations=500, train_dist='uniform')[0].cpu()
 
     fig, ax = plt.subplots()
     ax.scatter(ret_unif[burnin_idx:, :, d0].reshape(-1, n_dim), ret_unif[burnin_idx:, :, d1].reshape(-1, n_dim),
@@ -58,7 +58,7 @@ if __name__ == '__main__':
 
     torch.manual_seed(0)
     flow = Flow(RealNVP(n_dim, n_layers=3)).cuda()
-    ret_geom = imh(x0, flow, potential, full_output=True, n_iterations=500, train_dist='bounded_geom').cpu()
+    ret_geom = imh(x0, flow, potential, full_output=True, n_iterations=500, train_dist='bounded_geom')[0].cpu()
 
     fig, ax = plt.subplots()
     ax.scatter(ret_geom[burnin_idx:, :, d0].reshape(-1, n_dim), ret_geom[burnin_idx:, :, d1].reshape(-1, n_dim),
