@@ -1,5 +1,5 @@
 from copy import deepcopy
-
+from tqdm import tqdm
 import torch
 
 from nfmc.util import metropolis_acceptance_log_ratio
@@ -20,15 +20,19 @@ def imh(x0: torch.Tensor,
         potential: callable,
         n_iterations: int = 1000,
         full_output: bool = False,
-        adaptation_dropoff: float = 1 - 1e-4,
-        train_dist: str = 'bounded_geom_approx'):
+        adaptation_dropoff: float = 0.9999,
+        train_dist: str = 'uniform'):
     assert train_dist in ['bounded_geom_approx', 'bounded_geom', 'uniform']
     # Exponentially diminishing adaptation probability sequence
-    xs = []
+    xs_all = []
+    xs_accepted = []
+
+    n_accepted = 0
+    n_total = 0
 
     n_chains, n_dim = x0.shape
     x = deepcopy(x0)
-    for i in range(n_iterations):
+    for i in (pbar := tqdm(range(n_iterations))):
         x_proposed = flow.sample(n_chains, no_grad=True)
         log_alpha = metropolis_acceptance_log_ratio(
             log_prob_curr=-potential(x),
@@ -40,10 +44,13 @@ def imh(x0: torch.Tensor,
         accepted_mask = torch.less(log_u, log_alpha)
         x[accepted_mask] = x_proposed[accepted_mask]
         x = x.detach()
-        xs.append(deepcopy(x))
 
-        acceptance_rate = float(torch.mean(accepted_mask.float()))
-        print(f'{i = } {acceptance_rate = }')
+        xs_all.append(deepcopy(x))
+        xs_accepted.append(deepcopy(x[accepted_mask]))
+
+        n_accepted += int(torch.sum(accepted_mask.long()))
+        n_total += n_chains
+        instantaneous_acceptance_rate = float(torch.mean(accepted_mask.float()))
 
         u_prime = torch.rand(size=())
         alpha_prime = adaptation_dropoff ** i
@@ -53,17 +60,22 @@ def imh(x0: torch.Tensor,
             # we can program the exact bounded geometric as well. Then it's parameter p can be adapted with dual
             # averaging.
             if train_dist == 'uniform':
-                k = int(torch.randint(low=0, high=len(xs), size=()))
+                k = int(torch.randint(low=0, high=len(xs_all), size=()))
             elif train_dist == 'bounded_geom_approx':
-                k = int(torch.randint(low=max(0, len(xs) - 100), high=len(xs), size=()))
+                k = int(torch.randint(low=max(0, len(xs_all) - 100), high=len(xs_all), size=()))
             elif train_dist == 'bounded_geom':
-                k = sample_bounded_geom(p=0.025, max_val=len(xs) - 1)
+                k = sample_bounded_geom(p=0.025, max_val=len(xs_all) - 1)
             else:
                 raise ValueError
-            x_train = xs[k]
+            x_train = xs_all[k]
             flow.fit(x_train, n_epochs=1)
 
+        pbar.set_postfix_str(f'Running acceptance rate: {n_accepted / n_total:.3f}')
+
+    xs_all = torch.stack(xs_all, dim=0)
+    xs_accepted = torch.cat(xs_accepted, dim=0)
+
     if full_output:
-        return torch.stack(xs)
+        return xs_all, xs_accepted
     else:
         return x
