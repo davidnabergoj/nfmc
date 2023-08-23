@@ -1,7 +1,7 @@
 from copy import deepcopy
 
 import torch
-
+from tqdm import tqdm
 from normalizing_flows import Flow
 from nfmc.mcmc.langevin_algorithm import base as base_langevin
 
@@ -15,6 +15,7 @@ def base(x0: torch.Tensor,
          burnin: int = 1000,
          full_output: bool = False,
          nf_adjustment: bool = False,
+         show_progress: bool = True,
          **kwargs):
     n_chains, n_dim = x0.shape
 
@@ -31,7 +32,12 @@ def base(x0: torch.Tensor,
     )
 
     # Langevin with NF jumps
-    for i in range(n_jumps):
+    if show_progress:
+        iterator = tqdm(range(n_jumps), desc='NF Langevin algorithm')
+    else:
+        iterator = range(n_jumps)
+
+    for _ in iterator:
         x_lng = base_langevin(
             x0=x,
             n_iterations=jump_period - 1,
