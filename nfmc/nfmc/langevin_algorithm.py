@@ -30,6 +30,10 @@ def base(x0: torch.Tensor,
         potential=potential,
         **kwargs
     )
+    # In the burnin stage, fit the flow to the typical set data
+    flow.fit(x)
+
+    xs = [x[None]]
 
     # Langevin with NF jumps
     if show_progress:
