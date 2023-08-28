@@ -21,7 +21,7 @@ def imh(x0: torch.Tensor,
         n_iterations: int = 1000,
         full_output: bool = False,
         adaptation_dropoff: float = 0.9999,
-        train_dist: str = 'uniform'):
+        train_dist: str = 'bounded_geom'):
     assert train_dist in ['bounded_geom_approx', 'bounded_geom', 'uniform']
     # Exponentially diminishing adaptation probability sequence
     xs_all = []
