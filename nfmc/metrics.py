@@ -68,3 +68,16 @@ def normalized_absolute_error_2nd_moment(samples: torch.Tensor, true_2nd_moment:
 
 def squared_bias_2nd_moment(samples: torch.Tensor, true_2nd_moment: torch.Tensor, true_variance: torch.Tensor):
     return normalized_bias(empirical_2nd_moment(samples), true_2nd_moment, true_variance, order=2)
+
+
+def steps_to_low_squared_bias_2nd_moment(samples: torch.Tensor,
+                                         true_2nd_moment: torch.Tensor,
+                                         true_variance: torch.Tensor):
+    # How many steps do we need before reaching squared bias of 0.01
+    b2 = squared_bias_2nd_moment(samples, true_2nd_moment, true_variance)
+    if torch.all(b2 >= 0.01):
+        # Never reached 0.01
+        steps_until_goal = torch.inf
+    else:
+        steps_until_goal = torch.where(b2 < 0.01)[0][0]
+    return steps_until_goal
