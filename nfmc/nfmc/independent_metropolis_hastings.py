@@ -25,7 +25,6 @@ def imh(x0: torch.Tensor,
     assert train_dist in ['bounded_geom_approx', 'bounded_geom', 'uniform']
     # Exponentially diminishing adaptation probability sequence
     xs_all = []
-    xs_accepted = []
 
     n_accepted = 0
     n_total = 0
@@ -47,7 +46,6 @@ def imh(x0: torch.Tensor,
             x = x.detach()
 
             xs_all.append(deepcopy(x))
-            xs_accepted.append(deepcopy(x[accepted_mask]))
 
         n_accepted += int(torch.sum(accepted_mask.long()))
         n_total += n_chains
@@ -74,9 +72,8 @@ def imh(x0: torch.Tensor,
         pbar.set_postfix_str(f'Running acceptance rate: {n_accepted / n_total:.3f}')
 
     xs_all = torch.stack(xs_all, dim=0)
-    xs_accepted = torch.cat(xs_accepted, dim=0)
 
     if full_output:
-        return xs_all, xs_accepted
+        return xs_all
     else:
         return x
