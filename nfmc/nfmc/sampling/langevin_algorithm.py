@@ -2,6 +2,8 @@ from copy import deepcopy
 
 import torch
 from tqdm import tqdm
+
+from nfmc.util import metropolis_acceptance_log_ratio
 from normalizing_flows import Flow
 from nfmc.mcmc.langevin_algorithm import base as base_langevin
 
@@ -60,13 +62,17 @@ def base(x0: torch.Tensor,
         x_proposed = flow.sample(n_chains).detach().cpu()  # (n_chains, *event_shape)
         if nf_adjustment:
             x_current = x_lng[-1]
-            t0 = potential(x_current)
-            t1 = potential(x_proposed)
-            t2 = flow.log_prob(x_current)
-            t3 = flow.log_prob(x_proposed)
-            log_alpha = (t0 - t1 + t2 - t3).cpu()
-            log_u = torch.rand_like(log_alpha).log()
-            acceptance_mask = log_u > log_alpha
+            u_x = potential(x_current)
+            u_x_prime = potential(x_proposed)
+            f_x = flow.log_prob(x_current)
+            f_x_prime = flow.log_prob(x_proposed)
+            log_alpha = metropolis_acceptance_log_ratio(
+                log_prob_curr=-u_x,
+                log_prob_prime=-u_x_prime,
+                log_proposal_curr=f_x,
+                log_proposal_prime=f_x_prime
+            ).cpu()
+            acceptance_mask = torch.rand_like(log_alpha).log() < log_alpha
             x[acceptance_mask] = x_proposed[acceptance_mask]
             accepted += int(torch.sum(torch.as_tensor(acceptance_mask).float()))
         else:
