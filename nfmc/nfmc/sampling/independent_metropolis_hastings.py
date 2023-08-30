@@ -71,7 +71,7 @@ def imh(x0: torch.Tensor,
             x_train = xs_all[k]
             flow.fit(x_train, n_epochs=1)
 
-        pbar.set_postfix_str(f'Running acceptance rate: {n_accepted / n_total:.3f}')
+        pbar.set_postfix_str(f'accept-frac: {n_accepted / n_total:.3f} | adapt-prob: {alpha_prime:.3f}')
 
     xs_all = torch.stack(xs_all, dim=0)
 
