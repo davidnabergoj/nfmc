@@ -11,7 +11,7 @@ def compute_empirical_moment(samples, k: int):
     # samples.shape = (n_steps, n_dim)
     # output.shape = (n_steps, n_dim)
     n_steps, n_dim = samples.shape
-    return torch.cumsum(samples ** k, dim=0) / torch.arange(n_steps)[:, None]
+    return torch.cumsum(samples ** k, dim=0) / torch.arange(1, n_steps + 1)[:, None]
 
 
 def compute_empirical_mean(samples):
@@ -79,7 +79,7 @@ def absolute_error_mean(samples: torch.Tensor, true_mean: torch.Tensor):
     return torch.vmap(
         lambda chain: unnormalized_bias(compute_empirical_mean(chain), true_mean, order=1),
         in_dims=1
-    )(samples).mean(dim=1)
+    )(samples).mean(dim=0)
 
 
 def normalized_absolute_error_mean(samples: torch.Tensor, true_mean: torch.Tensor, true_variance: torch.Tensor):
@@ -92,7 +92,7 @@ def normalized_absolute_error_mean(samples: torch.Tensor, true_mean: torch.Tenso
     return torch.vmap(
         lambda chain: normalized_bias(compute_empirical_mean(chain), true_mean, true_variance, order=1),
         in_dims=1
-    )(samples).mean(dim=1)
+    )(samples).mean(dim=0)
 
 
 def squared_bias_mean(samples: torch.Tensor, true_mean: torch.Tensor, true_variance: torch.Tensor):
@@ -103,7 +103,7 @@ def squared_bias_mean(samples: torch.Tensor, true_mean: torch.Tensor, true_varia
     return torch.vmap(
         lambda chain: normalized_bias(compute_empirical_mean(chain), true_mean, true_variance, order=2),
         in_dims=1
-    )(samples).mean(dim=1)
+    )(samples).mean(dim=0)
 
 
 def absolute_error_2nd_moment(samples: torch.Tensor, true_2nd_moment: torch.Tensor):
@@ -111,7 +111,7 @@ def absolute_error_2nd_moment(samples: torch.Tensor, true_2nd_moment: torch.Tens
     return torch.vmap(
         lambda chain: unnormalized_bias(compute_empirical_2nd_moment(chain), true_2nd_moment, order=1),
         in_dims=1
-    )(samples).mean(dim=1)
+    )(samples).mean(dim=0)
 
 
 def normalized_absolute_error_2nd_moment(samples: torch.Tensor, true_2nd_moment: torch.Tensor,
@@ -120,7 +120,7 @@ def normalized_absolute_error_2nd_moment(samples: torch.Tensor, true_2nd_moment:
     return torch.vmap(
         lambda chain: normalized_bias(compute_empirical_2nd_moment(chain), true_2nd_moment, true_variance, order=1),
         in_dims=1
-    )(samples).mean(dim=1)
+    )(samples).mean(dim=0)
 
 
 def squared_bias_2nd_moment(samples: torch.Tensor, true_2nd_moment: torch.Tensor, true_variance: torch.Tensor):
@@ -128,7 +128,7 @@ def squared_bias_2nd_moment(samples: torch.Tensor, true_2nd_moment: torch.Tensor
     return torch.vmap(
         lambda chain: normalized_bias(compute_empirical_2nd_moment(chain), true_2nd_moment, true_variance, order=2),
         in_dims=1
-    )(samples).mean(dim=1)
+    )(samples).mean(dim=0)
 
 
 def steps_to_low_squared_bias_2nd_moment(samples: torch.Tensor,
