@@ -10,16 +10,16 @@ def base(x0: torch.Tensor,
          flow: Flow,
          potential: callable,
          n_jumps: int = 25,
-         jump_period: int = 100,
+         jump_period: int = 500,
          batch_size: int = 128,
          burnin: int = 1000,
          full_output: bool = False,
-         nf_adjustment: bool = False,
+         nf_adjustment: bool = True,
          show_progress: bool = True,
          **kwargs):
-    n_chains, n_dim = x0.shape
+    n_chains = x0.shape[0]
+    event_shape = x0.shape[1:]
 
-    xs = []
     x = deepcopy(x0)
 
     # Burnin to get to the typical set
@@ -33,7 +33,7 @@ def base(x0: torch.Tensor,
     # In the burnin stage, fit the flow to the typical set data
     flow.fit(x)
 
-    xs = [x[None]]
+    xs = [deepcopy(x[None])]
 
     # Langevin with NF jumps
     if show_progress:
@@ -48,15 +48,15 @@ def base(x0: torch.Tensor,
             full_output=True,
             potential=potential,
             **kwargs
-        )
+        )  # (n_steps, n_chains, *event_shape)
         if full_output:
             xs.append(x_lng)
 
-        x_train = x_lng.view(-1, n_dim)
+        x_train = x_lng.view(-1, *event_shape)  # (n_steps * n_chains, *event_shape)
         flow.fit(x_train, n_epochs=1, batch_size=batch_size, shuffle=False)
-        x_proposed = flow.sample(n_chains).detach().cpu()
+        x_proposed = flow.sample(n_chains).detach().cpu()  # (n_chains, *event_shape)
         if nf_adjustment:
-            x_current = x_train[-1]
+            x_current = x_lng[-1]
             t0 = potential(x_current)
             t1 = potential(x_proposed)
             t2 = flow.log_prob(x_current)
@@ -68,8 +68,10 @@ def base(x0: torch.Tensor,
         else:
             x = x_proposed
 
+        # x.shape = (n_chains, n_dim)
+
         if full_output:
-            xs.append(deepcopy(x.unsqueeze(0)))
+            xs.append(deepcopy(x[None]))
 
     if full_output:
         return torch.cat(xs, dim=0)
