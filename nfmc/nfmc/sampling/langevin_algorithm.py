@@ -41,6 +41,9 @@ def base(x0: torch.Tensor,
     else:
         iterator = range(n_jumps)
 
+    accepted = 0
+    total = 0
+
     for _ in iterator:
         x_lng = base_langevin(
             x0=x,
@@ -65,8 +68,14 @@ def base(x0: torch.Tensor,
             log_u = torch.rand_like(log_alpha).log()
             acceptance_mask = log_u > log_alpha
             x[acceptance_mask] = x_proposed[acceptance_mask]
+            accepted += int(torch.sum(torch.as_tensor(acceptance_mask).float()))
         else:
             x = x_proposed
+            accepted += n_chains
+        total += n_chains
+
+        if show_progress:
+            iterator.set_postfix_str(f'accept-frac: {accepted / total:.4f}')
 
         # x.shape = (n_chains, n_dim)
 
