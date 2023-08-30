@@ -24,6 +24,8 @@ def imh(x0: torch.Tensor,
         train_dist: str = 'bounded_geom'):
     assert train_dist in ['bounded_geom_approx', 'bounded_geom', 'uniform']
     # Exponentially diminishing adaptation probability sequence
+    # TODO make initial states be sampled from the flow
+
     xs_all = []
 
     n_accepted = 0
