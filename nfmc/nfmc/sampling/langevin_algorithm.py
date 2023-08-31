@@ -34,6 +34,7 @@ def base(x0: torch.Tensor,
     )
     # In the burnin stage, fit the flow to the typical set data
     flow.fit(x)
+    # Note: in practice, it is quite useful to have a decent fit at this point.
 
     xs = [deepcopy(x[None])]
 
