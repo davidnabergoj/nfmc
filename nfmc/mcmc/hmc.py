@@ -1,6 +1,6 @@
 import math
 from copy import deepcopy
-
+from tqdm import tqdm
 import torch
 
 from nfmc.util import metropolis_acceptance_log_ratio, DualAveraging
@@ -53,7 +53,12 @@ def hmc(x0: torch.Tensor,
         n_leapfrog_steps: int = 15,
         step_size: float = None,
         full_output: bool = False,
-        target_acceptance_rate: float = 0.651):
+        target_acceptance_rate: float = 0.651,
+        show_progress: bool = False, ):
+    n_chains, *event_shape = x0.shape
+
+    xs = torch.zeros(size=(n_iterations, *x0.shape), dtype=x0.dtype)
+
     x = deepcopy(x0)
     n_dim = x.shape[-1]
     if step_size is None:
@@ -61,11 +66,18 @@ def hmc(x0: torch.Tensor,
     dual_avg = DualAveraging(math.log(step_size))
     inv_mass_diag = torch.var(x0, dim=0).view(1, -1)
 
-    xs = []
-    for i in range(n_iterations):
-        initial_momentum = torch.randn_like(x) / inv_mass_diag.sqrt()
-        x_prime, momentum_prime = hmc_trajectory(x, initial_momentum, inv_mass_diag, step_size, n_leapfrog_steps, potential)
+    if show_progress:
+        iterator = tqdm(range(n_iterations), desc='HMC')
+    else:
+        iterator = range(n_iterations)
 
+    accepted = 0
+    total = 0
+
+    for i in iterator:
+        initial_momentum = torch.randn_like(x) / inv_mass_diag.sqrt()
+        x_prime, momentum_prime = hmc_trajectory(x, initial_momentum, inv_mass_diag, step_size, n_leapfrog_steps,
+                                                 potential)
         with torch.no_grad():
             log_alpha = metropolis_acceptance_log_ratio(
                 log_prob_curr=-potential(x) - 0.5 * (initial_momentum ** 2 * inv_mass_diag).sum(dim=-1),
@@ -76,16 +88,23 @@ def hmc(x0: torch.Tensor,
             log_u = torch.rand_like(log_alpha).log()
             accepted_mask = torch.less(log_u, log_alpha)
             x[accepted_mask] = x_prime[accepted_mask]
+            x = x.detach()
 
             inv_mass_diag = torch.var(x0, dim=0).view(1, -1)
             acceptance_rate = float(torch.mean(accepted_mask.float()))
             dual_avg.step(target_acceptance_rate - acceptance_rate)
             step_size = math.exp(dual_avg.value)
 
+            accepted += int(torch.sum(accepted_mask))
+            total += n_chains
+
+            if show_progress:
+                iterator.set_postfix_str(f'accept-frac: {accepted / total:.4f}')
+
             if full_output:
-                xs.append(deepcopy(x))
+                xs[i] = deepcopy(x)
 
     if full_output:
-        return torch.stack(xs)
+        return xs.detach()
     else:
-        return x
+        return x.detach()
