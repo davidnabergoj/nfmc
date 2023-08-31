@@ -22,7 +22,8 @@ def imh(x0: torch.Tensor,
         n_iterations: int = 1000,
         full_output: bool = False,
         adaptation_dropoff: float = 0.9999,
-        train_dist: str = 'bounded_geom',
+        train_dist: str = 'uniform',
+        device=torch.device('cpu'),
         **kwargs):
     assert train_dist in ['bounded_geom_approx', 'bounded_geom', 'uniform']
     # Exponentially diminishing adaptation probability sequence
@@ -37,12 +38,12 @@ def imh(x0: torch.Tensor,
     x = deepcopy(x0)
     for i in (pbar := tqdm(range(n_iterations))):
         with torch.no_grad():
-            x_proposed = flow.sample(n_chains, no_grad=True)
+            x_proposed = flow.sample(n_chains, no_grad=True).to(device)
             log_alpha = metropolis_acceptance_log_ratio(
-                log_prob_curr=-potential(x),
-                log_prob_prime=-potential(x_proposed),
-                log_proposal_curr=flow.log_prob(x),
-                log_proposal_prime=flow.log_prob(x_proposed)
+                log_prob_curr=-potential(x).to(device),
+                log_prob_prime=-potential(x_proposed).to(device),
+                log_proposal_curr=flow.log_prob(x).to(device),
+                log_proposal_prime=flow.log_prob(x_proposed).to(device)
             )
             log_u = torch.rand(n_chains).log().to(log_alpha)
             accepted_mask = torch.less(log_u, log_alpha)
@@ -86,6 +87,7 @@ def aggressive_imh(x0: torch.Tensor,
                    n_iterations: int = 1000,
                    adaptation_dropoff: float = 0.9999,
                    train_dist: str = 'uniform',
+                   device=torch.device('cpu'),
                    **kwargs):
     n_chains, *event_shape = x0.shape
     xs = torch.zeros(size=(n_iterations, n_chains, *event_shape), dtype=x0.dtype)
@@ -97,12 +99,12 @@ def aggressive_imh(x0: torch.Tensor,
     x = deepcopy(x0)
     for i in (pbar := tqdm(range(n_iterations))):
         with torch.no_grad():
-            x_proposed = flow.sample(n_chains, no_grad=True)
+            x_proposed = flow.sample(n_chains, no_grad=True).to(device)
             log_alpha = metropolis_acceptance_log_ratio(
-                log_prob_curr=-potential(x),
-                log_prob_prime=-potential(x_proposed),
-                log_proposal_curr=flow.log_prob(x),
-                log_proposal_prime=flow.log_prob(x_proposed)
+                log_prob_curr=-potential(x).to(device),
+                log_prob_prime=-potential(x_proposed).to(device),
+                log_proposal_curr=flow.log_prob(x).to(device),
+                log_proposal_prime=flow.log_prob(x_proposed).to(device)
             )
             log_u = torch.rand(n_chains).log().to(log_alpha)
             accepted_mask = torch.less(log_u, log_alpha)
@@ -136,7 +138,10 @@ def aggressive_imh(x0: torch.Tensor,
             w_train = torch.tensor(list(train_data_weights), dtype=torch.float)
             w_train = w_train.unsqueeze(1).repeat(1, n_chains).view(-1)
             x_train = xs[idx_train].view(-1, *event_shape)
-            flow.fit(x_train, n_epochs=30, w_train=w_train, **kwargs)
+
+            idx_final = torch.randperm(len(x_train))[:1000]
+
+            flow.fit(x_train[idx_final], n_epochs=1, w_train=w_train[idx_final], **kwargs)
 
         pbar.set_postfix_str(f'accept-frac: {n_accepted / n_total:.6f} | adapt-prob: {alpha_prime:.6f}')
 
