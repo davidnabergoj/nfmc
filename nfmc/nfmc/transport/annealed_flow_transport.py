@@ -5,8 +5,9 @@ import torch
 import torch.optim as optim
 
 from nfmc.mcmc.hmc import hmc_trajectory
-from normalizing_flows import Flow, RealNVP
-from normalizing_flows.src.bijections import Bijection
+from normalizing_flows import Flow
+from normalizing_flows.bijections import RealNVP
+from normalizing_flows.bijections.base import Bijection
 from potentials.base import Potential
 
 

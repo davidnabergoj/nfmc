@@ -7,8 +7,8 @@ import torch.nn as nn
 import torch.optim as optim
 
 from nfmc.mcmc.mh import mh_step
-from normalizing_flows import RealNVP
-from normalizing_flows.src.bijections import Bijection
+from normalizing_flows.bijections import RealNVP
+from normalizing_flows.bijections.base import Bijection
 from potentials.base import Potential
 from nfmc.mcmc.hmc import hmc_trajectory
 
@@ -156,11 +156,39 @@ def _snf_base(z: torch.Tensor, flow: SNF, **kwargs):
     return x
 
 
+def snf_hmc(prior_samples: torch.Tensor,
+            prior_potential: Potential,
+            target_potential: Potential,
+            flow_name: str,
+            **kwargs):
+    n_dim = prior_samples.shape[-1]  # We assume the event is the last dimension
+
+    if flow_name is None:
+        return snf_hmc_real_nvp(prior_samples, prior_potential, target_potential, **kwargs)
+
+    # Reasonable default SNF
+    if flow_name == "realnvp":
+        flow = SNF(
+            prior_potential=prior_potential,
+            target_potential=target_potential,
+            layers=[
+                HMCLayer(),
+                FlowLayer(RealNVP(n_dim, n_layers=2)),
+                HMCLayer(),
+                FlowLayer(RealNVP(n_dim, n_layers=2)),
+                HMCLayer()
+            ]
+        )
+    else:
+        raise ValueError
+
+    return _snf_base(prior_samples, flow, **kwargs)
+
+
 def snf_hmc_real_nvp(prior_samples: torch.Tensor,
                      prior_potential: Potential,
                      target_potential: Potential,
                      **kwargs):
-    batch_shape = prior_samples.shape[:-1]
     n_dim = prior_samples.shape[-1]  # We assume the event is the last dimension
 
     # Reasonable default SNF
