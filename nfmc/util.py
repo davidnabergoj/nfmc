@@ -3,6 +3,10 @@ import math
 import torch
 
 
+def create_flow_object(flow_name: str):
+    raise NotImplementedError
+
+
 def metropolis_acceptance_log_ratio(
         log_prob_curr,
         log_prob_prime,

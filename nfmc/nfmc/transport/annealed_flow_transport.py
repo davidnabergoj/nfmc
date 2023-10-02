@@ -102,9 +102,9 @@ def aft(prior_potential: Potential,
 
 def craft(prior_potential: Potential,
           target_potential: Potential,
-          n_particles: int,
-          n_training_steps: int,
-          n_annealing_steps: int,
+          n_particles: int = 100,
+          n_training_steps: int = 100,
+          n_annealing_steps: int = 20,
           sampling_threshold: float = 0.3,
           full_output: bool = False):
     """

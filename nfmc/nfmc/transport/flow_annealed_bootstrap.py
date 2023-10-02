@@ -33,6 +33,7 @@ def fab(target_potential: Potential,
         M: int,
         N: int,
         buffer_size: int = 10_000):
+    # TODO set defaults
     assert M < buffer_size
 
     buffer_x = Buffer(event_shape=target_potential.event_shape, size=buffer_size)
