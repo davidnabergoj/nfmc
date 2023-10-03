@@ -34,7 +34,7 @@ def independent_metropolis_hastings_base(x0: torch.Tensor,
     n_accepted = 0
     n_total = 0
 
-    n_chains, n_dim = x0.shape
+    n_chains, *event_shape = x0.shape
     x = deepcopy(x0)
     for i in (pbar := tqdm(range(n_iterations))):
         with torch.no_grad():
