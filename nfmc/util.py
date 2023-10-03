@@ -10,7 +10,12 @@ from normalizing_flows.bijections import (
     CouplingRQNSF,
     MaskedAutoregressiveRQNSF,
     CouplingLRS,
-    MaskedAutoregressiveLRS
+    MaskedAutoregressiveLRS,
+    OTFlow,
+    FFJORD,
+    ResFlow,
+    InvertibleResNet,
+    DeepDiffeomorphicBijection
 )
 
 
@@ -26,8 +31,8 @@ def get_supported_normalizing_flows():
         "ar-lrs",
         "ot-flow",
         "ffjord",
-        "iresnet",
-        "resflow",
+        # "iresnet",  # Too slow
+        # "resflow",  # Too slow
         "ddnf"
     ]
 
@@ -50,6 +55,16 @@ def create_flow_object(flow_name: str, event_shape):
         bijection = CouplingLRS(event_shape)
     elif flow_name in ['ar-lrs']:
         bijection = MaskedAutoregressiveLRS(event_shape)
+    elif flow_name in ['ot-flow', 'otflow']:
+        bijection = OTFlow(event_shape)
+    elif flow_name in ['ffjord']:
+        bijection = FFJORD(event_shape)
+    elif flow_name in ['iresnet', 'invertible resnet', 'invertible-resnet', 'i-resnet']:
+        bijection = InvertibleResNet(event_shape)
+    elif flow_name in ['resflow', 'residual flow', 'residual-flow', 'res-flow']:
+        bijection = ResFlow(event_shape)
+    elif flow_name in ['ddnf']:
+        bijection = DeepDiffeomorphicBijection(event_shape)
     else:
         raise ValueError
 
