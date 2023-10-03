@@ -3,7 +3,15 @@ import math
 import torch
 
 from normalizing_flows import Flow
-from normalizing_flows.bijections.finite.autoregressive.architectures import RealNVP
+from normalizing_flows.bijections import (
+    RealNVP,
+    MAF,
+    IAF,
+    CouplingRQNSF,
+    MaskedAutoregressiveRQNSF,
+    CouplingLRS,
+    MaskedAutoregressiveLRS
+)
 
 
 def get_supported_normalizing_flows():
@@ -30,6 +38,18 @@ def create_flow_object(flow_name: str, event_shape):
 
     if flow_name in ["realnvp", "rnvp"]:
         bijection = RealNVP(event_shape)
+    elif flow_name in ['maf']:
+        bijection = MAF(event_shape)
+    elif flow_name in ['iaf']:
+        bijection = IAF(event_shape)
+    elif flow_name in ['c-rqnsf']:
+        bijection = CouplingRQNSF(event_shape)
+    elif flow_name in ['ar-rqnsf']:
+        bijection = MaskedAutoregressiveRQNSF(event_shape)
+    elif flow_name in ['c-lrs']:
+        bijection = CouplingLRS(event_shape)
+    elif flow_name in ['ar-lrs']:
+        bijection = MaskedAutoregressiveLRS(event_shape)
     else:
         raise ValueError
 
