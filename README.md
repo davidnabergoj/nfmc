@@ -49,12 +49,6 @@ ula_samples = ula(target, "realnvp", n_chains, n_iterations)
 imh_samples = imh(target, "realnvp", n_chains, n_iterations)
 neutra_samples = neutra_hmc(target, "realnvp", n_chains, n_iterations)
 tess_samples = tess(target, "realnvp", n_chains, n_iterations)
-
-print(mala_samples.shape)  # (1000, 100, 25)
-print(ula_samples.shape)  # (1000, 100, 25)
-print(imh_samples.shape)  # (1000, 100, 25)
-print(neutra_samples.shape)  # (1000, 100, 25)
-print(tess_samples.shape)  # (1000, 100, 25)
 ```
 
 Transport NFMC algorithms move particles from a prior potential to a target potential.
@@ -83,10 +77,4 @@ aft_samples = aft(prior, target, "realnvp", n_particles, n_iterations)
 craft_samples = craft(prior, target, "realnvp", n_particles, n_iterations)
 dlmc_samples = dlmc(prior, target, "realnvp", n_particles, n_iterations)
 ns_samples = ns(prior, target, "realnvp", n_particles, n_iterations)
-
-print(snf_samples.shape)  # (1000, 100, 25)
-print(aft_samples.shape)  # (1000, 100, 25)
-print(craft_samples.shape)  # (1000, 100, 25)
-print(dlmc_samples.shape)  # (1000, 100, 25)
-print(ns_samples.shape)  # (1000, 100, 25)
 ```
