@@ -1,6 +1,6 @@
 import torch
 
-from base import Potential
+from potentials.base import Potential
 from nfmc.nfmc.sampling import neutra_hmc
 from nfmc.nfmc.sampling import tess
 from nfmc.nfmc.sampling.independent_metropolis_hastings import imh
