@@ -1,5 +1,5 @@
 import torch
-from nfmc.metrics import squared_bias_2nd_moment, squared_bias_mean
+from metrics import squared_bias_2nd_moment, squared_bias_mean
 
 
 def test_squared_bias():

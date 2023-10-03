@@ -3,7 +3,26 @@ import math
 import torch
 
 
+def get_supported_normalizing_flows():
+    return [
+        "realnvp",
+        "rnvp",
+        "maf",
+        "iaf",
+        "c-rqnsf",
+        "ar-rqnsf",
+        "c-lrs",
+        "ar-lrs",
+        "ot-flow",
+        "ffjord",
+        "iresnet",
+        "resflow",
+        "ddnf"
+    ]
+
+
 def create_flow_object(flow_name: str):
+    assert flow_name in get_supported_normalizing_flows()
     raise NotImplementedError
 
 
