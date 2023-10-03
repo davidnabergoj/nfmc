@@ -156,11 +156,11 @@ def _snf_base(z: torch.Tensor, flow: SNF, **kwargs):
     return x
 
 
-def snf_hmc(prior_samples: torch.Tensor,
-            prior_potential: Potential,
-            target_potential: Potential,
-            flow_name: str,
-            **kwargs):
+def stochastic_normalizing_flow_hmc_base(prior_samples: torch.Tensor,
+                                         prior_potential: Potential,
+                                         target_potential: Potential,
+                                         flow_name: str,
+                                         **kwargs):
     n_dim = prior_samples.shape[-1]  # We assume the event is the last dimension
 
     if flow_name is None:

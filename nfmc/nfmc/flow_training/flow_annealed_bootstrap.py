@@ -26,13 +26,13 @@ class Buffer:
             self.index = len(x) - slots_left
 
 
-def fab(target_potential: Potential,
-        flow: Flow,
-        n_iterations: int = 50,
-        n_flow_training_steps: int = 20,
-        n_ais_particles: int = 100,
-        n_training_particles: int = 50,
-        buffer_size: int = 10_000):
+def flow_annealed_importance_sampling_bootstrap_base(target_potential: Potential,
+                                                     flow: Flow,
+                                                     n_iterations: int = 50,
+                                                     n_flow_training_steps: int = 20,
+                                                     n_ais_particles: int = 100,
+                                                     n_training_particles: int = 50,
+                                                     buffer_size: int = 10_000):
     """
 
     :param target_potential: potential to be modeled by the flow.

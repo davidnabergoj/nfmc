@@ -8,17 +8,17 @@ from normalizing_flows import Flow
 from nfmc.mcmc.langevin_algorithm import base as base_langevin
 
 
-def base(x0: torch.Tensor,
-         flow: Flow,
-         potential: callable,
-         n_jumps: int = 25,
-         jump_period: int = 500,
-         batch_size: int = 128,
-         burnin: int = 1000,
-         full_output: bool = False,
-         nf_adjustment: bool = True,
-         show_progress: bool = True,
-         **kwargs):
+def langevin_algorithm_base(x0: torch.Tensor,
+                            flow: Flow,
+                            potential: callable,
+                            n_jumps: int = 25,
+                            jump_period: int = 500,
+                            batch_size: int = 128,
+                            burnin: int = 1000,
+                            full_output: bool = False,
+                            nf_adjustment: bool = True,
+                            show_progress: bool = True,
+                            **kwargs):
     n_chains = x0.shape[0]
     event_shape = x0.shape[1:]
 
@@ -95,9 +95,9 @@ def base(x0: torch.Tensor,
         return x
 
 
-def ula(*args, **kwargs):
-    return base(*args, **kwargs, adjustment=False)
+def unadjusted_langevin_algorithm_base(*args, **kwargs):
+    return langevin_algorithm_base(*args, **kwargs, adjustment=False)
 
 
-def mala(*args, **kwargs):
-    return base(*args, **kwargs, adjustment=True)
+def metropolis_adjusted_langevin_algorithm_base(*args, **kwargs):
+    return langevin_algorithm_base(*args, **kwargs, adjustment=True)

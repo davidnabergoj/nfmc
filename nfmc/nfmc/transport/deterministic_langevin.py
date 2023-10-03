@@ -6,14 +6,14 @@ from nfmc.util import metropolis_acceptance_log_ratio, compute_grad
 from normalizing_flows import Flow
 
 
-def dlmc(x_prior: torch.Tensor,
-         potential: callable,
-         negative_log_likelihood: callable,
-         flow: Flow,
-         step_size: float = 1.0,
-         n_iterations: int = 20,
-         latent_updates: bool = False,
-         full_output: bool = False):
+def deterministic_langevin_monte_carlo_base(x_prior: torch.Tensor,
+                                            potential: callable,
+                                            negative_log_likelihood: callable,
+                                            flow: Flow,
+                                            step_size: float = 1.0,
+                                            n_iterations: int = 20,
+                                            latent_updates: bool = False,
+                                            full_output: bool = False):
     # FIXME latent = True does not work
     n_chains, n_dim = x_prior.shape
 

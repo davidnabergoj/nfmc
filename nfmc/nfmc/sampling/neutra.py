@@ -4,11 +4,11 @@ from nfmc.mcmc.hmc import hmc
 from normalizing_flows import Flow
 
 
-def neutra_hmc(flow: Flow,
-               potential: callable,
-               n_chains: int,
-               n_vi_iterations: int = 100,
-               n_hmc_iterations: int = 100):
+def neutra_hmc_base(flow: Flow,
+                    potential: callable,
+                    n_chains: int,
+                    n_vi_iterations: int = 100,
+                    n_hmc_iterations: int = 100):
     # Fit flow to target via variational inference
     print('Fitting NF')
     flow.variational_fit(potential, n_epochs=n_vi_iterations)

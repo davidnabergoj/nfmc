@@ -54,14 +54,13 @@ def smc_flow_step(x, flow, prev_potential, next_potential, log_W, log_Z, samplin
     return x, log_Z, log_W
 
 
-def aft(prior_potential: Potential,
-        target_potential: Potential,
-        flow: Flow,
-        n_particles: int = 100,
-        n_steps: int = 20,
-        sampling_threshold: float = 0.3,
-        full_output: bool = False
-        ):
+def annealed_flow_transport_base(prior_potential: Potential,
+                                 target_potential: Potential,
+                                 flow: Flow,
+                                 n_particles: int = 100,
+                                 n_steps: int = 20,
+                                 sampling_threshold: float = 0.3,
+                                 full_output: bool = False):
     """
     Linear annealing schedule.
     Using HMC kernel.
@@ -100,13 +99,13 @@ def aft(prior_potential: Potential,
     return x
 
 
-def craft(prior_potential: Potential,
-          target_potential: Potential,
-          n_particles: int = 100,
-          n_training_steps: int = 100,
-          n_annealing_steps: int = 20,
-          sampling_threshold: float = 0.3,
-          full_output: bool = False):
+def continual_repeated_annealed_flow_transport_base(prior_potential: Potential,
+                                                    target_potential: Potential,
+                                                    n_particles: int = 100,
+                                                    n_training_steps: int = 100,
+                                                    n_annealing_steps: int = 20,
+                                                    sampling_threshold: float = 0.3,
+                                                    full_output: bool = False):
     """
     Idea:
     * have a flow for each annealing step that connects the intermediate potentials

@@ -7,7 +7,7 @@ from tqdm import tqdm
 from normalizing_flows import Flow
 
 
-def tess_base(u, flow: Flow, potential: callable, max_iterations: int = 5):
+def transport_elliptical_slice_sampling_helper(u, flow: Flow, potential: callable, max_iterations: int = 5):
     n_chains, n_dim = u.shape
 
     log_phi = flow.base.log_prob
@@ -56,22 +56,22 @@ def tess_base(u, flow: Flow, potential: callable, max_iterations: int = 5):
     return x_prime_final.detach(), u_prime_final.detach()
 
 
-def tess(u: torch.Tensor,
-         flow: Flow,
-         potential: callable,
-         n_warmup_iterations: int = 100,
-         n_sampling_iterations: int = 250,
-         full_output: bool = False):
+def transport_elliptical_slice_sampling_base(u: torch.Tensor,
+                                             flow: Flow,
+                                             potential: callable,
+                                             n_warmup_iterations: int = 100,
+                                             n_sampling_iterations: int = 250,
+                                             full_output: bool = False):
     # Warmup
     for _ in tqdm(range(n_warmup_iterations), desc='Warmup'):
-        x, u = tess_base(u, flow, potential)
+        x, u = transport_elliptical_slice_sampling_helper(u, flow, potential)
         flow.fit(x.detach())
 
     # Sampling
     xs = []
     x = None  # In case somebody uses n_sampling_iterations = 0
     for _ in tqdm(range(n_sampling_iterations), desc='Sampling'):
-        x, u = tess_base(u, flow, potential)
+        x, u = transport_elliptical_slice_sampling_helper(u, flow, potential)
         if full_output:
             xs.append(deepcopy(x.detach()))
 

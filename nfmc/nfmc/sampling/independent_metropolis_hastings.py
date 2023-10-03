@@ -16,14 +16,14 @@ def sample_bounded_geom(p, max_val):
     return int(torch.searchsorted(cdf, u, right=True))
 
 
-def imh(x0: torch.Tensor,
-        flow: Flow,
-        potential: callable,
-        n_iterations: int = 1000,
-        adaptation_dropoff: float = 0.9999,
-        train_dist: str = 'uniform',
-        device=torch.device('cpu'),
-        **kwargs):
+def independent_metropolis_hastings_base(x0: torch.Tensor,
+                                         flow: Flow,
+                                         potential: callable,
+                                         n_iterations: int = 1000,
+                                         adaptation_dropoff: float = 0.9999,
+                                         train_dist: str = 'uniform',
+                                         device=torch.device('cpu'),
+                                         **kwargs):
     # FIXME sometimes IMH disables autograd for flows in place
     assert train_dist in ['bounded_geom_approx', 'bounded_geom', 'uniform']
     # Exponentially diminishing adaptation probability sequence

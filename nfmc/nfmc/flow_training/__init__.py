@@ -1,1 +1,1 @@
-from nfmc.nfmc.flow_training.flow_annealed_bootstrap import fab
+from nfmc.nfmc.flow_training.wrappers import fab
