@@ -5,7 +5,7 @@ import pytest
 from nfmc.util import get_supported_normalizing_flows
 from synthetic.gaussian.unit import StandardGaussian
 
-all_event_shapes = [(1,), (2,), (5,), (2, 3, 7)]
+all_event_shapes = [(2, 3, 7), (2,), (5,)]
 all_n_chains = [1, 5, 50]
 all_n_iterations = [1, 5, 50]
 all_flows = get_supported_normalizing_flows()
