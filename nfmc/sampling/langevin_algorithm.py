@@ -15,7 +15,6 @@ def langevin_algorithm_base(x0: torch.Tensor,
                             jump_period: int = 500,
                             batch_size: int = 128,
                             burnin: int = 1000,
-                            full_output: bool = False,
                             nf_adjustment: bool = True,
                             show_progress: bool = True,
                             **kwargs):
@@ -32,6 +31,9 @@ def langevin_algorithm_base(x0: torch.Tensor,
         potential=potential,
         **kwargs
     )
+
+    assert torch.all(torch.isfinite(x))
+
     # In the burnin stage, fit the flow to the typical set data
     flow.fit(x)
     # Note: in practice, it is quite useful to have a decent fit at this point.
@@ -51,12 +53,10 @@ def langevin_algorithm_base(x0: torch.Tensor,
         x_lng = base_langevin(
             x0=x,
             n_iterations=jump_period - 1,
-            full_output=True,
             potential=potential,
             **kwargs
         )  # (n_steps, n_chains, *event_shape)
-        if full_output:
-            xs.append(x_lng)
+        xs.append(x_lng)
 
         x_train = x_lng.view(-1, *event_shape)  # (n_steps * n_chains, *event_shape)
         flow.fit(x_train, n_epochs=1, batch_size=batch_size, shuffle=False)
@@ -86,13 +86,9 @@ def langevin_algorithm_base(x0: torch.Tensor,
 
         # x.shape = (n_chains, n_dim)
 
-        if full_output:
-            xs.append(deepcopy(x[None]))
+        xs.append(deepcopy(x)[None])
 
-    if full_output:
-        return torch.cat(xs, dim=0)
-    else:
-        return x
+    return torch.cat(xs, dim=0)
 
 
 def unadjusted_langevin_algorithm_base(*args, **kwargs):

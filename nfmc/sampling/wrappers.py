@@ -9,30 +9,26 @@ from nfmc.sampling.langevin_algorithm import metropolis_adjusted_langevin_algori
 from nfmc.util import create_flow_object
 
 
-def mala(target: Potential, flow: str, n_chains: int = 100, n_iterations: int = 1000):
+def mala(target: Potential, flow: str, n_chains: int = 100, n_iterations: int = 100, jump_period: int = 50):
     flow_object = create_flow_object(flow_name=flow, event_shape=target.event_shape)
-    x0 = torch.randn(size=(n_chains, target.n_dim))
-    n_jumps = 100
-    jump_period = n_iterations // n_jumps
+    x0 = torch.randn(size=(n_chains, *target.event_shape))
     return metropolis_adjusted_langevin_algorithm_base(
         x0,
         flow_object,
         target,
-        n_jumps=n_jumps,
+        n_jumps=n_iterations,
         jump_period=jump_period
     )
 
 
-def ula(target: Potential, flow: str, n_chains: int = 100, n_iterations: int = 1000):
+def ula(target: Potential, flow: str, n_chains: int = 100, n_iterations: int = 100, jump_period: int = 50):
     flow_object = create_flow_object(flow_name=flow, event_shape=target.event_shape)
-    x0 = torch.randn(size=(n_chains, target.n_dim))
-    n_jumps = 100
-    jump_period = n_iterations // n_jumps
+    x0 = torch.randn(size=(n_chains, *target.event_shape))
     return unadjusted_langevin_algorithm_base(
         x0,
         flow_object,
         target,
-        n_jumps=n_jumps,
+        n_jumps=n_iterations,
         jump_period=jump_period
     )
 

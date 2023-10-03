@@ -23,16 +23,22 @@ def base(x0: torch.Tensor,
          potential: callable,
          n_iterations: int = 1000,
          tau: float = None,
-         full_output: bool = False,
+         full_output: bool = True,
          adjustment: bool = False,
          target_acceptance_rate: float = 0.574):
     # TODO tune tau in MALA
-    assert len(x0.shape) == 2
-    n_chains, n_dim = x0.shape
+    n_chains, *event_shape = x0.shape
+    n_dim = int(torch.prod(torch.as_tensor(event_shape)))
     if tau is None:
         tau = n_dim ** (-1 / 3)
     xs = []
-    sqrt_a = torch.std(x0, dim=0)  # root of the preconditioning matrix diagonal
+
+    # Compute standard deviation of chain states unless using a single chain
+    if x0.shape[0] > 1:
+        sqrt_a = torch.std(x0, dim=0)  # root of the preconditioning matrix diagonal
+    else:
+        sqrt_a = torch.ones(*event_shape)
+
     dual_avg = DualAveraging(math.log(tau))
 
     x = deepcopy(x0)
@@ -48,7 +54,7 @@ def base(x0: torch.Tensor,
         x.grad = None  # Clear gradients
 
         # Compute new state
-        x_prime = x - tau * sqrt_a.view(1, -1).square() * grad_u_x + math.sqrt(2 * tau) * sqrt_a.view(1, -1) * noise
+        x_prime = x - tau * sqrt_a[None].square() * grad_u_x + math.sqrt(2 * tau) * sqrt_a[None] * noise
 
         if adjustment:
             # Compute potential and gradient at proposed state
@@ -75,7 +81,10 @@ def base(x0: torch.Tensor,
             adjustment_mask = torch.ones(n_chains, dtype=torch.bool)
         x[adjustment_mask] = x_prime[adjustment_mask]
 
-        sqrt_a = torch.std(x, dim=0)
+        if x0.shape[0] > 1:
+            sqrt_a = torch.std(x, dim=0)  # root of the preconditioning matrix diagonal
+        else:
+            sqrt_a = torch.ones(*event_shape)
 
         if full_output:
             xs.append(deepcopy(x))

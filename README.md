@@ -27,8 +27,9 @@ or only one.
 ## Example use
 
 Sampling NFMC algorithms require a target potential and a normalizing flow object.
-They output draws with shape `(n_iterations, n_chains, *event_shape)`.
-An example using the Real NVP flow and a standard Gaussian potential is shown below:
+IMH, NeuTra and TESS output draws with shape `(n_iterations, n_chains, *event_shape)`.
+MALA and ULA output draws with shape `(n_iterations * jump_period, n_chains, *event_shape)`.
+An example using the Real NVP flow and a standard Gaussian potential is shown below.
 ```python
 import torch
 from potentials.synthetic.gaussian.unit import StandardGaussian
@@ -44,8 +45,8 @@ event_shape = (25,)  # Each draw (event) is a vector with size 25.
 target = StandardGaussian(event_shape=event_shape)
 
 # Draw samples with different NFMC sampling methods
-mala_samples = mala(target, "realnvp", n_chains, n_iterations)
-ula_samples = ula(target, "realnvp", n_chains, n_iterations)
+mala_samples = mala(target, "realnvp", n_chains, n_iterations)  # Using default jump period
+ula_samples = ula(target, "realnvp", n_chains, n_iterations)    # Using default jump period
 imh_samples = imh(target, "realnvp", n_chains, n_iterations)
 neutra_samples = neutra_hmc(target, "realnvp", n_chains, n_iterations)
 tess_samples = tess(target, "realnvp", n_chains, n_iterations)
