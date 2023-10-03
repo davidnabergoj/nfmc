@@ -71,10 +71,17 @@ event_shape = (25,)  # Each draw (event) is a vector with size 25.
 prior = StandardGaussian(event_shape)
 target = DiagonalGaussian0(event_shape)
 
-# Draw samples with different NFMC sampling methods
-snf_samples = snf(prior, target, "realnvp", n_particles, n_iterations)
-aft_samples = aft(prior, target, "realnvp", n_particles, n_iterations)
-craft_samples = craft(prior, target, "realnvp", n_particles, n_iterations)
-dlmc_samples = dlmc(prior, target, "realnvp", n_particles, n_iterations)
-ns_samples = ns(prior, target, "realnvp", n_particles, n_iterations)
+# Transport particles with different NFMC transport methods
+snf_particles = snf(prior, target, "realnvp", n_particles, n_iterations)
+aft_particles = aft(prior, target, "realnvp", n_particles, n_iterations)
+craft_particles = craft(prior, target, "realnvp", n_particles, n_iterations)
+dlmc_particles = dlmc(prior, target, "realnvp", n_particles, n_iterations)
+ns_particles = ns(prior, target, "realnvp", n_particles, n_iterations)
+```
+
+You can see which normalizing flows are supported as follows:
+```python
+from nfmc.util import get_supported_normalizing_flows
+
+print(get_supported_normalizing_flows())
 ```
