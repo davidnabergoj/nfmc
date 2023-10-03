@@ -1,10 +1,11 @@
 import torch
 
 from potentials.base import Potential
-from nfmc.sampling import neutra_hmc_base
-from nfmc.sampling import transport_elliptical_slice_sampling_base
+from nfmc.sampling.neutra import neutra_hmc_base
+from nfmc.sampling.elliptical import transport_elliptical_slice_sampling_base
 from nfmc.sampling.independent_metropolis_hastings import independent_metropolis_hastings_base
-from nfmc.sampling.langevin_algorithm import metropolis_adjusted_langevin_algorithm_base, unadjusted_langevin_algorithm_base
+from nfmc.sampling.langevin_algorithm import metropolis_adjusted_langevin_algorithm_base, \
+    unadjusted_langevin_algorithm_base
 from nfmc.util import create_flow_object
 
 
