@@ -29,11 +29,11 @@ def get_supported_normalizing_flows():
         "ar-rqnsf",
         "c-lrs",
         "ar-lrs",
-        "ot-flow",
-        "ffjord",
+        # "ot-flow",  # Too slow
+        # "ffjord",   # Too slow
         # "iresnet",  # Too slow
         # "resflow",  # Too slow
-        "ddnf"
+        # "ddnf"      # Too slow
     ]
 
 
