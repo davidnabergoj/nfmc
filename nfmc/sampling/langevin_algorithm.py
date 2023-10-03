@@ -37,7 +37,7 @@ def langevin_algorithm_base(x0: torch.Tensor,
     flow.fit(x)
     # Note: in practice, it is quite useful to have a decent fit at this point.
 
-    xs = [deepcopy(x[None])]
+    xs = []
 
     # Langevin with NF jumps
     if show_progress:

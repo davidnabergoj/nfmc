@@ -7,7 +7,7 @@ from synthetic.gaussian.unit import StandardGaussian
 
 all_event_shapes = [(2,), (5,), (2, 3, 7)]
 all_n_chains = [1, 5, 50]
-all_n_iterations = [1, 5, 50]
+all_n_iterations = [5, 1, 50]
 all_flows = get_supported_normalizing_flows()
 all_jump_periods = [10, 50]
 
@@ -34,7 +34,7 @@ def test_ula(event_shape, flow, n_chains, n_iterations, jump_period):
     torch.manual_seed(0)
     target = StandardGaussian(event_shape)
     draws = ula(target, flow, n_chains, n_iterations, jump_period)
-    assert draws.shape == (n_iterations * (1 + jump_period), n_chains, *event_shape)
+    assert draws.shape == (n_iterations * jump_period, n_chains, *event_shape)
     assert torch.all(~torch.isnan(draws))
     assert torch.all(torch.isfinite(draws))
 
