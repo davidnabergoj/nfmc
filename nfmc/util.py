@@ -2,6 +2,9 @@ import math
 
 import torch
 
+from normalizing_flows import Flow
+from normalizing_flows.bijections.finite.autoregressive.architectures import RealNVP
+
 
 def get_supported_normalizing_flows():
     return [
@@ -21,9 +24,16 @@ def get_supported_normalizing_flows():
     ]
 
 
-def create_flow_object(flow_name: str):
+def create_flow_object(flow_name: str, event_shape):
     assert flow_name in get_supported_normalizing_flows()
-    raise NotImplementedError
+    flow_name = flow_name.lower()
+
+    if flow_name in ["realnvp", "rnvp"]:
+        bijection = RealNVP(event_shape)
+    else:
+        raise ValueError
+
+    return Flow(bijection)
 
 
 def metropolis_acceptance_log_ratio(

@@ -9,30 +9,52 @@ from nfmc.sampling.langevin_algorithm import metropolis_adjusted_langevin_algori
 from nfmc.util import create_flow_object
 
 
-def mala(target: Potential, flow: str, n_chains: int = 100):
-    flow_object = create_flow_object(flow_name=flow)
+def mala(target: Potential, flow: str, n_chains: int = 100, n_iterations: int = 1000):
+    flow_object = create_flow_object(flow_name=flow, event_shape=target.event_shape)
     x0 = torch.randn(size=(n_chains, target.n_dim))
-    return metropolis_adjusted_langevin_algorithm_base(x0, flow_object, target)
+    n_jumps = 100
+    jump_period = n_iterations // n_jumps
+    return metropolis_adjusted_langevin_algorithm_base(
+        x0,
+        flow_object,
+        target,
+        n_jumps=n_jumps,
+        jump_period=jump_period
+    )
 
 
-def ula(target: Potential, flow: str, n_chains: int = 100):
-    flow_object = create_flow_object(flow_name=flow)
+def ula(target: Potential, flow: str, n_chains: int = 100, n_iterations: int = 1000):
+    flow_object = create_flow_object(flow_name=flow, event_shape=target.event_shape)
     x0 = torch.randn(size=(n_chains, target.n_dim))
-    return unadjusted_langevin_algorithm_base(x0, flow_object, target)
+    n_jumps = 100
+    jump_period = n_iterations // n_jumps
+    return unadjusted_langevin_algorithm_base(
+        x0,
+        flow_object,
+        target,
+        n_jumps=n_jumps,
+        jump_period=jump_period
+    )
 
 
-def imh(target: Potential, flow: str, n_chains: int = 100):
-    flow_object = create_flow_object(flow_name=flow)
-    x0 = torch.randn(size=(n_chains, target.n_dim))
-    return independent_metropolis_hastings_base(x0, flow_object, target)
+def imh(target: Potential, flow: str, n_chains: int = 100, n_iterations: int = 1000):
+    flow_object = create_flow_object(flow_name=flow, event_shape=target.event_shape)
+    x0 = torch.randn(size=(n_chains, *target.event_shape))
+    return independent_metropolis_hastings_base(x0, flow_object, target, n_iterations=n_iterations)
 
 
-def neutra_hmc(target: Potential, flow: str, n_chains: int = 100):
-    flow_object = create_flow_object(flow_name=flow)
-    return neutra_hmc_base(flow_object, target, n_chains)
+def neutra_hmc(target: Potential, flow: str, n_chains: int = 100, n_iterations: int = 1000):
+    flow_object = create_flow_object(flow_name=flow, event_shape=target.event_shape)
+    return neutra_hmc_base(flow_object, target, n_chains, n_vi_iterations=n_iterations, n_hmc_iterations=n_iterations)
 
 
-def tess(target: Potential, flow: str, n_particles: int = 100):
-    flow_object = create_flow_object(flow_name=flow)
+def tess(target: Potential, flow: str, n_particles: int = 100, n_iterations: int = 1000):
+    flow_object = create_flow_object(flow_name=flow, event_shape=target.event_shape)
     x0 = torch.randn(size=(n_particles, target.n_dim))
-    return transport_elliptical_slice_sampling_base(x0, flow_object, target)
+    return transport_elliptical_slice_sampling_base(
+        x0,
+        flow_object,
+        target,
+        n_sampling_iterations=n_iterations,
+        n_warmup_iterations=n_iterations
+    )
