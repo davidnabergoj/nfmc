@@ -18,8 +18,7 @@ def langevin_algorithm_base(x0: torch.Tensor,
                             nf_adjustment: bool = True,
                             show_progress: bool = True,
                             **kwargs):
-    n_chains = x0.shape[0]
-    event_shape = x0.shape[1:]
+    n_chains, *event_shape = x0.shape
 
     x = deepcopy(x0)
 
@@ -50,12 +49,14 @@ def langevin_algorithm_base(x0: torch.Tensor,
     total = 0
 
     for _ in iterator:
+        assert torch.all(torch.isfinite(x))
         x_lng = base_langevin(
             x0=x,
             n_iterations=jump_period - 1,
             potential=potential,
             **kwargs
         )  # (n_steps, n_chains, *event_shape)
+        assert torch.all(torch.isfinite(x_lng))
         xs.append(x_lng)
 
         x_train = x_lng.view(-1, *event_shape)  # (n_steps * n_chains, *event_shape)

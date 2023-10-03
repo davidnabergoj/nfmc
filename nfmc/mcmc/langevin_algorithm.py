@@ -25,7 +25,10 @@ def base(x0: torch.Tensor,
          tau: float = None,
          full_output: bool = True,
          adjustment: bool = False,
+         tune_diagonal_preconditioning: bool = True,
          target_acceptance_rate: float = 0.574):
+    assert torch.all(torch.isfinite(x0))
+
     # TODO tune tau in MALA
     n_chains, *event_shape = x0.shape
     n_dim = int(torch.prod(torch.as_tensor(event_shape)))
@@ -34,8 +37,8 @@ def base(x0: torch.Tensor,
     xs = []
 
     # Compute standard deviation of chain states unless using a single chain
-    if x0.shape[0] > 1:
-        sqrt_a = torch.std(x0, dim=0)  # root of the preconditioning matrix diagonal
+    if x0.shape[0] > 1 and tune_diagonal_preconditioning:
+        sqrt_a = 1 / torch.std(x0, dim=0)  # root of the preconditioning matrix diagonal
     else:
         sqrt_a = torch.ones(*event_shape)
 
@@ -81,8 +84,8 @@ def base(x0: torch.Tensor,
             adjustment_mask = torch.ones(n_chains, dtype=torch.bool)
         x[adjustment_mask] = x_prime[adjustment_mask]
 
-        if x0.shape[0] > 1:
-            sqrt_a = torch.std(x, dim=0)  # root of the preconditioning matrix diagonal
+        if x0.shape[0] > 1 and tune_diagonal_preconditioning:
+            sqrt_a = 1 / torch.std(x, dim=0)  # root of the preconditioning matrix diagonal
         else:
             sqrt_a = torch.ones(*event_shape)
 
