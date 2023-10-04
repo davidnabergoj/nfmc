@@ -8,9 +8,9 @@ from normalizing_flows import Flow
 
 
 def transport_elliptical_slice_sampling_helper(u, flow: Flow, potential: callable, max_iterations: int = 5):
-    n_chains, n_dim = u.shape
+    n_chains, *event_shape = u.shape
 
-    log_phi = flow.base.log_prob
+    log_phi = flow.base_log_prob
 
     @torch.no_grad()
     def log_pi_hat(latent):
@@ -32,8 +32,11 @@ def transport_elliptical_slice_sampling_helper(u, flow: Flow, potential: callabl
     u_prime = torch.zeros_like(u)
     x_prime = torch.zeros_like(u)
     for i in range(max_iterations):
-        u_prime = u * torch.cos(theta.view(n_chains, 1)) + v * torch.sin(theta.view(n_chains, 1))
-        v_prime = v * torch.cos(theta.view(n_chains, 1)) - u * torch.sin(theta.view(n_chains, 1))
+        theta_padded = theta.view(n_chains, *[1 for _ in event_shape])
+        assert len(theta_padded.shape) == len(u.shape) == len(v.shape)
+
+        u_prime = u * torch.cos(theta_padded) + v * torch.sin(theta_padded)
+        v_prime = v * torch.cos(theta_padded) - u * torch.sin(theta_padded)
         x_prime, _ = flow.bijection.inverse(u_prime)
 
         finished_update_mask = ((log_pi_hat(u_prime) + log_phi(v_prime)) > log_s)
@@ -61,7 +64,7 @@ def transport_elliptical_slice_sampling_base(u: torch.Tensor,
                                              potential: callable,
                                              n_warmup_iterations: int = 100,
                                              n_sampling_iterations: int = 250,
-                                             full_output: bool = False):
+                                             full_output: bool = True):
     # Warmup
     for _ in tqdm(range(n_warmup_iterations), desc='Warmup'):
         x, u = transport_elliptical_slice_sampling_helper(u, flow, potential)

@@ -46,7 +46,7 @@ def neutra_hmc(target: Potential, flow: str, n_chains: int = 100, n_iterations: 
 
 def tess(target: Potential, flow: str, n_particles: int = 100, n_iterations: int = 1000):
     flow_object = create_flow_object(flow_name=flow, event_shape=target.event_shape)
-    x0 = torch.randn(size=(n_particles, target.n_dim))
+    x0 = torch.randn(size=(n_particles, *target.event_shape))
     return transport_elliptical_slice_sampling_base(
         x0,
         flow_object,
