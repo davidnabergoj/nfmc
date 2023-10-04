@@ -1,4 +1,4 @@
-from nfmc.sampling import imh, ula, mala, tess, neutra
+from nfmc.sampling import imh, ula, mala, tess, neutra_hmc
 import torch
 import pytest
 
@@ -73,7 +73,7 @@ def test_tess(event_shape, flow, n_chains, n_iterations):
 def test_neutra(event_shape, flow, n_chains, n_iterations):
     torch.manual_seed(0)
     target = StandardGaussian(event_shape)
-    draws = neutra(target, flow, n_chains, n_iterations)
+    draws = neutra_hmc(target, flow, n_chains, n_iterations)
     assert draws.shape == (n_iterations, n_chains, *event_shape)
     assert torch.all(~torch.isnan(draws))
     assert torch.all(torch.isfinite(draws))
