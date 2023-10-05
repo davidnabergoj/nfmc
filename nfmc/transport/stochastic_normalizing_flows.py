@@ -11,11 +11,13 @@ from normalizing_flows.bijections import RealNVP
 from normalizing_flows.bijections.base import Bijection
 from potentials.base import Potential
 from nfmc.mcmc.hmc import hmc_trajectory
+from normalizing_flows.utils import sum_except_batch
 
 
 class SNFLayer(nn.Module):
-    def __init__(self):
+    def __init__(self, event_shape):
         super().__init__()
+        self.event_shape = event_shape
 
     def forward(self, x: torch.Tensor, potential: callable):
         raise NotImplementedError
@@ -23,11 +25,12 @@ class SNFLayer(nn.Module):
 
 class MALALayer(SNFLayer):
     def __init__(self,
+                 event_shape,
                  time_step: float = 1.0,
                  friction: float = 1.0,
                  mass: float = 1.0,
                  beta: float = 1.0):
-        super().__init__()
+        super().__init__(event_shape)
         self.beta = beta
         self.eps = time_step / (friction * mass)
 
@@ -41,13 +44,17 @@ class MALALayer(SNFLayer):
             grad_x_prime = torch.autograd.grad(potential(x_prime).sum(), x_prime)[0].detach()
         eta_tilde = math.sqrt(2 * self.eps / self.beta) * (grad_x + grad_x_prime) - eta
         # TODO sum over event dims i.e. sum_except_batch
-        delta_s = -0.5 * (eta_tilde.square().sum(dim=-1) - eta.square().sum(dim=-1))
+        # delta_s = -0.5 * (eta_tilde.square().sum(dim=-1) - eta.square().sum(dim=-1))
+        delta_s = -0.5 * (
+                sum_except_batch(eta_tilde.square(), self.event_shape)
+                - sum_except_batch(eta.square(), self.event_shape)
+        )
         return x_prime, delta_s
 
 
 class MCMCLayer(SNFLayer):
-    def __init__(self):
-        super().__init__()
+    def __init__(self, event_shape):
+        super().__init__(event_shape)
 
     def trajectory(self, x, potential: callable):
         raise NotImplementedError
@@ -59,8 +66,8 @@ class MCMCLayer(SNFLayer):
 
 
 class HMCLayer(MCMCLayer):
-    def __init__(self, n_leapfrog_steps: int = 10):
-        super().__init__()
+    def __init__(self, event_shape, n_leapfrog_steps: int = 10):
+        super().__init__(event_shape)
         self.n_leapfrog_steps = n_leapfrog_steps
 
     def trajectory(self, x, potential: callable):
@@ -83,8 +90,8 @@ class HMCLayer(MCMCLayer):
 
 
 class MHLayer(MCMCLayer):
-    def __init__(self):
-        super().__init__()
+    def __init__(self, event_shape):
+        super().__init__(event_shape)
 
     def trajectory(self, x, potential: callable):
         return mh_step(x=x)
@@ -97,7 +104,7 @@ class FlowLayer(SNFLayer):
     """
 
     def __init__(self, bijection: Bijection):
-        super().__init__()
+        super().__init__(bijection.event_shape)
         self.bijection = bijection
 
     def forward(self, x, potential: callable):
@@ -108,7 +115,7 @@ class SNF(nn.Module):
     def __init__(self, layers: Sequence[SNFLayer], target_potential: Potential, prior_potential: Potential):
         super().__init__()
         assert len(layers) >= 1
-        self.layers: nn.ModuleList[SNFLayer] = nn.ModuleList(*layers)
+        self.layers: nn.ModuleList[SNFLayer] = nn.ModuleList(layers)
         self.target_potential = target_potential
         self.prior_potential = prior_potential
 
@@ -119,19 +126,22 @@ class SNF(nn.Module):
         """
         n_steps = len(self.layers)
         lambdas = torch.linspace(1 / n_steps, 1, n_steps)
-        # event_shape = z.shape[-1]  # TODO allow the user to specify this
-        batch_shape = z.shape[:-1]
+        batch_shape = (z.shape[0],)  # Assuming this
 
         log_det = torch.zeros(size=batch_shape)
         x = deepcopy(z.detach())
+
+        particle_history = [x]
         for i, layer in enumerate(self.layers):
             x, delta_s = layer(
                 x,
                 potential=lambda v: (1 - lambdas[i]) * self.prior_potential(v) + lambdas[i] * self.target_potential(v)
             )
             log_det += delta_s
+            particle_history.append(x)
         log_weights = -self.target_potential(x) + self.prior_potential(z) + log_det
-        return x, log_weights
+        particle_history = torch.stack(particle_history)
+        return particle_history, x, log_weights
 
     def fit(self, z, n_epochs: int = 100):
         optimizer = optim.AdamW(self.parameters())
@@ -141,7 +151,7 @@ class SNF(nn.Module):
             optimizer.zero_grad()
 
             # Compute loss
-            x, log_weights = self.inverse(z)
+            _, x, log_weights = self.inverse(z)
             loss = torch.mean(-log_weights)
 
             # Backprop and step
@@ -152,8 +162,8 @@ class SNF(nn.Module):
 def _snf_base(z: torch.Tensor, flow: SNF, **kwargs):
     flow.fit(z, **kwargs)
     with torch.no_grad():
-        x, _ = flow.inverse(z)
-    return x
+        particle_history, _, _ = flow.inverse(z)
+    return particle_history
 
 
 def stochastic_normalizing_flow_hmc_base(prior_samples: torch.Tensor,
@@ -161,10 +171,10 @@ def stochastic_normalizing_flow_hmc_base(prior_samples: torch.Tensor,
                                          target_potential: Potential,
                                          flow_name: str,
                                          **kwargs):
-    n_dim = prior_samples.shape[-1]  # We assume the event is the last dimension
-
     if flow_name is None:
         return snf_hmc_real_nvp(prior_samples, prior_potential, target_potential, **kwargs)
+
+    event_shape = prior_potential.event_shape
 
     # Reasonable default SNF
     if flow_name == "realnvp":
@@ -172,11 +182,11 @@ def stochastic_normalizing_flow_hmc_base(prior_samples: torch.Tensor,
             prior_potential=prior_potential,
             target_potential=target_potential,
             layers=[
-                HMCLayer(),
-                FlowLayer(RealNVP(n_dim, n_layers=2)),
-                HMCLayer(),
-                FlowLayer(RealNVP(n_dim, n_layers=2)),
-                HMCLayer()
+                HMCLayer(event_shape),
+                FlowLayer(RealNVP(event_shape, n_layers=2)),
+                HMCLayer(event_shape),
+                FlowLayer(RealNVP(event_shape, n_layers=2)),
+                HMCLayer(event_shape)
             ]
         )
     else:
@@ -189,18 +199,18 @@ def snf_hmc_real_nvp(prior_samples: torch.Tensor,
                      prior_potential: Potential,
                      target_potential: Potential,
                      **kwargs):
-    n_dim = prior_samples.shape[-1]  # We assume the event is the last dimension
+    event_shape = prior_potential.event_shape
 
     # Reasonable default SNF
     flow = SNF(
         prior_potential=prior_potential,
         target_potential=target_potential,
         layers=[
-            HMCLayer(),
-            FlowLayer(RealNVP(n_dim, n_layers=2)),
-            HMCLayer(),
-            FlowLayer(RealNVP(n_dim, n_layers=2)),
-            HMCLayer()
+            HMCLayer(event_shape),
+            FlowLayer(RealNVP(event_shape, n_layers=2)),
+            HMCLayer(event_shape),
+            FlowLayer(RealNVP(event_shape, n_layers=2)),
+            HMCLayer(event_shape)
         ]
     )
     return _snf_base(prior_samples, flow, **kwargs)
