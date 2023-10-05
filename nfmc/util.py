@@ -39,36 +39,36 @@ def get_supported_normalizing_flows():
     ]
 
 
-def create_flow_object(flow_name: str, event_shape):
+def create_flow_object(flow_name: str, event_shape, **kwargs):
     assert flow_name in get_supported_normalizing_flows()
     flow_name = flow_name.lower()
 
     if flow_name in ["realnvp", "rnvp"]:
-        bijection = RealNVP(event_shape)
+        bijection = RealNVP(event_shape, **kwargs)
     elif flow_name in ["nice"]:
-        bijection = NICE(event_shape)
+        bijection = NICE(event_shape, **kwargs)
     elif flow_name in ['maf']:
-        bijection = MAF(event_shape)
+        bijection = MAF(event_shape, **kwargs)
     elif flow_name in ['iaf']:
-        bijection = IAF(event_shape)
+        bijection = IAF(event_shape, **kwargs)
     elif flow_name in ['c-rqnsf']:
-        bijection = CouplingRQNSF(event_shape)
+        bijection = CouplingRQNSF(event_shape, **kwargs)
     elif flow_name in ['ar-rqnsf']:
-        bijection = MaskedAutoregressiveRQNSF(event_shape)
+        bijection = MaskedAutoregressiveRQNSF(event_shape, **kwargs)
     elif flow_name in ['c-lrs']:
-        bijection = CouplingLRS(event_shape)
+        bijection = CouplingLRS(event_shape, **kwargs)
     elif flow_name in ['ar-lrs']:
-        bijection = MaskedAutoregressiveLRS(event_shape)
+        bijection = MaskedAutoregressiveLRS(event_shape, **kwargs)
     elif flow_name in ['ot-flow', 'otflow']:
-        bijection = OTFlow(event_shape)
+        bijection = OTFlow(event_shape, **kwargs)
     elif flow_name in ['ffjord']:
-        bijection = FFJORD(event_shape)
+        bijection = FFJORD(event_shape, **kwargs)
     elif flow_name in ['iresnet', 'invertible resnet', 'invertible-resnet', 'i-resnet']:
-        bijection = InvertibleResNet(event_shape)
+        bijection = InvertibleResNet(event_shape, **kwargs)
     elif flow_name in ['resflow', 'residual flow', 'residual-flow', 'res-flow']:
-        bijection = ResFlow(event_shape)
+        bijection = ResFlow(event_shape, **kwargs)
     elif flow_name in ['ddnf']:
-        bijection = DeepDiffeomorphicBijection(event_shape)
+        bijection = DeepDiffeomorphicBijection(event_shape, **kwargs)
     else:
         raise ValueError
 
