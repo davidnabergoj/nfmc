@@ -101,6 +101,7 @@ def annealed_flow_transport_base(prior_potential: Potential,
 
 def continual_repeated_annealed_flow_transport_base(prior_potential: Potential,
                                                     target_potential: Potential,
+                                                    bijections: list[Bijection],
                                                     n_particles: int = 100,
                                                     n_training_steps: int = 100,
                                                     n_annealing_steps: int = 20,
@@ -117,9 +118,9 @@ def continual_repeated_annealed_flow_transport_base(prior_potential: Potential,
     :return:
     """
     assert 1 / n_particles <= sampling_threshold < 1
+    assert len(bijections) == n_annealing_steps
     n_dim = prior_potential.event_shape[0]
-    flows = [RealNVP(n_dim) for _ in range(n_annealing_steps)]
-    optimizers = [optim.AdamW(flow.parameters()) for flow in flows]
+    optimizers = [optim.AdamW(flow.parameters()) for flow in bijections]
 
     def loss(x_prev: torch.Tensor,
              W_prev: torch.Tensor,  # Not the log!!!
@@ -144,12 +145,12 @@ def continual_repeated_annealed_flow_transport_base(prior_potential: Potential,
             next_potential = lambda v: (1 - next_lambda) * prior_potential(v) + next_lambda * target_potential(v)
 
             optimizers[k].zero_grad()
-            loss_value = loss(x, log_W.exp(), flows[k], prev_potential, next_potential)
+            loss_value = loss(x, log_W.exp(), bijections[k], prev_potential, next_potential)
             loss_value.backward()
 
             x, log_Z, log_W = smc_flow_step(
                 x=x,
-                flow=flows[k],
+                flow=bijections[k],
                 prev_potential=prev_potential,
                 next_potential=next_potential,
                 log_W=log_W,
@@ -171,7 +172,7 @@ def continual_repeated_annealed_flow_transport_base(prior_potential: Potential,
 
         x, log_Z, log_W = smc_flow_step(
             x=x,
-            flow=flows[k],
+            flow=bijections[k],
             prev_potential=prev_potential,
             next_potential=next_potential,
             log_W=log_W,
@@ -180,5 +181,5 @@ def continual_repeated_annealed_flow_transport_base(prior_potential: Potential,
         )
 
     if full_output:
-        return x, flows, log_Z
+        return x, bijections, log_Z
     return x

@@ -15,7 +15,7 @@ def deterministic_langevin_monte_carlo_base(x_prior: torch.Tensor,
                                             latent_updates: bool = False,
                                             full_output: bool = False):
     # FIXME latent = True does not work
-    n_chains, n_dim = x_prior.shape
+    n_chains, *event_shape = x_prior.shape
 
     # Initial update
     grad = compute_grad(negative_log_likelihood, x_prior)
@@ -24,7 +24,6 @@ def deterministic_langevin_monte_carlo_base(x_prior: torch.Tensor,
 
     xs = [x_prior, x]
     for i in range(n_iterations):
-        print(f'{i = }')
         flow.fit(x.detach(), n_epochs=100)
         if latent_updates:
             z, _ = flow.bijection.forward(x)
