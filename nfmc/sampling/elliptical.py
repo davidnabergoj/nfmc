@@ -4,7 +4,101 @@ from copy import deepcopy
 import torch
 from tqdm import tqdm
 
+from potentials.base import Potential
 from normalizing_flows import Flow
+from normalizing_flows.utils import get_batch_shape
+
+
+def elliptical_slice_sampling_step(
+        f: torch.Tensor,
+        target: Potential,
+        cov: torch.Tensor = None,
+        max_iterations: int = 5,
+):
+    """
+    :param f: current state with shape (*batch_shape, *event_shape).
+    :param target: negative log likelihood callable which receives as input a tensor with shape
+        (*batch_shape, *event_shape) and outputs negative log likelihood values with shape batch_shape.
+    :param cov: covariance matrix for the prior with shape (event_size, event_size) where event_size is
+        equal to the product of elements of event_shape. If None, the covariance is assumed to be identity.
+    :param max_iterations: maximum number of iterations where the proposal bracket is shrunk.
+    """
+    batch_shape = get_batch_shape(f, target.event_shape)
+
+    # 1. Choose ellipse
+    if cov is None:
+        nu = torch.randn_like(f)
+    else:
+        event_size = int(torch.prod(torch.as_tensor(target.event_shape)))
+        assert cov.shape == (event_size, event_size)
+        nu_dist = torch.distributions.MultivariateNormal(loc=torch.zeros(event_size), covariance_matrix=cov)
+        nu_flat = nu_dist.sample(batch_shape)
+        nu = nu_flat.view(*batch_shape, *target.event_shape)
+
+    # 2. Log-likelihood threshold
+    u = torch.rand(size=batch_shape)
+    log_y = -target(f) + torch.log(u)
+
+    # 3. Draw an initial proposal, also defining a bracket
+    theta = torch.rand(size=[*batch_shape, *([1] * len(target.event_shape))]) * 2 * torch.pi
+    theta_min = theta - 2 * torch.pi
+    theta_max = theta
+
+    accepted_mask = torch.zeros(size=batch_shape, dtype=torch.bool)
+    f_proposed = f
+    for _ in range(max_iterations):
+        f_prime = f * torch.cos(theta) + nu * torch.sin(theta)
+        accepted_mask_update = -target(f_prime) > log_y
+
+        # Must have been accepted now and not previously
+        f_proposed[accepted_mask_update & (~accepted_mask)] = f_prime[accepted_mask_update & (~accepted_mask)]
+
+        # Update theta (we overwrite old thetas as they are unnecessary)
+        theta_mask = theta < 0  # To avoid overwriting, we would consider the global accepted mask here
+        theta_min[theta_mask] = theta
+        theta_mask[~theta_mask] = theta
+
+        # Draw new theta uniformly from [theta_min, theta_max]
+        uniform_noise = torch.rand(size=[*batch_shape, *([1] * len(target.event_shape))])
+        theta = uniform_noise * (theta_max - theta_min) + theta_min
+
+        # Update the global accepted mask
+        accepted_mask |= accepted_mask_update
+
+    return f_proposed
+
+
+def elliptical_slice_sampler(
+        target: Potential,
+        n_chains: int = 100,
+        n_iterations: int = 1000,
+        cov: torch.Tensor = None,
+        **kwargs
+):
+    """
+    A sampling method that samples from a posterior, defined by a likelihood and a multivariate normal prior.
+
+    :param target: negative log likelihood callable which receives as input a tensor with shape
+        (*batch_shape, *event_shape) and outputs negative log likelihood values with shape batch_shape.
+    :param n_chains: number of independent parallel chains.
+    :param n_iterations: number of iterations.
+    :param cov: covariance matrix for the prior with shape (event_size, event_size) where event_size is
+        equal to the product of elements of event_shape. If None, the covariance is assumed to be identity.
+    :param kwargs: keyword arguments for the slice sampling step.
+    """
+    if cov is None:
+        x = torch.randn(size=(n_chains, *target.event_shape))
+    else:
+        event_size = int(torch.prod(torch.as_tensor(target.event_shape)))
+        assert cov.shape == (event_size, event_size)
+        dist = torch.distributions.MultivariateNormal(loc=torch.zeros(event_size), covariance_matrix=cov)
+        x_flat = dist.sample(sample_shape=torch.Size((n_chains,)))
+        x = x_flat.view(n_chains, *target.event_shape)
+    draws = []
+    for _ in range(n_iterations):
+        x = elliptical_slice_sampling_step(x, target, cov=cov, **kwargs)
+        draws.append(x)
+    return torch.stack(draws)
 
 
 def transport_elliptical_slice_sampling_helper(u, flow: Flow, potential: callable, max_iterations: int = 5):
