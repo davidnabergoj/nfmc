@@ -11,9 +11,10 @@ from normalizing_flows.bijections.base import Bijection
 from potentials.base import Potential
 
 
-def smc_flow_step(x, flow, prev_potential, next_potential, log_W, log_Z, sampling_threshold):
-    n_particles, n_dim = x.shape
-    x_tilde, log_det = flow.bijection.forward(x)
+def smc_flow_step(x, bijection, prev_potential, next_potential, log_W, log_Z, sampling_threshold):
+    n_particles, *event_shape = x.shape
+    n_dim = int(torch.prod(torch.as_tensor(event_shape)))
+    x_tilde, log_det = bijection.forward(x)
 
     # next_lambda = k / n_steps
     # next_potential = lambda v: (1 - next_lambda) * prior_potential(v) + next_lambda * target_potential(v)
@@ -40,7 +41,7 @@ def smc_flow_step(x, flow, prev_potential, next_potential, log_W, log_Z, samplin
         x = x_tilde  # Not explicitly stated in pseudocode, but probably true
 
     momentum = torch.randn_like(x)
-    inv_mass_diag = torch.ones(size=(1, n_dim))
+    inv_mass_diag = torch.ones(size=(1, *event_shape))
     trajectory_length = 10
     step_size = n_dim ** (-1 / 4)
     x, _ = hmc_trajectory(
@@ -131,7 +132,6 @@ def continual_repeated_annealed_flow_transport_base(prior_potential: Potential,
     """
     assert 1 / n_particles <= sampling_threshold < 1
     assert len(bijections) == n_annealing_steps
-    n_dim = prior_potential.event_shape[0]
     optimizers = [optim.AdamW(flow.parameters()) for flow in bijections]
 
     def loss(x_prev: torch.Tensor,
@@ -156,42 +156,50 @@ def continual_repeated_annealed_flow_transport_base(prior_potential: Potential,
             next_lambda = k / n_annealing_steps
             next_potential = lambda v: (1 - next_lambda) * prior_potential(v) + next_lambda * target_potential(v)
 
-            optimizers[k].zero_grad()
-            loss_value = loss(x, log_W.exp(), bijections[k], prev_potential, next_potential)
-            loss_value.backward()
+            with torch.enable_grad():
+                optimizers[k].zero_grad()
+                loss_value = loss(x, log_W.exp(), bijections[k], prev_potential, next_potential)
+                loss_value.backward()
+                optimizers[k].step()
+
+            with torch.no_grad():
+                x, log_Z, log_W = smc_flow_step(
+                    x=x,
+                    bijection=bijections[k],
+                    prev_potential=prev_potential,
+                    next_potential=next_potential,
+                    log_W=log_W,
+                    log_Z=log_Z,
+                    sampling_threshold=sampling_threshold
+                )
+
+    # Sample
+    particle_history = []
+    with torch.no_grad():
+        x = prior_potential.sample(batch_shape=(n_particles,))
+        particle_history.append(x)
+        log_W = torch.full(size=(n_particles,), fill_value=-math.log(n_particles))
+        log_Z = 0.0
+        for k in range(n_annealing_steps):
+            prev_lambda = (k - 1) / n_annealing_steps
+            prev_potential = lambda v: (1 - prev_lambda) * prior_potential(v) + prev_lambda * target_potential(v)
+
+            next_lambda = k / n_annealing_steps
+            next_potential = lambda v: (1 - next_lambda) * prior_potential(v) + next_lambda * target_potential(v)
 
             x, log_Z, log_W = smc_flow_step(
                 x=x,
-                flow=bijections[k],
+                bijection=bijections[k],
                 prev_potential=prev_potential,
                 next_potential=next_potential,
                 log_W=log_W,
                 log_Z=log_Z,
                 sampling_threshold=sampling_threshold
             )
-            optimizers[k].step()
+            particle_history.append(x)
 
-    # Sample
-    x = prior_potential.sample(batch_shape=(n_particles,))
-    log_W = torch.full(size=(n_particles,), fill_value=-math.log(n_particles))
-    log_Z = 0.0
-    for k in range(n_annealing_steps):
-        prev_lambda = (k - 1) / n_annealing_steps
-        prev_potential = lambda v: (1 - prev_lambda) * prior_potential(v) + prev_lambda * target_potential(v)
-
-        next_lambda = k / n_annealing_steps
-        next_potential = lambda v: (1 - next_lambda) * prior_potential(v) + next_lambda * target_potential(v)
-
-        x, log_Z, log_W = smc_flow_step(
-            x=x,
-            flow=bijections[k],
-            prev_potential=prev_potential,
-            next_potential=next_potential,
-            log_W=log_W,
-            log_Z=log_Z,
-            sampling_threshold=sampling_threshold
-        )
+    particle_history = torch.stack(particle_history)
 
     if full_output:
-        return x, bijections, log_Z
-    return x
+        return particle_history, bijections, log_Z
+    return particle_history

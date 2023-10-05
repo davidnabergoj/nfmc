@@ -28,8 +28,7 @@ def craft(prior: Potential, target: Potential, flow: str, n_particles: int = 100
         target,
         bijections,
         n_annealing_steps=n_annealing_steps,
-        n_particles=n_particles,
-        full_output=True
+        n_particles=n_particles
     )
 
 
