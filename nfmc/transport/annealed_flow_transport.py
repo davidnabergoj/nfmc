@@ -98,7 +98,7 @@ def annealed_flow_transport_base(prior_potential: Potential,
             next_lambda = k / n_steps
             x, log_Z, log_W = smc_flow_step(
                 x=x,
-                flow=flow,
+                bijection=flow.bijection,
                 prev_potential=lambda v: (1 - prev_lambda) * prior_potential(v) + prev_lambda * target_potential(v),
                 next_potential=lambda v: (1 - next_lambda) * prior_potential(v) + next_lambda * target_potential(v),
                 log_W=log_W,
