@@ -15,12 +15,14 @@ from normalizing_flows.bijections import (
     FFJORD,
     ResFlow,
     InvertibleResNet,
-    DeepDiffeomorphicBijection
+    DeepDiffeomorphicBijection,
+    NICE
 )
 
 
 def get_supported_normalizing_flows():
     return [
+        "nice",
         "realnvp",
         "rnvp",
         "maf",
@@ -43,6 +45,8 @@ def create_flow_object(flow_name: str, event_shape):
 
     if flow_name in ["realnvp", "rnvp"]:
         bijection = RealNVP(event_shape)
+    elif flow_name in ["nice"]:
+        bijection = NICE(event_shape)
     elif flow_name in ['maf']:
         bijection = MAF(event_shape)
     elif flow_name in ['iaf']:
