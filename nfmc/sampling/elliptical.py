@@ -66,14 +66,14 @@ def transport_elliptical_slice_sampling_base(u: torch.Tensor,
                                              n_sampling_iterations: int = 250,
                                              full_output: bool = True):
     # Warmup
-    for _ in tqdm(range(n_warmup_iterations), desc='Warmup'):
+    for _ in tqdm(range(n_warmup_iterations), desc='TESS warmup and training'):
         x, u = transport_elliptical_slice_sampling_helper(u, flow, potential)
-        flow.fit(x.detach())
+        flow.fit(x.detach(), n_epochs=10)
 
     # Sampling
     xs = []
     x = None  # In case somebody uses n_sampling_iterations = 0
-    for _ in tqdm(range(n_sampling_iterations), desc='Sampling'):
+    for _ in tqdm(range(n_sampling_iterations), desc='TESS sampling'):
         x, u = transport_elliptical_slice_sampling_helper(u, flow, potential)
         if full_output:
             xs.append(deepcopy(x.detach()))
