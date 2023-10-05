@@ -2,7 +2,7 @@ import torch
 
 from potentials.base import Potential
 from nfmc.sampling.neutra import neutra_hmc_base
-from nfmc.sampling.elliptical import transport_elliptical_slice_sampling_base
+from nfmc.sampling.elliptical import transport_elliptical_slice_sampling_base, elliptical_slice_sampler
 from nfmc.sampling.independent_metropolis_hastings import independent_metropolis_hastings_base
 from nfmc.sampling.langevin_algorithm import metropolis_adjusted_langevin_algorithm_base, \
     unadjusted_langevin_algorithm_base
@@ -53,4 +53,17 @@ def tess(target: Potential, flow: str, n_particles: int = 100, n_iterations: int
         target,
         n_sampling_iterations=n_iterations,
         n_warmup_iterations=n_iterations
+    )
+
+
+def ess(target: Potential, n_chains: int = 100, n_iterations: int = 1000, show_progress=True, **kwargs):
+    """
+    Elliptical slice sampler.
+    """
+    return elliptical_slice_sampler(
+        target,
+        n_chains=n_chains,
+        n_iterations=n_iterations,
+        show_progress=show_progress,
+        **kwargs
     )

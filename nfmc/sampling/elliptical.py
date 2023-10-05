@@ -55,8 +55,8 @@ def elliptical_slice_sampling_step(
 
         # Update theta (we overwrite old thetas as they are unnecessary)
         theta_mask = theta < 0  # To avoid overwriting, we would consider the global accepted mask here
-        theta_min[theta_mask] = theta
-        theta_mask[~theta_mask] = theta
+        theta_min[theta_mask] = theta[theta_mask]
+        theta_max[~theta_mask] = theta[~theta_mask]
 
         # Draw new theta uniformly from [theta_min, theta_max]
         uniform_noise = torch.rand(size=[*batch_shape, *([1] * len(target.event_shape))])
@@ -65,7 +65,7 @@ def elliptical_slice_sampling_step(
         # Update the global accepted mask
         accepted_mask |= accepted_mask_update
 
-    return f_proposed
+    return f_proposed, accepted_mask
 
 
 def elliptical_slice_sampler(
@@ -73,6 +73,7 @@ def elliptical_slice_sampler(
         n_chains: int = 100,
         n_iterations: int = 1000,
         cov: torch.Tensor = None,
+        show_progress: bool = False,
         **kwargs
 ):
     """
@@ -84,6 +85,7 @@ def elliptical_slice_sampler(
     :param n_iterations: number of iterations.
     :param cov: covariance matrix for the prior with shape (event_size, event_size) where event_size is
         equal to the product of elements of event_shape. If None, the covariance is assumed to be identity.
+    :param show_progress: optionally show a progress bar.
     :param kwargs: keyword arguments for the slice sampling step.
     """
     if cov is None:
@@ -95,9 +97,18 @@ def elliptical_slice_sampler(
         x_flat = dist.sample(sample_shape=torch.Size((n_chains,)))
         x = x_flat.view(n_chains, *target.event_shape)
     draws = []
-    for _ in range(n_iterations):
-        x = elliptical_slice_sampling_step(x, target, cov=cov, **kwargs)
-        draws.append(x)
+
+    if show_progress:
+        iterator = tqdm(range(n_iterations), desc="Elliptical slice sampling")
+    else:
+        iterator = range(n_iterations)
+
+    for _ in iterator:
+        x, accepted_mask = elliptical_slice_sampling_step(x, target, cov=cov, **kwargs)
+        draws.append(torch.clone(x))
+        if show_progress:
+            acceptance_rate = float(torch.mean(torch.as_tensor(accepted_mask, dtype=torch.float)))
+            iterator.set_postfix_str(f'accept-rate: {acceptance_rate:.4f}')
     return torch.stack(draws)
 
 
@@ -158,16 +169,17 @@ def transport_elliptical_slice_sampling_base(u: torch.Tensor,
                                              potential: callable,
                                              n_warmup_iterations: int = 100,
                                              n_sampling_iterations: int = 250,
+                                             n_epochs: int = 10,
                                              full_output: bool = True):
     # Warmup
     for _ in tqdm(range(n_warmup_iterations), desc='TESS warmup and training'):
         x, u = transport_elliptical_slice_sampling_helper(u, flow, potential)
-        flow.fit(x.detach(), n_epochs=10)
+        flow.fit(x.detach(), n_epochs=n_epochs)
 
     # Sampling
     xs = []
     x = None  # In case somebody uses n_sampling_iterations = 0
-    for _ in tqdm(range(n_sampling_iterations), desc='TESS sampling'):
+    for _ in tqdm(range(n_sampling_iterations), desc='Transport elliptical slice sampling'):
         x, u = transport_elliptical_slice_sampling_helper(u, flow, potential)
         if full_output:
             xs.append(deepcopy(x.detach()))
