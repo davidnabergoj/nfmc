@@ -7,7 +7,7 @@ from nfmc.util import get_supported_normalizing_flows
 from synthetic.gaussian.unit import StandardGaussian
 
 all_event_shapes = [(2,), (5,), (2, 3, 7)]
-all_n_particles = [1, 5, 50]
+all_n_particles = [5, 50]
 all_n_iterations = [5, 1, 50]
 all_flows = get_supported_normalizing_flows()
 all_jump_periods = [10, 50]

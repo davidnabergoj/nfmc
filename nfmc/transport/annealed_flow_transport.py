@@ -32,7 +32,8 @@ def smc_flow_step(x, flow, prev_potential, next_potential, log_W, log_Z, samplin
     log_ess = - torch.logsumexp(2 * log_w, dim=0)
 
     if log_ess - math.log(n_particles) <= math.log(sampling_threshold):
-        resampled_indices = torch.distributions.Categorical(logits=log_w).sample(size=(n_particles,)).long()
+        cat_dist = torch.distributions.Categorical(logits=log_w)
+        resampled_indices = cat_dist.sample(sample_shape=torch.Size((n_particles,))).long()
         x = x_tilde[resampled_indices]
         log_W = torch.full(size=(n_particles,), fill_value=math.log(1 / n_particles))
     else:
@@ -59,7 +60,7 @@ def annealed_flow_transport_base(prior_potential: Potential,
                                  flow: Flow,
                                  n_particles: int = 100,
                                  n_steps: int = 20,
-                                 sampling_threshold: float = 0.3,
+                                 sampling_threshold: float = None,
                                  full_output: bool = False):
     """
     Linear annealing schedule.
@@ -73,6 +74,15 @@ def annealed_flow_transport_base(prior_potential: Potential,
     :param sampling_threshold:
     :return:
     """
+    assert n_particles > 1
+
+    if sampling_threshold is None:
+        # Try setting to 0.3
+        if 1 / n_particles <= 0.3:
+            sampling_threshold = 0.3
+        else:
+            sampling_threshold = 1 / n_particles
+
     assert 1 / n_particles <= sampling_threshold < 1
     x = prior_potential.sample(batch_shape=(n_particles,))
     log_W = torch.full(size=(n_particles,), fill_value=math.log(1 / n_particles))
@@ -80,19 +90,21 @@ def annealed_flow_transport_base(prior_potential: Potential,
 
     xs = [deepcopy(x.detach())]
     for k in range(1, n_steps):
-        flow.fit(x)
-        prev_lambda = (k - 1) / n_steps
-        next_lambda = k / n_steps
-        x, log_Z, log_W = smc_flow_step(
-            x=x,
-            flow=flow,
-            prev_potential=lambda v: (1 - prev_lambda) * prior_potential(v) + prev_lambda * target_potential(v),
-            next_potential=lambda v: (1 - next_lambda) * prior_potential(v) + next_lambda * target_potential(v),
-            log_W=log_W,
-            log_Z=log_Z,
-            sampling_threshold=sampling_threshold
-        )
-        xs.append(deepcopy(x.detach()))
+        with torch.enable_grad():
+            flow.fit(x)
+        with torch.no_grad():
+            prev_lambda = (k - 1) / n_steps
+            next_lambda = k / n_steps
+            x, log_Z, log_W = smc_flow_step(
+                x=x,
+                flow=flow,
+                prev_potential=lambda v: (1 - prev_lambda) * prior_potential(v) + prev_lambda * target_potential(v),
+                next_potential=lambda v: (1 - next_lambda) * prior_potential(v) + next_lambda * target_potential(v),
+                log_W=log_W,
+                log_Z=log_Z,
+                sampling_threshold=sampling_threshold
+            )
+            xs.append(deepcopy(x.detach()))
 
     if full_output:
         return torch.stack(xs)
