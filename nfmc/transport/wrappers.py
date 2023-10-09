@@ -32,11 +32,11 @@ def craft(prior: Potential, target: Potential, flow: str, n_particles: int = 100
     )
 
 
-def dlmc(prior: Potential, target: Potential, flow: str, n_particles: int = 100):
+def dlmc(prior: Potential, target: Potential, flow: str, n_particles: int = 100, show_progress: bool = True):
     x_prior = prior.sample(batch_shape=(n_particles,))
     flow_object = create_flow_object(flow, prior.event_shape)
     return deterministic_langevin_monte_carlo_base(x_prior, lambda x: target(x) + prior(x), target, flow_object,
-                                                   full_output=True)
+                                                   full_output=True, show_progress=show_progress)
 
 
 def ns(prior: Potential, target: Potential, flow: str, n_particles: int = 100):
