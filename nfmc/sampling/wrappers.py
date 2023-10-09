@@ -1,11 +1,13 @@
 import torch
 
 from potentials.base import Potential
+from potentials.synthetic.gaussian.unit import StandardGaussian
 from nfmc.sampling.neutra import neutra_hmc_base
 from nfmc.sampling.elliptical import transport_elliptical_slice_sampler, elliptical_slice_sampler
 from nfmc.sampling.independent_metropolis_hastings import independent_metropolis_hastings_base
 from nfmc.sampling.langevin_algorithm import metropolis_adjusted_langevin_algorithm_base, \
     unadjusted_langevin_algorithm_base
+from nfmc.sampling.deterministic_langevin import deterministic_langevin_monte_carlo_base
 from nfmc.util import create_flow_object
 
 
@@ -80,5 +82,24 @@ def ess(
         n_chains=n_chains,
         n_iterations=n_iterations,
         show_progress=show_progress,
+        **kwargs
+    )
+
+
+def dlmc(target: Potential, flow: str, prior: Potential = None, n_particles: int = 100, n_iterations: int = 500,
+         show_progress: bool = True, **kwargs):
+    # Defaults to a standard normal prior
+    if prior is None:
+        prior = StandardGaussian(event_shape=target.event_shape)
+    x_prior = prior.sample(batch_shape=(n_particles,))
+    flow_object = create_flow_object(flow, prior.event_shape)
+    return deterministic_langevin_monte_carlo_base(
+        x_prior,
+        lambda x: target(x) + prior(x),
+        target,
+        flow_object,
+        full_output=True,
+        show_progress=show_progress,
+        n_iterations=n_iterations,
         **kwargs
     )
