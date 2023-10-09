@@ -1,12 +1,11 @@
 import math
 from copy import deepcopy
-
+from tqdm import tqdm
 import torch
 import torch.optim as optim
 
 from nfmc.mcmc.hmc import hmc_trajectory
 from normalizing_flows import Flow
-from normalizing_flows.bijections import RealNVP
 from normalizing_flows.bijections.base import Bijection
 from potentials.base import Potential
 
@@ -62,6 +61,7 @@ def annealed_flow_transport_base(prior_potential: Potential,
                                  n_particles: int = 100,
                                  n_steps: int = 20,
                                  sampling_threshold: float = None,
+                                 show_progress: bool = False,
                                  full_output: bool = False):
     """
     Linear annealing schedule.
@@ -90,7 +90,13 @@ def annealed_flow_transport_base(prior_potential: Potential,
     log_Z = 0.0
 
     xs = [deepcopy(x.detach())]
-    for k in range(1, n_steps):
+
+    if show_progress:
+        iterator = tqdm(range(1, n_steps), desc='AFT')
+    else:
+        iterator = range(1, n_steps)
+
+    for k in iterator:
         with torch.enable_grad():
             flow.fit(x)
         with torch.no_grad():
@@ -119,7 +125,8 @@ def continual_repeated_annealed_flow_transport_base(prior_potential: Potential,
                                                     n_training_steps: int = 100,
                                                     n_annealing_steps: int = 20,
                                                     sampling_threshold: float = 0.3,
-                                                    full_output: bool = False):
+                                                    full_output: bool = False,
+                                                    show_progress: bool = False):
     """
     Idea:
     * have a flow for each annealing step that connects the intermediate potentials
@@ -144,8 +151,13 @@ def continual_repeated_annealed_flow_transport_base(prior_potential: Potential,
         loss = torch.sum(W_prev * d)
         return loss
 
+    if show_progress:
+        iterator = tqdm(range(1, n_training_steps), desc='CRAFT')
+    else:
+        iterator = range(1, n_training_steps)
+
     # Train
-    for j in range(n_training_steps):
+    for j in iterator:
         x = prior_potential.sample(batch_shape=(n_particles,))
         log_W = torch.full(size=(n_particles,), fill_value=-math.log(n_particles))
         log_Z = 0.0

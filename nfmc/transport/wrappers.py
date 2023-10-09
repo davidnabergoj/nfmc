@@ -6,18 +6,34 @@ from nfmc.transport.annealed_flow_transport import annealed_flow_transport_base,
 from nfmc.util import create_flow_object
 
 
-def aft(prior: Potential, target: Potential, flow: str, n_particles: int = 100):
+def aft(prior: Potential,
+        target: Potential,
+        flow: str,
+        n_particles: int = 100,
+        show_progress: bool = True,
+        n_iterations: int = 20,
+        **kwargs):
     flow_object = create_flow_object(flow, prior.event_shape)
     return annealed_flow_transport_base(
         prior,
         target,
         flow_object,
         n_particles=n_particles,
-        full_output=True
+        n_steps=n_iterations,
+        show_progress=show_progress,
+        full_output=True,
+        **kwargs
     )
 
 
-def craft(prior: Potential, target: Potential, flow: str, n_particles: int = 100, n_annealing_steps: int = 20):
+def craft(prior: Potential,
+          target: Potential,
+          flow: str,
+          n_particles: int = 100,
+          n_iterations: int = 100,
+          n_annealing_steps: int = 20,
+          show_progress: bool = True,
+          **kwargs):
     bijections = [
         create_flow_object(flow, prior.event_shape).bijection
         for _ in range(n_annealing_steps)
@@ -26,8 +42,11 @@ def craft(prior: Potential, target: Potential, flow: str, n_particles: int = 100
         prior,
         target,
         bijections,
+        n_training_steps=n_iterations,
         n_annealing_steps=n_annealing_steps,
-        n_particles=n_particles
+        n_particles=n_particles,
+        show_progress=show_progress,
+        **kwargs
     )
 
 
