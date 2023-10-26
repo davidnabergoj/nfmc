@@ -12,7 +12,16 @@ from normalizing_flows.bijections.base import Bijection
 from potentials.base import Potential
 
 
-def smc_flow_step(x, bijection, prev_potential, next_potential, log_W, log_Z, sampling_threshold):
+def smc_flow_step(
+        x,
+        bijection,
+        prev_potential,
+        next_potential,
+        log_W,
+        log_Z,
+        sampling_threshold,
+        mcmc_sampler: callable = None
+):
     n_particles, *event_shape = x.shape
     x_tilde, log_det = bijection.forward(x)
 
@@ -30,7 +39,10 @@ def smc_flow_step(x, bijection, prev_potential, next_potential, log_W, log_Z, sa
     else:
         x = x_tilde  # Not explicitly stated in pseudocode, but probably true
 
-    x = hmc(
+    if mcmc_sampler is None:
+        mcmc_sampler = hmc
+
+    x = mcmc_sampler(
         x0=x,
         potential=next_potential,
         full_output=False
@@ -145,7 +157,7 @@ def continual_repeated_annealed_flow_transport_base(prior_potential: Potential,
         x = prior_potential.sample(batch_shape=(n_particles,))
         log_W = torch.full(size=(n_particles,), fill_value=-math.log(n_particles))
         log_Z = 0.0
-        for k in range(n_annealing_steps):
+        for k in range(1, n_annealing_steps + 1):
             prev_lambda = (k - 1) / n_annealing_steps
             prev_potential = lambda v: (1 - prev_lambda) * prior_potential(v) + prev_lambda * target_potential(v)
 
@@ -153,15 +165,15 @@ def continual_repeated_annealed_flow_transport_base(prior_potential: Potential,
             next_potential = lambda v: (1 - next_lambda) * prior_potential(v) + next_lambda * target_potential(v)
 
             with torch.enable_grad():
-                optimizers[k].zero_grad()
-                loss_value = loss(x, log_W.exp(), bijections[k], prev_potential, next_potential)
+                optimizers[k - 1].zero_grad()
+                loss_value = loss(x, log_W.exp(), bijections[k - 1], prev_potential, next_potential)
                 loss_value.backward()
-                optimizers[k].step()
+                optimizers[k - 1].step()
 
             with torch.no_grad():
                 x, log_Z, log_W = smc_flow_step(
                     x=x,
-                    bijection=bijections[k],
+                    bijection=bijections[k - 1],
                     prev_potential=prev_potential,
                     next_potential=next_potential,
                     log_W=log_W,
@@ -176,7 +188,7 @@ def continual_repeated_annealed_flow_transport_base(prior_potential: Potential,
         particle_history.append(x)
         log_W = torch.full(size=(n_particles,), fill_value=-math.log(n_particles))
         log_Z = 0.0
-        for k in range(n_annealing_steps):
+        for k in range(1, n_annealing_steps + 1):
             prev_lambda = (k - 1) / n_annealing_steps
             prev_potential = lambda v: (1 - prev_lambda) * prior_potential(v) + prev_lambda * target_potential(v)
 
@@ -185,7 +197,7 @@ def continual_repeated_annealed_flow_transport_base(prior_potential: Potential,
 
             x, log_Z, log_W = smc_flow_step(
                 x=x,
-                bijection=bijections[k],
+                bijection=bijections[k - 1],
                 prev_potential=prev_potential,
                 next_potential=next_potential,
                 log_W=log_W,
