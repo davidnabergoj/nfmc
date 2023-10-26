@@ -76,9 +76,9 @@ def annealed_flow_transport_base(prior_potential: Potential,
     xs = [deepcopy(x.detach())]
 
     if show_progress:
-        iterator = tqdm(range(1, n_steps), desc='AFT')
+        iterator = tqdm(range(1, n_steps + 1), desc='AFT')
     else:
-        iterator = range(1, n_steps)
+        iterator = range(1, n_steps + 1)
 
     for k in iterator:
         with torch.enable_grad():
