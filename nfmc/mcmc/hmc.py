@@ -4,7 +4,7 @@ from tqdm import tqdm
 import torch
 
 from nfmc.util import metropolis_acceptance_log_ratio, DualAveraging
-from utils import sum_except_batch
+from normalizing_flows.utils import sum_except_batch
 
 
 def grad_potential(x: torch.Tensor, potential: callable):
@@ -87,8 +87,14 @@ def hmc(x0: torch.Tensor,
         )
         with torch.no_grad():
             log_alpha = metropolis_acceptance_log_ratio(
-                log_prob_curr=-potential(x) - 0.5 * sum_except_batch(initial_momentum ** 2 * inv_mass_diag, batch_shape=(n_chains,)),
-                log_prob_prime=-potential(x_prime) - 0.5 * sum_except_batch(momentum_prime ** 2 * inv_mass_diag, batch_shape=(n_chains,)),
+                log_prob_curr=-potential(x) - 0.5 * sum_except_batch(
+                    initial_momentum ** 2 * inv_mass_diag,
+                    event_shape=event_shape
+                ),
+                log_prob_prime=-potential(x_prime) - 0.5 * sum_except_batch(
+                    momentum_prime ** 2 * inv_mass_diag,
+                    event_shape=event_shape
+                ),
                 log_proposal_curr=0.0,
                 log_proposal_prime=0.0
             )  # batch_shape
