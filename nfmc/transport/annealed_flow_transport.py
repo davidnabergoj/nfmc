@@ -1,10 +1,12 @@
 import math
 from copy import deepcopy
+from typing import List
+
 from tqdm import tqdm
 import torch
 import torch.optim as optim
 
-from nfmc.mcmc.hmc import hmc_trajectory
+from nfmc.mcmc.hmc import hmc
 from normalizing_flows import Flow
 from normalizing_flows.bijections.base import Bijection
 from potentials.base import Potential
@@ -12,23 +14,12 @@ from potentials.base import Potential
 
 def smc_flow_step(x, bijection, prev_potential, next_potential, log_W, log_Z, sampling_threshold):
     n_particles, *event_shape = x.shape
-    n_dim = int(torch.prod(torch.as_tensor(event_shape)))
     x_tilde, log_det = bijection.forward(x)
-
-    # next_lambda = k / n_steps
-    # next_potential = lambda v: (1 - next_lambda) * prior_potential(v) + next_lambda * target_potential(v)
-    #
-    # prev_lambda = (k - 1) / n_steps
-    # prev_potential = lambda v: (1 - prev_lambda) * prior_potential(v) + prev_lambda * target_potential(v)
 
     log_G = next_potential(x_tilde) + log_det - prev_potential(x)
     log_w = torch.logaddexp(log_W, log_G)
     log_Z += torch.sum(log_w)
-
     log_W = log_w - torch.logsumexp(log_w, dim=0)
-
-    # ess = 1 / sum(exp(2 * log_w))
-    # log_ess = -log(sum(exp(2*log_w)))
     log_ess = - torch.logsumexp(2 * log_w, dim=0)
 
     if log_ess - math.log(n_particles) <= math.log(sampling_threshold):
@@ -39,17 +30,10 @@ def smc_flow_step(x, bijection, prev_potential, next_potential, log_W, log_Z, sa
     else:
         x = x_tilde  # Not explicitly stated in pseudocode, but probably true
 
-    momentum = torch.randn_like(x)
-    inv_mass_diag = torch.ones(size=(1, *event_shape))
-    trajectory_length = 10
-    step_size = n_dim ** (-1 / 4)
-    x, _ = hmc_trajectory(
-        x=x,
-        momentum=momentum,
-        inv_mass_diag=inv_mass_diag,
-        n_leapfrog_steps=trajectory_length,
-        step_size=step_size,
-        potential=next_potential
+    x = hmc(
+        x0=x,
+        potential=next_potential,
+        full_output=False
     )
 
     return x, log_Z, log_W
@@ -120,7 +104,7 @@ def annealed_flow_transport_base(prior_potential: Potential,
 
 def continual_repeated_annealed_flow_transport_base(prior_potential: Potential,
                                                     target_potential: Potential,
-                                                    bijections: list[Bijection],
+                                                    bijections: List[Bijection],
                                                     n_particles: int = 100,
                                                     n_training_steps: int = 100,
                                                     n_annealing_steps: int = 20,
