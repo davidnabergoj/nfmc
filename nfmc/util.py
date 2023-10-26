@@ -24,7 +24,6 @@ def get_supported_normalizing_flows():
     return [
         "nice",
         "realnvp",
-        "rnvp",
         "maf",
         "iaf",
         "c-rqnsf",
