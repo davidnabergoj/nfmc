@@ -1,16 +1,16 @@
 import math
 from copy import deepcopy
 from typing import Sequence
-
+from tqdm import tqdm
 import torch
 import torch.nn as nn
 import torch.optim as optim
 
-from nfmc.mcmc.mh import mh_step
+from nfmc.mcmc.mh import mh_step, mh
 from normalizing_flows.bijections import RealNVP
 from normalizing_flows.bijections.base import Bijection
 from potentials.base import Potential
-from nfmc.mcmc.hmc import hmc_trajectory
+from nfmc.mcmc.hmc import hmc
 from normalizing_flows.utils import sum_except_batch
 
 
@@ -56,45 +56,36 @@ class MCMCLayer(SNFLayer):
     def __init__(self, event_shape):
         super().__init__(event_shape)
 
-    def trajectory(self, x, potential: callable):
+    def sample(self, x, potential: callable, **kwargs):
         raise NotImplementedError
 
     def forward(self, x, potential: callable):
-        x_prime = self.trajectory(x, potential)
-        delta_s = potential(x_prime) - potential(x)
-        return x, delta_s
+        x_prime = self.sample(x, potential)
+        energy_delta = potential(x_prime) - potential(x)
+        return x_prime, energy_delta
 
 
 class HMCLayer(MCMCLayer):
-    def __init__(self, event_shape, n_leapfrog_steps: int = 10):
+    def __init__(self, event_shape):
         super().__init__(event_shape)
-        self.n_leapfrog_steps = n_leapfrog_steps
 
-    def trajectory(self, x, potential: callable):
-        # Keeping the kernel parameters constant to avoid problems.
-        # TODO allow user to specify kernel parameters or tune them
-        n_dim = x.shape[-1]
-        inv_mass_diag = torch.ones(size=(1, n_dim))
-        step_size = n_dim ** (-1 / 4)
-
-        momentum = torch.randn_like(x)
-        x_prime, _ = hmc_trajectory(
-            x=x,
-            momentum=momentum,
-            inv_mass_diag=inv_mass_diag,
-            step_size=step_size,
-            n_leapfrog_steps=self.n_leapfrog_steps,
-            potential=potential
+    def sample(self, x, potential: callable, **kwargs):
+        x = hmc(
+            x0=x,
+            potential=potential,
+            full_output=False,
+            n_iterations=100,
+            **kwargs
         )
-        return x_prime
+        return x
 
 
 class MHLayer(MCMCLayer):
     def __init__(self, event_shape):
         super().__init__(event_shape)
 
-    def trajectory(self, x, potential: callable):
-        return mh_step(x=x)
+    def sample(self, x, potential: callable, **kwargs):
+        return mh(x, potential, **kwargs)
 
 
 class FlowLayer(SNFLayer):
@@ -133,21 +124,28 @@ class SNF(nn.Module):
 
         particle_history = [x]
         for i, layer in enumerate(self.layers):
-            x, delta_s = layer(
-                x,
-                potential=lambda v: (1 - lambdas[i]) * self.prior_potential(v) + lambdas[i] * self.target_potential(v)
+            intermediate_potential = lambda v: (
+                    (1 - lambdas[i]) * self.prior_potential(v)
+                    + lambdas[i] * self.target_potential(v)
             )
+
+            x, delta_s = layer(x, potential=intermediate_potential)
             log_det += delta_s
             particle_history.append(x)
         log_weights = -self.target_potential(x) + self.prior_potential(z) + log_det
         particle_history = torch.stack(particle_history)
         return particle_history, x, log_weights
 
-    def fit(self, z, n_epochs: int = 100):
+    def fit(self, z, n_epochs: int = 10, show_progress: bool = True):
         optimizer = optim.AdamW(self.parameters())
 
+        if show_progress:
+            iterator = tqdm(range(n_epochs), desc="SNF")
+        else:
+            iterator = range(n_epochs)
+
         # Train the SNF
-        for _ in range(n_epochs):
+        for _ in iterator:
             optimizer.zero_grad()
 
             # Compute loss

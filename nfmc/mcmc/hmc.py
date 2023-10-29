@@ -59,8 +59,7 @@ def hmc(x0: torch.Tensor,
     n_chains, *event_shape = x0.shape
 
     xs = torch.zeros(size=(n_iterations, *x0.shape), dtype=x0.dtype)
-
-    x = deepcopy(x0)
+    x = torch.clone(x0)
     n_dim = int(torch.prod(torch.as_tensor(event_shape)))
     if step_size is None:
         step_size = n_dim ** (-1 / 4)
