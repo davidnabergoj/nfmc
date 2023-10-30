@@ -28,8 +28,8 @@ def get_supported_normalizing_flows():
         "iaf",
         "c-rqnsf",
         "ar-rqnsf",
-        "c-lrs",
-        "ar-lrs",
+        # "c-lrs",   # Has a bug
+        # "ar-lrs",  # Has a bug
         # "ot-flow",  # Too slow
         # "ffjord",   # Too slow
         # "iresnet",  # Too slow
