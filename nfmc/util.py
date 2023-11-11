@@ -20,7 +20,7 @@ from normalizing_flows.bijections import (
 )
 
 
-def get_supported_normalizing_flows():
+def get_supported_flows():
     return [
         "nice",
         "realnvp",
@@ -28,13 +28,23 @@ def get_supported_normalizing_flows():
         "iaf",
         "c-rqnsf",
         "ar-rqnsf",
-        # "c-lrs",   # Has a bug
-        # "ar-lrs",  # Has a bug
-        # "ot-flow",  # Too slow
-        # "ffjord",   # Too slow
-        # "iresnet",  # Too slow
-        # "resflow",  # Too slow
-        # "ddnf"      # Too slow
+        "c-lrsnsf",
+        "ar-lrsnsf",
+        # "c-naf",
+        # "ar-naf",
+        # "c-bnaf",
+        # "ar-bnaf",
+        # "umnn-maf",
+        # "planar",
+        # "radial",
+        # "sylvester",
+        # "i-resnet",
+        # "resflow",
+        # "proximal-resflow",
+        # "ffjord",
+        # "rnode",
+        # "ddnf",
+        # "ot-flow",
     ]
 
 
