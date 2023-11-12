@@ -20,7 +20,7 @@ from normalizing_flows.bijections import (
 )
 
 
-def get_supported_flows():
+def get_supported_normalizing_flows():
     return [
         "nice",
         "realnvp",
