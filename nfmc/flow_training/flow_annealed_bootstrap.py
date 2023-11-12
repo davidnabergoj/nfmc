@@ -26,14 +26,24 @@ class Buffer:
             self.index = len(x) - slots_left
 
 
-def fab(target_potential: Potential,
-        flow: Flow,
-        K: int,
-        L: int,
-        M: int,
-        N: int,
-        buffer_size: int = 10_000):
-    assert M < buffer_size
+def flow_annealed_importance_sampling_bootstrap_base(target_potential: Potential,
+                                                     flow: Flow,
+                                                     n_iterations: int = 50,
+                                                     n_flow_training_steps: int = 20,
+                                                     n_ais_particles: int = 100,
+                                                     n_training_particles: int = 50,
+                                                     buffer_size: int = 10_000):
+    """
+
+    :param target_potential: potential to be modeled by the flow.
+    :param flow: normalizing flow to be trained.
+    :param n_iterations: number of iterations
+    :param n_flow_training_steps: number of flow training steps (gradient descent updates) per iteration
+    :param n_ais_particles: number of annealed importance sampling particles.
+    :param n_training_particles: number of resampled buffer particles for flow training.
+    :param buffer_size: size of the FAB buffer where training particles are sampled from.
+    """
+    assert n_ais_particles < buffer_size
 
     buffer_x = Buffer(event_shape=target_potential.event_shape, size=buffer_size)
     buffer_log_w = Buffer(event_shape=(), size=buffer_size)
@@ -41,8 +51,8 @@ def fab(target_potential: Potential,
 
     optimizer = optim.AdamW(flow.parameters())
 
-    for i in range(K):
-        x, log_prob_flow = flow.sample(M, return_log_prob=True)
+    for i in range(n_iterations):
+        x, log_prob_flow = flow.sample(n_ais_particles, return_log_prob=True)
         x, log_w = ais_base(
             x,
             prior_potential=lambda v: -flow.log_prob(v),
@@ -53,10 +63,11 @@ def fab(target_potential: Potential,
         buffer_log_w.add(log_w)
         buffer_log_flow.add(log_prob_flow)
 
-        for j in range(L):
+        for j in range(n_flow_training_steps):
             optimizer.zero_grad()
 
-            indices = torch.distributions.Categorical(logits=buffer_log_w.data).sample(sample_shape=torch.Size(N))
+            indices = torch.distributions.Categorical(logits=buffer_log_w.data).sample(
+                sample_shape=torch.Size((n_training_particles,)))
             # TODO: some indices may be repeated during resampling. We can avoid recomputing the flow log prob then.
 
             x = buffer_x.data[indices]

@@ -8,19 +8,17 @@ from normalizing_flows import Flow
 from nfmc.mcmc.langevin_algorithm import base as base_langevin
 
 
-def base(x0: torch.Tensor,
-         flow: Flow,
-         potential: callable,
-         n_jumps: int = 25,
-         jump_period: int = 500,
-         batch_size: int = 128,
-         burnin: int = 1000,
-         full_output: bool = False,
-         nf_adjustment: bool = True,
-         show_progress: bool = True,
-         **kwargs):
-    n_chains = x0.shape[0]
-    event_shape = x0.shape[1:]
+def langevin_algorithm_base(x0: torch.Tensor,
+                            flow: Flow,
+                            potential: callable,
+                            n_jumps: int = 25,
+                            jump_period: int = 500,
+                            batch_size: int = 128,
+                            burnin: int = 1000,
+                            nf_adjustment: bool = True,
+                            show_progress: bool = True,
+                            **kwargs):
+    n_chains, *event_shape = x0.shape
 
     x = deepcopy(x0)
 
@@ -32,11 +30,14 @@ def base(x0: torch.Tensor,
         potential=potential,
         **kwargs
     )
+
+    assert torch.all(torch.isfinite(x))
+
     # In the burnin stage, fit the flow to the typical set data
     flow.fit(x)
     # Note: in practice, it is quite useful to have a decent fit at this point.
 
-    xs = [deepcopy(x[None])]
+    xs = []
 
     # Langevin with NF jumps
     if show_progress:
@@ -48,15 +49,15 @@ def base(x0: torch.Tensor,
     total = 0
 
     for _ in iterator:
+        assert torch.all(torch.isfinite(x))
         x_lng = base_langevin(
             x0=x,
             n_iterations=jump_period - 1,
-            full_output=True,
             potential=potential,
             **kwargs
         )  # (n_steps, n_chains, *event_shape)
-        if full_output:
-            xs.append(x_lng)
+        assert torch.all(torch.isfinite(x_lng))
+        xs.append(x_lng)
 
         x_train = x_lng.view(-1, *event_shape)  # (n_steps * n_chains, *event_shape)
         flow.fit(x_train, n_epochs=1, batch_size=batch_size, shuffle=False)
@@ -86,18 +87,14 @@ def base(x0: torch.Tensor,
 
         # x.shape = (n_chains, n_dim)
 
-        if full_output:
-            xs.append(deepcopy(x[None]))
+        xs.append(deepcopy(x)[None])
 
-    if full_output:
-        return torch.cat(xs, dim=0)
-    else:
-        return x
+    return torch.cat(xs, dim=0)
 
 
-def ula(*args, **kwargs):
-    return base(*args, **kwargs, adjustment=False)
+def unadjusted_langevin_algorithm_base(*args, **kwargs):
+    return langevin_algorithm_base(*args, **kwargs, adjustment=False)
 
 
-def mala(*args, **kwargs):
-    return base(*args, **kwargs, adjustment=True)
+def metropolis_adjusted_langevin_algorithm_base(*args, **kwargs):
+    return langevin_algorithm_base(*args, **kwargs, adjustment=True)

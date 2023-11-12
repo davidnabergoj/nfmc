@@ -1,30 +1,35 @@
 from copy import deepcopy
-
+from tqdm import tqdm
 import torch
 
 from nfmc.util import metropolis_acceptance_log_ratio, compute_grad
 from normalizing_flows import Flow
 
 
-def dlmc(x_prior: torch.Tensor,
-         potential: callable,
-         negative_log_likelihood: callable,
-         flow: Flow,
-         step_size: float = 1.0,
-         n_iterations: int = 20,
-         latent_updates: bool = False,
-         full_output: bool = False):
+def deterministic_langevin_monte_carlo_base(x_prior: torch.Tensor,
+                                            potential: callable,
+                                            negative_log_likelihood: callable,
+                                            flow: Flow,
+                                            step_size: float = 0.05,
+                                            n_iterations: int = 500,
+                                            latent_updates: bool = False,
+                                            show_progress: bool = False,
+                                            full_output: bool = False):
     # FIXME latent = True does not work
-    n_chains, n_dim = x_prior.shape
+    n_chains, *event_shape = x_prior.shape
 
     # Initial update
     grad = compute_grad(negative_log_likelihood, x_prior)
     x = x_prior - step_size * grad
     x.requires_grad_(False)
 
+    if show_progress:
+        iterator = tqdm(range(n_iterations), desc='DLMC transport')
+    else:
+        iterator = range(n_iterations)
+
     xs = [x_prior, x]
-    for i in range(n_iterations):
-        print(f'{i = }')
+    for i in iterator:
         flow.fit(x.detach(), n_epochs=100)
         if latent_updates:
             z, _ = flow.bijection.forward(x)
@@ -43,7 +48,7 @@ def dlmc(x_prior: torch.Tensor,
             log_proposal_prime=flow.log_prob(x_tilde)
         )
         log_u = torch.rand(n_chains).log().to(log_alpha)
-        accepted_mask = torch.where(torch.less(log_u, log_alpha))
+        accepted_mask = torch.less(log_u, log_alpha)
         x[accepted_mask] = x_tilde[accepted_mask]
         x = x.detach()
 

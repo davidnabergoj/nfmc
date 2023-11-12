@@ -23,16 +23,25 @@ def base(x0: torch.Tensor,
          potential: callable,
          n_iterations: int = 1000,
          tau: float = None,
-         full_output: bool = False,
+         full_output: bool = True,
          adjustment: bool = False,
+         tune_diagonal_preconditioning: bool = True,
          target_acceptance_rate: float = 0.574):
+    assert torch.all(torch.isfinite(x0))
+
     # TODO tune tau in MALA
-    assert len(x0.shape) == 2
-    n_chains, n_dim = x0.shape
+    n_chains, *event_shape = x0.shape
+    n_dim = int(torch.prod(torch.as_tensor(event_shape)))
     if tau is None:
         tau = n_dim ** (-1 / 3)
     xs = []
-    sqrt_a = torch.std(x0, dim=0)  # root of the preconditioning matrix diagonal
+
+    # Compute standard deviation of chain states unless using a single chain
+    if x0.shape[0] > 1 and tune_diagonal_preconditioning:
+        sqrt_a = 1 / torch.std(x0, dim=0)  # root of the preconditioning matrix diagonal
+    else:
+        sqrt_a = torch.ones(*event_shape)
+
     dual_avg = DualAveraging(math.log(tau))
 
     x = deepcopy(x0)
@@ -48,7 +57,7 @@ def base(x0: torch.Tensor,
         x.grad = None  # Clear gradients
 
         # Compute new state
-        x_prime = x - tau * sqrt_a.view(1, -1).square() * grad_u_x + math.sqrt(2 * tau) * sqrt_a.view(1, -1) * noise
+        x_prime = x - tau * sqrt_a[None].square() * grad_u_x + math.sqrt(2 * tau) * sqrt_a[None] * noise
 
         if adjustment:
             # Compute potential and gradient at proposed state
@@ -75,7 +84,10 @@ def base(x0: torch.Tensor,
             adjustment_mask = torch.ones(n_chains, dtype=torch.bool)
         x[adjustment_mask] = x_prime[adjustment_mask]
 
-        sqrt_a = torch.std(x, dim=0)
+        if x0.shape[0] > 1 and tune_diagonal_preconditioning:
+            sqrt_a = 1 / torch.std(x, dim=0)  # root of the preconditioning matrix diagonal
+        else:
+            sqrt_a = torch.ones(*event_shape)
 
         if full_output:
             xs.append(deepcopy(x))
@@ -92,3 +104,70 @@ def mala(*args, **kwargs):
 
 def ula(*args, **kwargs):
     return base(*args, **kwargs, adjustment=False)
+
+
+def exponential_decay_mu_scheduler(iteration: int, init: float = 1.0, decay: float = 1e-4):
+    return init * decay ** iteration
+
+
+def smooth_lmc(x0: torch.Tensor,
+               potential: callable,
+               n_iterations: int = 1000,
+               step_size: float = None,
+               adjustment: bool = False,
+               mu_scheduler: callable = None):
+    """
+    Langevin Monte Carlo with target smoothing for multimodal sampling.
+    """
+    assert torch.all(torch.isfinite(x0))
+
+    n_chains, *event_shape = x0.shape
+    n_dim = int(torch.prod(torch.as_tensor(event_shape)))
+    if step_size is None:
+        step_size = n_dim ** (-1 / 3)
+    xs = []
+
+    # Compute standard deviation of chain states unless using a single chain
+    sqrt_a = torch.ones(*event_shape)
+
+    x = deepcopy(x0)
+    for i in range(n_iterations):
+        noise = torch.randn_like(x)
+
+        # Compute potential and gradient at current state
+        x.requires_grad_(True)
+        u_x = potential(x + mu_scheduler(i) * torch.randn_like(x))
+        grad_u_x, = torch.autograd.grad(u_x.sum(), x)
+        x.requires_grad_(False)  # Clear gradients
+        x = x.detach()
+        x.grad = None  # Clear gradients
+
+        # Compute new state
+        x_prime = x - step_size * sqrt_a[None].square() * grad_u_x + math.sqrt(2 * step_size) * sqrt_a[None] * noise
+
+        if adjustment:
+            # Compute potential and gradient at proposed state
+            x_prime.requires_grad_(True)
+            u_x_prime = potential(x_prime)
+            grad_u_x_prime, = torch.autograd.grad(u_x_prime.sum(), x_prime)
+            x_prime.requires_grad_(False)  # Clear gradients
+            x_prime = x_prime.detach()
+            x_prime.grad = None  # Clear gradients
+
+            # Perform metropolis adjustment (MALA)
+            log_ratio = metropolis_acceptance_log_ratio(
+                log_prob_curr=-u_x,
+                log_prob_prime=-u_x_prime,
+                log_proposal_curr=-proposal_potential(x, x_prime, grad_u_x_prime, sqrt_a ** 2, step_size),
+                log_proposal_prime=-proposal_potential(x_prime, x, grad_u_x, sqrt_a ** 2, step_size)
+            )
+            adjustment_mask = torch.as_tensor(torch.log(torch.rand(n_chains)) < log_ratio)
+            acceptance_rate = float(torch.mean(adjustment_mask.float()))
+        else:
+            # No adjustment (ULA)
+            adjustment_mask = torch.ones(n_chains, dtype=torch.bool)
+        x[adjustment_mask] = x_prime[adjustment_mask]
+
+        xs.append(deepcopy(x))
+
+    return torch.stack(xs)

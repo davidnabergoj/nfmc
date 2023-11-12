@@ -5,13 +5,13 @@ import torch
 from normalizing_flows import Flow
 
 
-def ns(n_live_points: int,
-       prior: Any,
-       log_likelihood: callable,
-       flow: Flow,
-       n_iterations: int = 1000,
-       latent_scale: float = 1.0,  # instead of radius
-       n_population_draws: int = 50):
+def nested_sampling_base(n_live_points: int,
+                         prior: Any,
+                         log_likelihood: callable,
+                         flow: Flow,
+                         n_iterations: int = 1000,
+                         latent_scale: float = 1.0,  # instead of radius
+                         n_population_draws: int = 50):
     n_rs_iterations = 2 * n_live_points
 
     x = prior.sample(n_live_points)

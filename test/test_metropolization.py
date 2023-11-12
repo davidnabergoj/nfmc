@@ -1,7 +1,9 @@
 import torch
 
 from nfmc.util import metropolis_acceptance_log_ratio
-from potentials.synthetic.gaussian import StandardGaussian, DiagonalGaussian
+from potentials.synthetic.gaussian.unit import StandardGaussian
+from potentials.synthetic.gaussian.diagonal import DiagonalGaussian
+
 
 
 def test_log_ratio():

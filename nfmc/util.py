@@ -2,6 +2,89 @@ import math
 
 import torch
 
+# TODO add constants file to refer to NFs
+
+from normalizing_flows import Flow
+from normalizing_flows.bijections import (
+    RealNVP,
+    MAF,
+    IAF,
+    CouplingRQNSF,
+    MaskedAutoregressiveRQNSF,
+    CouplingLRS,
+    MaskedAutoregressiveLRS,
+    OTFlow,
+    FFJORD,
+    ResFlow,
+    InvertibleResNet,
+    DeepDiffeomorphicBijection,
+    NICE
+)
+
+
+def get_supported_normalizing_flows():
+    return [
+        "nice",
+        "realnvp",
+        "maf",
+        "iaf",
+        "c-rqnsf",
+        "ar-rqnsf",
+        "c-lrsnsf",
+        "ar-lrsnsf",
+        # "c-naf",
+        # "ar-naf",
+        # "c-bnaf",
+        # "ar-bnaf",
+        # "umnn-maf",
+        # "planar",
+        # "radial",
+        # "sylvester",
+        # "i-resnet",
+        # "resflow",
+        # "proximal-resflow",
+        # "ffjord",
+        # "rnode",
+        # "ddnf",
+        # "ot-flow",
+    ]
+
+
+def create_flow_object(flow_name: str, event_shape, **kwargs):
+    assert flow_name in get_supported_normalizing_flows()
+    flow_name = flow_name.lower()
+
+    if flow_name in ["realnvp"]:
+        bijection = RealNVP(event_shape, **kwargs)
+    elif flow_name in ["nice"]:
+        bijection = NICE(event_shape, **kwargs)
+    elif flow_name in ['maf']:
+        bijection = MAF(event_shape, **kwargs)
+    elif flow_name in ['iaf']:
+        bijection = IAF(event_shape, **kwargs)
+    elif flow_name in ['c-rqnsf']:
+        bijection = CouplingRQNSF(event_shape, **kwargs)
+    elif flow_name in ['ar-rqnsf']:
+        bijection = MaskedAutoregressiveRQNSF(event_shape, **kwargs)
+    elif flow_name in ['c-lrsnsf']:
+        bijection = CouplingLRS(event_shape, **kwargs)
+    elif flow_name in ['ar-lrsnsf']:
+        bijection = MaskedAutoregressiveLRS(event_shape, **kwargs)
+    elif flow_name in ['ot-flow', 'otflow']:
+        bijection = OTFlow(event_shape, **kwargs)
+    elif flow_name in ['ffjord']:
+        bijection = FFJORD(event_shape, **kwargs)
+    elif flow_name in ['iresnet', 'invertible resnet', 'invertible-resnet', 'i-resnet']:
+        bijection = InvertibleResNet(event_shape, **kwargs)
+    elif flow_name in ['resflow', 'residual flow', 'residual-flow', 'res-flow']:
+        bijection = ResFlow(event_shape, **kwargs)
+    elif flow_name in ['ddnf']:
+        bijection = DeepDiffeomorphicBijection(event_shape, **kwargs)
+    else:
+        raise ValueError
+
+    return Flow(bijection)
+
 
 def metropolis_acceptance_log_ratio(
         log_prob_curr,
