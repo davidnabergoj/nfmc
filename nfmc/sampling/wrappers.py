@@ -5,7 +5,7 @@ from potentials.synthetic.gaussian.unit import StandardGaussian
 from nfmc.sampling.neutra import neutra_hmc_base
 from nfmc.sampling.elliptical import transport_elliptical_slice_sampler, elliptical_slice_sampler
 from nfmc.sampling.independent_metropolis_hastings import independent_metropolis_hastings_base
-from nfmc.sampling.langevin_algorithm import metropolis_adjusted_langevin_algorithm_base, \
+from nfmc.sampling.jump.langevin_monte_carlo import metropolis_adjusted_langevin_algorithm_base, \
     unadjusted_langevin_algorithm_base
 from nfmc.sampling.deterministic_langevin import deterministic_langevin_monte_carlo_base
 from nfmc.util import create_flow_object
