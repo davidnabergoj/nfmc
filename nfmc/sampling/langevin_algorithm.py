@@ -19,15 +19,17 @@ def langevin_algorithm_base(x0: torch.Tensor,
                             show_progress: bool = True,
                             **kwargs):
     n_chains, *event_shape = x0.shape
+    n_dim = int(torch.prod(torch.as_tensor(event_shape)))
 
     x = deepcopy(x0)
 
     # Burnin to get to the typical set
-    x = base_langevin(
+    x, kernel_params = base_langevin(
         x0=x,
         n_iterations=burnin,
         full_output=False,
         potential=potential,
+        return_kernel_parameters=True,
         **kwargs
     )
 
@@ -41,7 +43,13 @@ def langevin_algorithm_base(x0: torch.Tensor,
 
     # Langevin with NF jumps
     if show_progress:
-        iterator = tqdm(range(n_jumps), desc='NF Langevin algorithm')
+        iterator = tqdm(
+            range(n_jumps),
+            desc=f'NF-LMC ({n_chains} chains, '
+                 f'{n_dim} dimensions, '
+                 f'{jump_period} LMC iterations per jump, '
+                 f'{"adjusted" if nf_adjustment else "unadjusted"})'
+        )
     else:
         iterator = range(n_jumps)
 
@@ -50,11 +58,12 @@ def langevin_algorithm_base(x0: torch.Tensor,
 
     for _ in iterator:
         assert torch.all(torch.isfinite(x))
-        x_lng = base_langevin(
+        x_lng, kernel_params = base_langevin(
             x0=x,
             n_iterations=jump_period - 1,
             potential=potential,
-            **kwargs
+            return_kernel_parameters=True,
+            **{**kwargs, **kernel_params}  # Reuse old kernel parameters and have them overwrite whatever is in kwargs
         )  # (n_steps, n_chains, *event_shape)
         assert torch.all(torch.isfinite(x_lng))
         xs.append(x_lng)
@@ -76,14 +85,21 @@ def langevin_algorithm_base(x0: torch.Tensor,
             ).cpu()
             acceptance_mask = torch.rand_like(log_alpha).log() < log_alpha
             x[acceptance_mask] = x_proposed[acceptance_mask]
-            accepted += int(torch.sum(torch.as_tensor(acceptance_mask).float()))
+            n_current_accepted = int(torch.sum(torch.as_tensor(acceptance_mask).float()))
+            accepted += n_current_accepted
         else:
             x = x_proposed
-            accepted += n_chains
+            n_current_accepted = n_chains
+            accepted += n_current_accepted
         total += n_chains
 
         if show_progress:
-            iterator.set_postfix_str(f'accept-frac: {accepted / total:.4f}')
+            iterator.set_postfix_str(
+                f'current accepted fraction: {n_current_accepted / n_chains:.3f}, '
+                f'total accepted fraction: {accepted / total:.3f}, '
+                f'step: {kernel_params["step_size"]:.3f}, '
+                f'norm(inv_mass_diag): {torch.linalg.norm(kernel_params["inv_mass_diag"]):.3f}'
+            )
 
         # x.shape = (n_chains, n_dim)
 
