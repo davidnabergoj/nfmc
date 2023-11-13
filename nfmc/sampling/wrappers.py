@@ -23,15 +23,23 @@ def mala(target: Potential, flow: str, n_chains: int = 100, n_iterations: int = 
     )
 
 
-def ula(target: Potential, flow: str, n_chains: int = 100, n_iterations: int = 100, jump_period: int = 50):
+def ula(target: Potential,
+        flow: str,
+        n_chains: int = 100,
+        n_iterations: int = 100,
+        jump_period: int = 50,
+        x0: torch.Tensor = None,
+        **kwargs):
     flow_object = create_flow_object(flow_name=flow, event_shape=target.event_shape)
-    x0 = torch.randn(size=(n_chains, *target.event_shape))
+    if x0 is None:
+        x0 = torch.randn(size=(n_chains, *target.event_shape))
     return unadjusted_langevin_algorithm_base(
         x0,
         flow_object,
         target,
         n_jumps=n_iterations,
-        jump_period=jump_period
+        jump_period=jump_period,
+        **kwargs
     )
 
 
