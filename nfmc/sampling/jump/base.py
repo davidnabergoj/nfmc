@@ -45,8 +45,8 @@ class JumpMCMC:
                             total_accepted: int,
                             total_seen: int):
         progress_bar.set_postfix_str(
-            f'current accepted fraction: {n_current_accepted / n_chains:.3f}, '
-            f'total accepted fraction: {total_accepted / total_seen:.3f}, '
+            f'current accepted jump fraction: {n_current_accepted / n_chains:.3f}, '
+            f'total accepted jump fraction: {total_accepted / total_seen:.3f}, '
         )
 
     def sample_mcmc(self, x: torch.Tensor):

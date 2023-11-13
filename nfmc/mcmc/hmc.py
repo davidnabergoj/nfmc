@@ -53,9 +53,12 @@ def hmc(x0: torch.Tensor,
         n_iterations: int = 1000,
         n_leapfrog_steps: int = 15,
         step_size: float = None,
-        full_output: bool = False,
+        full_output: bool = True,
         target_acceptance_rate: float = 0.651,
-        show_progress: bool = False):
+        show_progress: bool = False,
+        inv_mass_diag: torch.Tensor = None,
+        return_kernel_parameters: bool = False,
+        adjustment: bool = True):
     n_chains, *event_shape = x0.shape
 
     xs = torch.zeros(size=(n_iterations, *x0.shape), dtype=x0.dtype)
@@ -64,15 +67,16 @@ def hmc(x0: torch.Tensor,
     if step_size is None:
         step_size = n_dim ** (-1 / 4)
     dual_avg = DualAveraging(math.log(step_size))
-    inv_mass_diag = torch.std(x0, dim=0)  # has shape: event_shape
+    if inv_mass_diag is None:
+        inv_mass_diag = torch.std(x0, dim=0)  # has shape: event_shape
 
     if show_progress:
         iterator = tqdm(range(n_iterations), desc='HMC')
     else:
         iterator = range(n_iterations)
 
-    accepted = 0
-    total = 0
+    total_accepted = 0
+    total_seen = 0
 
     for i in iterator:
         initial_momentum = torch.randn_like(x) / inv_mass_diag.sqrt()[None]
@@ -84,39 +88,51 @@ def hmc(x0: torch.Tensor,
             n_leapfrog_steps,
             potential
         )
-        with torch.no_grad():
-            log_alpha = metropolis_acceptance_log_ratio(
-                log_prob_curr=-potential(x) - 0.5 * sum_except_batch(
-                    initial_momentum ** 2 * inv_mass_diag,
-                    event_shape=event_shape
-                ),
-                log_prob_prime=-potential(x_prime) - 0.5 * sum_except_batch(
-                    momentum_prime ** 2 * inv_mass_diag,
-                    event_shape=event_shape
-                ),
-                log_proposal_curr=0.0,
-                log_proposal_prime=0.0
-            )  # batch_shape
-            log_u = torch.rand_like(log_alpha).log()  # n_chains
-            accepted_mask = torch.less(log_u, log_alpha)  # n_chains
-            x[accepted_mask] = x_prime[accepted_mask]
-            x = x.detach()
+        if adjustment:
+            with torch.no_grad():
+                log_alpha = metropolis_acceptance_log_ratio(
+                    log_prob_curr=-potential(x) - 0.5 * sum_except_batch(
+                        initial_momentum ** 2 * inv_mass_diag,
+                        event_shape=event_shape
+                    ),
+                    log_prob_prime=-potential(x_prime) - 0.5 * sum_except_batch(
+                        momentum_prime ** 2 * inv_mass_diag,
+                        event_shape=event_shape
+                    ),
+                    log_proposal_curr=0.0,
+                    log_proposal_prime=0.0
+                )  # batch_shape
+                log_u = torch.rand_like(log_alpha).log()  # n_chains
+                accepted_mask = torch.less(log_u, log_alpha)  # n_chains
+                x[accepted_mask] = x_prime[accepted_mask]
+                x = x.detach()
 
-            inv_mass_diag = torch.std(x0, dim=0)
-            acceptance_rate = float(torch.mean(accepted_mask.float()))
-            dual_avg.step(target_acceptance_rate - acceptance_rate)
-            step_size = math.exp(dual_avg.value)
+                inv_mass_diag = torch.std(x0, dim=0)
+                acceptance_rate = float(torch.mean(accepted_mask.float()))
+                dual_avg.step(target_acceptance_rate - acceptance_rate)
+                step_size = math.exp(dual_avg.value)
 
-            accepted += int(torch.sum(accepted_mask))
-            total += n_chains
+                total_accepted += int(torch.sum(accepted_mask))
+        else:
+            x = x_prime
+            total_accepted += n_chains
+        total_seen += n_chains
 
-            if show_progress:
-                iterator.set_postfix_str(f'accept-frac: {accepted / total:.4f}')
+        if show_progress:
+            iterator.set_postfix_str(f'accept-frac: {total_accepted / total_seen:.4f}')
 
-            if full_output:
-                xs[i] = deepcopy(x)
+        if full_output:
+            xs[i] = deepcopy(x)
 
     if full_output:
-        return xs.detach()
+        ret_x = xs.detach()
     else:
-        return x.detach()
+        ret_x = x.detach()
+
+    if return_kernel_parameters:
+        return ret_x, {
+            "inv_mass_diag": inv_mass_diag,
+            "step_size": step_size
+        }
+    else:
+        return ret_x

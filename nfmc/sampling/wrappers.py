@@ -1,5 +1,6 @@
 import torch
 
+from nfmc.sampling.jump.hamiltonian_monte_carlo import adjusted_hmc_base, unadjusted_hmc_base
 from potentials.base import Potential
 from potentials.synthetic.gaussian.unit import StandardGaussian
 from nfmc.sampling.neutra import neutra_hmc_base
@@ -11,7 +12,47 @@ from nfmc.sampling.deterministic_langevin import deterministic_langevin_monte_ca
 from nfmc.util import create_flow_object
 
 
-def mala(target: Potential, flow: str, n_chains: int = 100, n_iterations: int = 100, jump_period: int = 50):
+def nf_hmc(target: Potential,
+           flow: str,
+           n_chains: int = 100,
+           n_iterations: int = 100,
+           n_mcmc_steps_per_iteration: int = 50,
+           x0: torch.Tensor = None,
+           **kwargs):
+    flow_object = create_flow_object(flow_name=flow, event_shape=target.event_shape)
+    if x0 is None:
+        x0 = torch.randn(size=(n_chains, *target.event_shape))
+    return adjusted_hmc_base(
+        x0,
+        flow_object,
+        target,
+        n_jumps=n_iterations,
+        jump_period=n_mcmc_steps_per_iteration,
+        **kwargs
+    )
+
+
+def nf_uhmc(target: Potential,
+            flow: str,
+            n_chains: int = 100,
+            n_iterations: int = 100,
+            n_mcmc_steps_per_iteration: int = 50,
+            x0: torch.Tensor = None,
+            **kwargs):
+    flow_object = create_flow_object(flow_name=flow, event_shape=target.event_shape)
+    if x0 is None:
+        x0 = torch.randn(size=(n_chains, *target.event_shape))
+    return unadjusted_hmc_base(
+        x0,
+        flow_object,
+        target,
+        n_jumps=n_iterations,
+        n_mcmc_steps_per_jump=n_mcmc_steps_per_iteration,
+        **kwargs
+    )
+
+
+def nf_mala(target: Potential, flow: str, n_chains: int = 100, n_iterations: int = 100, jump_period: int = 50):
     flow_object = create_flow_object(flow_name=flow, event_shape=target.event_shape)
     x0 = torch.randn(size=(n_chains, *target.event_shape))
     return metropolis_adjusted_langevin_algorithm_base(
@@ -23,13 +64,13 @@ def mala(target: Potential, flow: str, n_chains: int = 100, n_iterations: int = 
     )
 
 
-def ula(target: Potential,
-        flow: str,
-        n_chains: int = 100,
-        n_iterations: int = 100,
-        jump_period: int = 50,
-        x0: torch.Tensor = None,
-        **kwargs):
+def nf_ula(target: Potential,
+           flow: str,
+           n_chains: int = 100,
+           n_iterations: int = 100,
+           jump_period: int = 50,
+           x0: torch.Tensor = None,
+           **kwargs):
     flow_object = create_flow_object(flow_name=flow, event_shape=target.event_shape)
     if x0 is None:
         x0 = torch.randn(size=(n_chains, *target.event_shape))
@@ -43,7 +84,7 @@ def ula(target: Potential,
     )
 
 
-def imh(target: Potential, flow: str, n_chains: int = 100, n_iterations: int = 1000):
+def nf_imh(target: Potential, flow: str, n_chains: int = 100, n_iterations: int = 1000):
     flow_object = create_flow_object(flow_name=flow, event_shape=target.event_shape)
     x0 = torch.randn(size=(n_chains, *target.event_shape))
     return independent_metropolis_hastings_base(x0, flow_object, target, n_iterations=n_iterations)

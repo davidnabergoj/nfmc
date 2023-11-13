@@ -1,1 +1,1 @@
-from nfmc.sampling.wrappers import ula, mala, imh, tess, neutra_hmc, ess, dlmc
+from nfmc.sampling.wrappers import nf_ula, nf_mala, nf_imh, tess, neutra_hmc, ess, dlmc, nf_hmc, nf_uhmc
