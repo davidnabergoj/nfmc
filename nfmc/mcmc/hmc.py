@@ -4,7 +4,7 @@ from tqdm import tqdm
 import torch
 
 from nfmc.util import metropolis_acceptance_log_ratio, DualAveraging
-from normalizing_flows.utils import sum_except_batch
+from normalizing_flows.utils import sum_except_batch  # Remove this dependence
 
 
 def grad_potential(x: torch.Tensor, potential: callable):

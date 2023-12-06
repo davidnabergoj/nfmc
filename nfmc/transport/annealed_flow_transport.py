@@ -12,80 +12,186 @@ from normalizing_flows.bijections.base import Bijection
 from potentials.base import Potential
 
 
-def smc_flow_step(
-        x,
-        bijection,
-        prev_potential,
-        next_potential,
-        log_W,
-        log_Z,
-        sampling_threshold,
-        mcmc_sampler: callable = None
-):
-    n_particles, *event_shape = x.shape
-    x_tilde, log_det = bijection.forward(x)
-
+def compute_smc_flow_step_quantities(x: torch.Tensor,
+                                     x_tilde: torch.Tensor,
+                                     log_W: torch.Tensor,
+                                     log_det: torch.Tensor,
+                                     prev_potential: callable,
+                                     next_potential: callable):
     log_G = next_potential(x_tilde) + log_det - prev_potential(x)
     log_w = torch.logaddexp(log_W, log_G)
-    log_Z += torch.sum(log_w)
     log_W = log_w - torch.logsumexp(log_w, dim=0)
-    log_ess = - torch.logsumexp(2 * log_w, dim=0)
+    return {
+        'log_W': log_W,
+        'log_w': log_w
+    }
 
-    if log_ess - math.log(n_particles) <= math.log(sampling_threshold):
-        cat_dist = torch.distributions.Categorical(logits=log_w)
-        resampled_indices = cat_dist.sample(sample_shape=torch.Size((n_particles,))).long()
-        x = x_tilde[resampled_indices]
-        log_W = torch.full(size=(n_particles,), fill_value=math.log(1 / n_particles))
-    else:
-        x = x_tilde  # Not explicitly stated in pseudocode, but probably true
+
+def detach_all(*args: torch.Tensor):
+    for tensor in args:
+        tensor.detach_()
+
+
+def resample(x_transformed, log_w):
+    n_particles = len(x_transformed)
+    cat_dist = torch.distributions.Categorical(logits=log_w)
+    resampled_indices = cat_dist.sample(sample_shape=torch.Size((n_particles,))).long()
+    return x_transformed[resampled_indices]
+
+
+def smc_flow_step(x_base: torch.Tensor,
+                  x_train: torch.Tensor,
+                  x_val: torch.Tensor,
+                  bijection: Bijection,
+                  prev_potential: callable,
+                  next_potential: callable,
+                  log_W_base: torch.Tensor,
+                  log_W_train: torch.Tensor,
+                  log_W_val: torch.Tensor,
+                  sampling_threshold: float,
+                  mcmc_sampler: callable = None):
+    """Apply a sequential Monte Carlo temperature transition step with a normalizing flow.
+    This means first applying the normalizing flow forward map and then correcting the resulting particle distribution
+    with a MCMC procedure.
+
+    We transform base, training, and validation particles with NF and MCMC as the transformed versions are needed in the
+    remainder of the procedure.
+    We use base particles to estimate the change in log Z, as it does not affect anything else in the procedure.
+    We use training particles to estimate log ESS, as it decides if we resample or not.
+    """
+    n_base = len(x_base)
+    n_train = len(x_train)
+    n_val = len(x_val)
+
+    x_base_transformed, log_det_base = bijection.forward(x_base)
+    x_train_transformed, log_det_train = bijection.forward(x_train)
+    x_val_transformed, log_det_val = bijection.forward(x_val)
+    detach_all(
+        x_base_transformed,
+        x_train_transformed,
+        x_val_transformed,
+        log_det_base,
+        log_det_train,
+        log_det_val
+    )
+
+    data_base = compute_smc_flow_step_quantities(
+        x_base,
+        x_base_transformed,
+        log_W_base,
+        log_det_base,
+        prev_potential,
+        next_potential
+    )
+    data_train = compute_smc_flow_step_quantities(
+        x_train,
+        x_train_transformed,
+        log_W_train,
+        log_det_train,
+        prev_potential,
+        next_potential
+    )
+    data_val = compute_smc_flow_step_quantities(
+        x_val,
+        x_val_transformed,
+        log_W_val,
+        log_det_val,
+        prev_potential,
+        next_potential
+    )
+
+    log_ess_train = -torch.logsumexp(2 * data_train['log_w'], dim=0)
+    log_ess_base = -torch.logsumexp(2 * data_base['log_w'], dim=0)  # Only for monitoring
+    delta_log_Z = torch.sum(data_base['log_w'])
+
+    if log_ess_train - math.log(n_train) <= math.log(sampling_threshold):
+        x_base_transformed = resample(x_base_transformed, data_base['log_w'])
+        x_train_transformed = resample(x_train_transformed, data_train['log_w'])
+        x_val_transformed = resample(x_val_transformed, data_val['log_w'])
+
+        log_W_base = torch.full(size=(n_base,), fill_value=math.log(1 / n_base))
+        log_W_train = torch.full(size=(n_train,), fill_value=math.log(1 / n_train))
+        log_W_val = torch.full(size=(n_val,), fill_value=math.log(1 / n_val))
 
     if mcmc_sampler is None:
         mcmc_sampler = hmc
 
-    x = mcmc_sampler(
-        x0=x,
+    # TODO use some particles for tuning while others just get transformed.
+    x_transformed = torch.concat([x_base_transformed, x_train_transformed, x_val_transformed], dim=0)
+    x_corrected = mcmc_sampler(
+        x0=x_transformed,
         potential=next_potential,
         full_output=False
     )
+    x_base_corrected = x_corrected[:n_base]
+    x_train_corrected = x_corrected[n_base:n_base + n_train]
+    x_val_corrected = x_corrected[n_base + n_train:]
 
-    return x, log_Z, log_W
+    return {
+        'x_base': x_base_corrected,
+        'x_train': x_train_corrected,
+        'x_val': x_val_corrected,
+        'log_W_base': log_W_base,
+        'log_W_train': log_W_train,
+        'log_W_val': log_W_val,
+        'delta_log_Z': delta_log_Z,
+        'log_ess_train': log_ess_train,
+        'log_ess_base': log_ess_base
+    }
 
 
 def annealed_flow_transport_base(prior_potential: Potential,
                                  target_potential: Potential,
                                  flow: Flow,
                                  n_particles: int = 100,
+                                 n_train_particles: int = 100,
+                                 n_val_particles: int = 100,
                                  n_steps: int = 20,
                                  sampling_threshold: float = None,
+                                 mcmc_sampler: callable = None,
                                  show_progress: bool = False,
                                  full_output: bool = False):
-    """
-    Linear annealing schedule.
-    Using HMC kernel.
+    """Annealed flow transport algorithm.
+    This algorithm transports particles drawn from a prior distribution to a target distribution in a sequential Monte
+     Carlo scheme.
+    To transport particles between consecutive temperature levels, we first apply the forward map of a
+     normalizing flow, then apply a correction with a Markov Chain Monte Carlo sampler.
+    We use a linear schedule for temperature levels and Hamiltonian Monte Carlo for sample correction.
 
-    :param prior_potential:
-    :param target_potential:
-    :param flow:
-    :param n_particles:
-    :param n_steps:
-    :param sampling_threshold:
-    :return:
+    :param prior_potential: potential function corresponding to the prior distribution.
+    :param target_potential: potential function corresponding to the target distribution.
+    :param flow: normalizing flow object.
+    :param n_particles: number of particles to transport.
+    :param n_steps: number of temperature levels.
+    :param sampling_threshold: threshold that determines when to apply importance resampling.
+     Must be between 1 / n_particles and 1.
+    :param mcmc_sampler: sampler to use as MCMC correction.
+    :param show_progress: if True, display a progress bar.
+    :param full_output: if True, return draws at each temperature level instead of only the last one.
+    :return: draws from the final temperature level with shape (n_particles, n_dim).
     """
-    assert n_particles > 1
+    n_base_particles = n_particles
+    assert n_base_particles > 1
+    assert n_train_particles > 1
+    assert n_val_particles > 1
 
     if sampling_threshold is None:
         # Try setting to 0.3
         if 1 / n_particles <= 0.3:
             sampling_threshold = 0.3
         else:
-            sampling_threshold = 1 / n_particles
+            sampling_threshold = 1 / n_base_particles
+    assert 1 / n_base_particles <= sampling_threshold < 1
 
-    assert 1 / n_particles <= sampling_threshold < 1
-    x = prior_potential.sample(batch_shape=(n_particles,))
-    log_W = torch.full(size=(n_particles,), fill_value=math.log(1 / n_particles))
+    x_base = prior_potential.sample(batch_shape=(n_base_particles,))
+    x_train = prior_potential.sample(batch_shape=(n_train_particles,))
+    x_val = prior_potential.sample(batch_shape=(n_val_particles,))
+    log_W_base = torch.full(size=(n_base_particles,), fill_value=math.log(1 / n_base_particles))
+    log_W_train = torch.full(size=(n_train_particles,), fill_value=math.log(1 / n_train_particles))
+    log_W_val = torch.full(size=(n_val_particles,), fill_value=math.log(1 / n_val_particles))
     log_Z = 0.0
 
-    xs = [deepcopy(x.detach())]
+    xs = [deepcopy(x_base.detach())]
 
     if show_progress:
         iterator = tqdm(range(1, n_steps + 1), desc='AFT')
@@ -94,24 +200,45 @@ def annealed_flow_transport_base(prior_potential: Potential,
 
     for k in iterator:
         with torch.enable_grad():
-            flow.fit(x)
+            # We could fit the NF with importance weights here!
+            flow.fit(x_train, x_val=x_val, early_stopping=True)
         with torch.no_grad():
             prev_lambda = (k - 1) / n_steps
             next_lambda = k / n_steps
-            x, log_Z, log_W = smc_flow_step(
-                x=x,
+            outputs = smc_flow_step(
+                x_base=x_base,
+                x_train=x_train,
+                x_val=x_val,
                 bijection=flow.bijection,
                 prev_potential=lambda v: (1 - prev_lambda) * prior_potential(v) + prev_lambda * target_potential(v),
                 next_potential=lambda v: (1 - next_lambda) * prior_potential(v) + next_lambda * target_potential(v),
-                log_W=log_W,
-                log_Z=log_Z,
-                sampling_threshold=sampling_threshold
+                log_W_base=log_W_base,
+                log_W_train=log_W_train,
+                log_W_val=log_W_val,
+                sampling_threshold=sampling_threshold,
+                mcmc_sampler=mcmc_sampler
             )
-            xs.append(deepcopy(x.detach()))
+            x_base = outputs['x_base']
+            x_train = outputs['x_train']
+            x_val = outputs['x_val']
+            log_W_base = outputs['log_W_base']
+            log_W_train = outputs['log_W_train']
+            log_W_val = outputs['log_W_val']
+            log_Z += outputs['delta_log_Z']
+
+            xs.append(deepcopy(x_base.detach()))
+
+            if show_progress:
+                iterator.set_postfix_str(
+                    f'Temperature: {(1 - next_lambda):.3f}, '
+                    f'log Z: {log_Z:.4f}, '
+                    f'Base log ESS: {outputs["log_ess_base"]:.4f}, '
+                    f'Train log ESS: {outputs["log_ess_train"]:.4f}'
+                )
 
     if full_output:
         return torch.stack(xs)
-    return x
+    return x_base
 
 
 def continual_repeated_annealed_flow_transport_base(prior_potential: Potential,
