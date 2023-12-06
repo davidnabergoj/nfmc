@@ -1,24 +1,37 @@
+from typing import Tuple
+
 import torch
 
-
-def mh_step(x: torch.Tensor, proposal_std: torch.Tensor = None):
-    # metropolis hastings step with a diagonal normal proposal
-    n_chains, n_dim = x.shape
-    if proposal_std is None:
-        proposal_std = torch.ones([1, n_dim], dtype=x.dtype)
-    else:
-        assert proposal_std.shape == (1, n_dim)
-    noise = torch.randn_like(x) * proposal_std
-    x_prime = x + noise
-
-    # return proposed point and log of the metropolis acceptance ratio
-
-    return x_prime
+from nfmc.mcmc.base import Sampler
+from nfmc.util import metropolis_acceptance_log_ratio
 
 
-def mh(
-        x: torch.Tensor,
-        proposal_std: torch.Tensor = None,
-        inv_mass_diag: torch.Tensor = None
-):
-    raise NotImplementedError
+class MetropolisHastings(Sampler):
+    def __init__(self,
+                 n_dim: int,
+                 potential: callable,
+                 proposal_scale: torch.Tensor = None):
+        super().__init__(n_dim, potential)
+        if proposal_scale is None:
+            proposal_scale = torch.ones([1, n_dim], dtype=torch.float)
+        assert proposal_scale.shape == (1, n_dim)
+        self.proposal_scale = proposal_scale
+
+    def step(self, x: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
+        # metropolis hastings step with a diagonal normal proposal
+        noise = torch.randn_like(x) * self.proposal_scale
+        x_prime = x + noise
+        log_alpha = metropolis_acceptance_log_ratio(
+            -self.potential(x),
+            -self.potential(x_prime),
+            0,  # Can set to 0, will get cancelled out with log_proposal_prime
+            0  # Can set to 0, will get cancelled out with log_proposal_curr
+        )
+        return x_prime, log_alpha
+
+
+def mh(x0: torch.Tensor,
+       potential: callable,
+       full_output: bool = True,
+       **kwargs):
+    return MetropolisHastings(x0.shape[1], potential).sample(x0, full_output=full_output, **kwargs)

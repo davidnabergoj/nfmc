@@ -11,6 +11,8 @@ from normalizing_flows import Flow
 from normalizing_flows.bijections.base import Bijection
 from potentials.base import Potential
 
+from nfmc.mcmc.mh import mh
+
 
 def compute_smc_flow_step_quantities(x: torch.Tensor,
                                      x_tilde: torch.Tensor,
@@ -114,7 +116,7 @@ def smc_flow_step(x_base: torch.Tensor,
         log_W_val = torch.full(size=(n_val,), fill_value=math.log(1 / n_val))
 
     if mcmc_sampler is None:
-        mcmc_sampler = hmc
+        mcmc_sampler = mh
 
     # TODO use some particles for tuning while others just get transformed.
     x_transformed = torch.concat([x_base_transformed, x_train_transformed, x_val_transformed], dim=0)
@@ -128,9 +130,12 @@ def smc_flow_step(x_base: torch.Tensor,
     x_val_corrected = x_corrected[n_base + n_train:]
 
     return {
-        'x_base': x_base_corrected,
-        'x_train': x_train_corrected,
-        'x_val': x_val_corrected,
+        'x_base_corrected': x_base_corrected,
+        'x_train_corrected': x_train_corrected,
+        'x_val_corrected': x_val_corrected,
+        'x_base_transformed': x_base_transformed,
+        'x_train_transformed': x_train_transformed,
+        'x_val_transformed': x_val_transformed,
         'log_W_base': log_W_base,
         'log_W_train': log_W_train,
         'log_W_val': log_W_val,
@@ -191,53 +196,83 @@ def annealed_flow_transport_base(prior_potential: Potential,
     log_W_val = torch.full(size=(n_val_particles,), fill_value=math.log(1 / n_val_particles))
     log_Z = 0.0
 
-    xs = [deepcopy(x_base.detach())]
+    if full_output:
+        n_dim = x_base.shape[1]
+        transformed_history = torch.zeros(
+            size=(n_steps - 1, n_base_particles, n_dim),
+            dtype=torch.float,
+            requires_grad=False
+        )
+        corrected_history = torch.zeros(
+            size=(n_steps - 1, n_base_particles, n_dim),
+            dtype=torch.float,
+            requires_grad=False
+        )
+        x_base_initial = deepcopy(x_base.detach().clone())
 
     if show_progress:
-        iterator = tqdm(range(1, n_steps + 1), desc='AFT')
+        iterator = tqdm(range(1, n_steps), desc='AFT')
     else:
-        iterator = range(1, n_steps + 1)
+        iterator = range(1, n_steps)
 
     for k in iterator:
         with torch.enable_grad():
             # We could fit the NF with importance weights here!
             flow.fit(x_train, x_val=x_val, early_stopping=True)
         with torch.no_grad():
-            prev_lambda = (k - 1) / n_steps
-            next_lambda = k / n_steps
+            prev_inv_temperature = (k - 1) / (n_steps - 1)
+            curr_inv_temperature = k / (n_steps - 1)
             outputs = smc_flow_step(
                 x_base=x_base,
                 x_train=x_train,
                 x_val=x_val,
                 bijection=flow.bijection,
-                prev_potential=lambda v: (1 - prev_lambda) * prior_potential(v) + prev_lambda * target_potential(v),
-                next_potential=lambda v: (1 - next_lambda) * prior_potential(v) + next_lambda * target_potential(v),
+                prev_potential=lambda v: (1 - prev_inv_temperature) * prior_potential(
+                    v) + prev_inv_temperature * target_potential(v),
+                next_potential=lambda v: (1 - curr_inv_temperature) * prior_potential(
+                    v) + curr_inv_temperature * target_potential(v),
                 log_W_base=log_W_base,
                 log_W_train=log_W_train,
                 log_W_val=log_W_val,
                 sampling_threshold=sampling_threshold,
                 mcmc_sampler=mcmc_sampler
             )
-            x_base = outputs['x_base']
-            x_train = outputs['x_train']
-            x_val = outputs['x_val']
+            x_base = outputs['x_base_corrected']
+            x_train = outputs['x_train_corrected']
+            x_val = outputs['x_val_corrected']
             log_W_base = outputs['log_W_base']
             log_W_train = outputs['log_W_train']
             log_W_val = outputs['log_W_val']
             log_Z += outputs['delta_log_Z']
 
-            xs.append(deepcopy(x_base.detach()))
+            if full_output:
+                transformed_history[k - 1] = outputs['x_base_transformed']
+                corrected_history[k - 1] = outputs['x_base_corrected']
 
             if show_progress:
                 iterator.set_postfix_str(
-                    f'Temperature: {(1 - next_lambda):.3f}, '
+                    f'Temperature: {(1 - curr_inv_temperature):.2f}, '
                     f'log Z: {log_Z:.4f}, '
                     f'Base log ESS: {outputs["log_ess_base"]:.4f}, '
                     f'Train log ESS: {outputs["log_ess_train"]:.4f}'
                 )
 
     if full_output:
-        return torch.stack(xs)
+        outputs = torch.zeros(
+            size=(1 + 2 * (n_steps - 1), n_base_particles, n_dim),
+            dtype=torch.float,
+            requires_grad=False
+        )
+        outputs[0] = x_base_initial
+
+        transformed_mask = torch.arange(len(outputs)) % 2 == 1
+        outputs[transformed_mask] = transformed_history
+
+        corrected_mask = torch.as_tensor(~transformed_mask)
+        corrected_mask[0] = 0
+        outputs[corrected_mask] = corrected_history
+
+        return outputs
     return x_base
 
 

@@ -6,7 +6,7 @@ import torch
 import torch.nn as nn
 import torch.optim as optim
 
-from nfmc.mcmc.mh import mh_step, mh
+from nfmc.mcmc.mh import mh
 from normalizing_flows.bijections import RealNVP
 from normalizing_flows.bijections.base import Bijection
 from potentials.base import Potential
