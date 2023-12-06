@@ -12,8 +12,8 @@ or only one.
 | Unadjusted Langevin algorithm                          |    NF-ULA    |       Sampling        |               Yes               |       No       |
 | NeuTra HMC                                             |    NeuTra    |       Sampling        |               No                |       No       |
 | Transport elliptical slice sampling                    |     TESS     |       Sampling        |               Yes               |       No       |
+| Deterministic Langevin Monte Carlo                     |     DLMC     |       Sampling        |               *No               |      Yes       |
 | Nested sampling                                        |    NESSAI    |       Transport       |               Yes               |      Yes       |
-| Deterministic Langevin Monte Carlo                     |     DLMC     |       Transport       |               *No               |      Yes       |
 | Stochastic normalizing flows                           |     SNF      |       Transport       |               No                |      Yes       |
 | Preconditioned Monte Carlo                             |     PMC      |       Transport       |               Yes               |      Yes       |
 | Annealed flow transport Monte Carlo                    |     AFT      |       Transport       |               No                |      Yes       |
