@@ -5,7 +5,7 @@ import torch
 
 
 class Sampler:
-    def __init__(self, n_dim: int, potential: callable, adjusted: bool = False):
+    def __init__(self, n_dim: int, potential: callable, adjusted: bool = True):
         self.n_dim = n_dim
         self.potential = potential
         self.adjusted = adjusted
@@ -19,10 +19,10 @@ class Sampler:
                log_alpha: torch.Tensor) -> torch.Tensor:
         # Apply "accept/reject" step (adjustment).
         log_u = torch.log(torch.rand_like(log_alpha))
-        x = torch.clone(x_current)
+        x_new = torch.clone(x_current)
         mask = log_u < log_alpha
-        x[mask] = x_proposed[mask]
-        return x
+        x_new[mask] = x_proposed[mask]
+        return x_new
 
     def adapt(self):
         # optionally adapt the kernel
@@ -49,6 +49,8 @@ class Sampler:
             log_alpha = log_alpha.detach()
             if self.adjusted:
                 x = self.adjust(x_proposed, x, log_alpha)
+            else:
+                x = x_proposed
             if full_output:
                 draws[i] = torch.clone(x)
             self.adapt()
