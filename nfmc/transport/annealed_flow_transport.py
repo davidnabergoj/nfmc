@@ -6,7 +6,6 @@ from tqdm import tqdm
 import torch
 import torch.optim as optim
 
-from nfmc.mcmc.hmc import hmc
 from normalizing_flows import Flow
 from normalizing_flows.bijections.base import Bijection
 from potentials.base import Potential
@@ -38,7 +37,7 @@ def resample(x_transformed, log_w):
     n_particles = len(x_transformed)
     cat_dist = torch.distributions.Categorical(logits=log_w)
     resampled_indices = cat_dist.sample(sample_shape=torch.Size((n_particles,))).long()
-    return x_transformed[resampled_indices]
+    return deepcopy(x_transformed[resampled_indices])
 
 
 def smc_flow_step(x_base: torch.Tensor,
@@ -107,32 +106,38 @@ def smc_flow_step(x_base: torch.Tensor,
     delta_log_Z = torch.sum(data_base['log_w'])
 
     if log_ess_train - math.log(n_train) <= math.log(sampling_threshold):
-        x_base_transformed = resample(x_base_transformed, data_base['log_w'])
-        x_train_transformed = resample(x_train_transformed, data_train['log_w'])
-        x_val_transformed = resample(x_val_transformed, data_val['log_w'])
+        x_base_resampled = resample(x_base_transformed, data_base['log_w'])
+        x_train_resampled = resample(x_train_transformed, data_train['log_w'])
+        x_val_resampled = resample(x_val_transformed, data_val['log_w'])
 
         log_W_base = torch.full(size=(n_base,), fill_value=math.log(1 / n_base))
         log_W_train = torch.full(size=(n_train,), fill_value=math.log(1 / n_train))
         log_W_val = torch.full(size=(n_val,), fill_value=math.log(1 / n_val))
+    else:
+        x_base_resampled = deepcopy(x_base_transformed)
+        x_train_resampled = deepcopy(x_train_transformed)
+        x_val_resampled = deepcopy(x_val_transformed)
 
     if mcmc_sampler is None:
         mcmc_sampler = mh
 
-    # TODO use some particles for tuning while others just get transformed.
-    x_transformed = torch.concat([x_base_transformed, x_train_transformed, x_val_transformed], dim=0)
+    x_resampled = torch.concat([x_base_resampled, x_train_resampled, x_val_resampled], dim=0)
     x_corrected = mcmc_sampler(
-        x0=x_transformed,
+        x0=x_resampled,
         potential=next_potential,
         full_output=False
     )
-    x_base_corrected = x_corrected[:n_base]
-    x_train_corrected = x_corrected[n_base:n_base + n_train]
-    x_val_corrected = x_corrected[n_base + n_train:]
+    x_base_corrected = deepcopy(x_corrected[:n_base])
+    x_train_corrected = deepcopy(x_corrected[n_base:n_base + n_train])
+    x_val_corrected = deepcopy(x_corrected[n_base + n_train:])
 
     return {
         'x_base_corrected': x_base_corrected,
         'x_train_corrected': x_train_corrected,
         'x_val_corrected': x_val_corrected,
+        'x_base_resampled': x_base_resampled,
+        'x_train_resampled': x_train_resampled,
+        'x_val_resampled': x_val_resampled,
         'x_base_transformed': x_base_transformed,
         'x_train_transformed': x_train_transformed,
         'x_val_transformed': x_val_transformed,
@@ -203,6 +208,11 @@ def annealed_flow_transport_base(prior_potential: Potential,
             dtype=torch.float,
             requires_grad=False
         )
+        resampled_history = torch.zeros(
+            size=(n_steps - 1, n_base_particles, n_dim),
+            dtype=torch.float,
+            requires_grad=False
+        )
         corrected_history = torch.zeros(
             size=(n_steps - 1, n_base_particles, n_dim),
             dtype=torch.float,
@@ -216,61 +226,67 @@ def annealed_flow_transport_base(prior_potential: Potential,
         iterator = range(1, n_steps)
 
     for k in iterator:
+        prev_inv_temperature = (k - 1) / (n_steps - 1)
+        curr_inv_temperature = k / (n_steps - 1)
+
+        u_prev = lambda v: (1 - prev_inv_temperature) * prior_potential(v) + prev_inv_temperature * target_potential(v)
+        u_next = lambda v: (1 - curr_inv_temperature) * prior_potential(v) + curr_inv_temperature * target_potential(v)
+
         with torch.enable_grad():
             # We could fit the NF with importance weights here!
+            flow.base_log_prob = lambda x: -u_next(x)  # Overwrite the base log probability
             flow.fit(x_train, x_val=x_val, early_stopping=True)
-        with torch.no_grad():
-            prev_inv_temperature = (k - 1) / (n_steps - 1)
-            curr_inv_temperature = k / (n_steps - 1)
-            outputs = smc_flow_step(
-                x_base=x_base,
-                x_train=x_train,
-                x_val=x_val,
-                bijection=flow.bijection,
-                prev_potential=lambda v: (1 - prev_inv_temperature) * prior_potential(
-                    v) + prev_inv_temperature * target_potential(v),
-                next_potential=lambda v: (1 - curr_inv_temperature) * prior_potential(
-                    v) + curr_inv_temperature * target_potential(v),
-                log_W_base=log_W_base,
-                log_W_train=log_W_train,
-                log_W_val=log_W_val,
-                sampling_threshold=sampling_threshold,
-                mcmc_sampler=mcmc_sampler
+
+        outputs = smc_flow_step(
+            x_base=x_base,
+            x_train=x_train,
+            x_val=x_val,
+            bijection=flow.bijection,
+            prev_potential=u_prev,
+            next_potential=u_next,
+            log_W_base=log_W_base,
+            log_W_train=log_W_train,
+            log_W_val=log_W_val,
+            sampling_threshold=sampling_threshold,
+            mcmc_sampler=mcmc_sampler
+        )
+        x_base = outputs['x_base_corrected']
+        x_train = outputs['x_train_corrected']
+        x_val = outputs['x_val_corrected']
+        log_W_base = outputs['log_W_base']
+        log_W_train = outputs['log_W_train']
+        log_W_val = outputs['log_W_val']
+        log_Z += outputs['delta_log_Z']
+
+        if full_output:
+            transformed_history[k - 1] = outputs['x_base_transformed']
+            resampled_history[k - 1] = outputs['x_base_resampled']
+            corrected_history[k - 1] = outputs['x_base_corrected']
+
+        if show_progress:
+            iterator.set_postfix_str(
+                f'Temperature: {(1 - curr_inv_temperature):.2f}, '
+                f'log Z: {log_Z:.4f}, '
+                f'Base log ESS: {outputs["log_ess_base"]:.4f}, '
+                f'Train log ESS: {outputs["log_ess_train"]:.4f}'
             )
-            x_base = outputs['x_base_corrected']
-            x_train = outputs['x_train_corrected']
-            x_val = outputs['x_val_corrected']
-            log_W_base = outputs['log_W_base']
-            log_W_train = outputs['log_W_train']
-            log_W_val = outputs['log_W_val']
-            log_Z += outputs['delta_log_Z']
-
-            if full_output:
-                transformed_history[k - 1] = outputs['x_base_transformed']
-                corrected_history[k - 1] = outputs['x_base_corrected']
-
-            if show_progress:
-                iterator.set_postfix_str(
-                    f'Temperature: {(1 - curr_inv_temperature):.2f}, '
-                    f'log Z: {log_Z:.4f}, '
-                    f'Base log ESS: {outputs["log_ess_base"]:.4f}, '
-                    f'Train log ESS: {outputs["log_ess_train"]:.4f}'
-                )
 
     if full_output:
         outputs = torch.zeros(
-            size=(1 + 2 * (n_steps - 1), n_base_particles, n_dim),
+            size=(1 + 3 * (n_steps - 1), n_base_particles, n_dim),
             dtype=torch.float,
             requires_grad=False
         )
         outputs[0] = x_base_initial
 
-        transformed_mask = torch.arange(len(outputs)) % 2 == 1
-        outputs[transformed_mask] = transformed_history
+        transformed_idx = torch.arange(1, len(outputs), 3)
+        outputs[transformed_idx] = transformed_history
 
-        corrected_mask = torch.as_tensor(~transformed_mask)
-        corrected_mask[0] = 0
-        outputs[corrected_mask] = corrected_history
+        resampled_idx = torch.arange(2, len(outputs), 3)
+        outputs[resampled_idx] = resampled_history
+
+        corrected_idx = torch.arange(3, len(outputs), 3)
+        outputs[corrected_idx] = corrected_history
 
         return outputs
     return x_base

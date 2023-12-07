@@ -33,5 +33,8 @@ class MetropolisHastings(Sampler):
 def mh(x0: torch.Tensor,
        potential: callable,
        full_output: bool = True,
+       step_size: float = 0.01,
        **kwargs):
-    return MetropolisHastings(x0.shape[1], potential).sample(x0, full_output=full_output, **kwargs)
+    n_dim = x0.shape[1]
+    obj = MetropolisHastings(n_dim, potential, proposal_scale=torch.full(size=(1, n_dim), fill_value=step_size))
+    return obj.sample(x0, full_output=full_output, **kwargs)
