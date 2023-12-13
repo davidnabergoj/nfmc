@@ -36,7 +36,7 @@ def independent_metropolis_hastings_base(x0: torch.Tensor,
 
     n_chains, *event_shape = x0.shape
     x = deepcopy(x0)
-    for i in (pbar := tqdm(range(n_iterations))):
+    for i in (pbar := tqdm(range(n_iterations), desc="Independent Metropolis-Hastings")):
         with torch.no_grad():
             x_proposed = flow.sample(n_chains, no_grad=True).to(device)
             log_alpha = metropolis_acceptance_log_ratio(
