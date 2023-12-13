@@ -84,9 +84,17 @@ def nf_ula(target: Potential,
     )
 
 
-def nf_imh(target: Potential, flow: str, n_chains: int = 100, n_iterations: int = 1000):
+def nf_imh(target: Potential,
+           flow: str,
+           n_chains: int = 100,
+           n_iterations: int = 1000,
+           x0: torch.Tensor = None):
     flow_object = create_flow_object(flow_name=flow, event_shape=target.event_shape)
-    x0 = torch.randn(size=(n_chains, *target.event_shape))
+    if x0 is None:
+        x0 = torch.randn(size=(n_chains, *target.event_shape))
+    else:
+        # n_chains = x0.shape[0]
+        assert x0.shape[1:] == target.event_shape
     return independent_metropolis_hastings_base(x0, flow_object, target, n_iterations=n_iterations)
 
 
