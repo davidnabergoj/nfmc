@@ -1,25 +1,7 @@
 import math
 
-import torch
 
 # TODO add constants file to refer to NFs
-
-from normalizing_flows import Flow
-from normalizing_flows.bijections import (
-    RealNVP,
-    MAF,
-    IAF,
-    CouplingRQNSF,
-    MaskedAutoregressiveRQNSF,
-    CouplingLRS,
-    MaskedAutoregressiveLRS,
-    OTFlow,
-    FFJORD,
-    ResFlow,
-    InvertibleResNet,
-    DeepDiffeomorphicBijection,
-    NICE
-)
 
 
 def get_supported_normalizing_flows():
@@ -51,6 +33,23 @@ def get_supported_normalizing_flows():
 
 
 def create_flow_object(flow_name: str, event_shape, **kwargs):
+    from normalizing_flows import Flow
+    from normalizing_flows.bijections import (
+        RealNVP,
+        MAF,
+        IAF,
+        CouplingRQNSF,
+        MaskedAutoregressiveRQNSF,
+        CouplingLRS,
+        MaskedAutoregressiveLRS,
+        OTFlow,
+        FFJORD,
+        ResFlow,
+        InvertibleResNet,
+        DeepDiffeomorphicBijection,
+        NICE
+    )
+
     assert flow_name in get_supported_normalizing_flows()
     flow_name = flow_name.lower()
 
@@ -122,7 +121,8 @@ class DualAveraging:
         return self.x_bar
 
 
-def compute_grad(fn_batched: callable, x: torch.Tensor):
+def compute_grad(fn_batched: callable, x):
+    import torch
     with torch.enable_grad():
         x_clone = torch.clone(x)
         x_clone.requires_grad_(True)
