@@ -29,7 +29,7 @@ def independent_metropolis_hastings_base(x0: torch.Tensor,
     # Exponentially diminishing adaptation probability sequence
     # TODO make initial states be sampled from the flow
 
-    xs = torch.zeros(size=(n_iterations, *x0.shape), dtype=x0.dtype)
+    xs = torch.empty(size=(n_iterations, *x0.shape), dtype=x0.dtype)
 
     n_accepted = 0
     n_total = 0
@@ -39,12 +39,20 @@ def independent_metropolis_hastings_base(x0: torch.Tensor,
     for i in (pbar := tqdm(range(n_iterations), desc="Independent Metropolis-Hastings")):
         with torch.no_grad():
             x_proposed = flow.sample(n_chains, no_grad=True).to(device)
-            log_alpha = metropolis_acceptance_log_ratio(
-                log_prob_curr=-potential(x).to(device),
-                log_prob_prime=-potential(x_proposed).to(device),
-                log_proposal_curr=flow.log_prob(x).to(device),
-                log_proposal_prime=flow.log_prob(x_proposed).to(device)
-            )
+
+            try:
+                log_alpha = metropolis_acceptance_log_ratio(
+                    log_prob_curr=-potential(x).to(device),
+                    log_prob_prime=-potential(x_proposed).to(device),
+                    log_proposal_curr=flow.log_prob(x).to(device),
+                    log_proposal_prime=flow.log_prob(x_proposed).to(device)
+                )
+            except ValueError as e:
+                print("Encountered error in Metropolis acceptance ratio computation")
+                print(e)
+                torch.fill(xs[i:], torch.nan)
+                break
+
             log_u = torch.rand(n_chains).log().to(log_alpha)
             accepted_mask = torch.less(log_u, log_alpha)
             x[accepted_mask] = x_proposed[accepted_mask]
