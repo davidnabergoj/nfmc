@@ -42,6 +42,7 @@ def create_flow_object(flow_name: str, event_shape, **kwargs):
         MaskedAutoregressiveRQNSF,
         CouplingLRS,
         MaskedAutoregressiveLRS,
+        CouplingDSF,
         OTFlow,
         FFJORD,
         ResFlow,
@@ -79,6 +80,8 @@ def create_flow_object(flow_name: str, event_shape, **kwargs):
         bijection = ResFlow(event_shape, **kwargs)
     elif flow_name in ['ddnf']:
         bijection = DeepDiffeomorphicBijection(event_shape, **kwargs)
+    elif flow_name in ["c-naf"]:
+        bijection = CouplingDSF(event_shape, **kwargs)
     else:
         raise ValueError
 
