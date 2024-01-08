@@ -22,13 +22,13 @@ def get_supported_normalizing_flows():
         # "planar",
         # "radial",
         # "sylvester",
-        # "i-resnet",
-        # "resflow",
-        # "proximal-resflow",
-        # "ffjord",
-        # "rnode",
-        # "ddnf",
-        # "ot-flow",
+        "i-resnet",
+        "resflow",
+        "proximal-resflow",
+        "ffjord",
+        "rnode",
+        "ddnf",
+        "ot-flow",
     ]
 
 
