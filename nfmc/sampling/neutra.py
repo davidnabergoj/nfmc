@@ -11,7 +11,7 @@ def neutra_hmc_base(flow: Flow,
                     n_hmc_iterations: int = 100,
                     show_progress: bool = True):
     # Fit flow to target via variational inference
-    flow.variational_fit(potential, n_epochs=n_vi_iterations, show_progress=show_progress)
+    flow.variational_fit(lambda v: -potential(v), n_epochs=n_vi_iterations, show_progress=show_progress)
 
     # Run HMC with target being the flow
     x0 = flow.sample(n_chains)

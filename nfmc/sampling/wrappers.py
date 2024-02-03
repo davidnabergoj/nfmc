@@ -98,8 +98,17 @@ def nf_imh(target: Potential,
     return independent_metropolis_hastings_base(x0, flow_object, target, n_iterations=n_iterations)
 
 
-def neutra_hmc(target: Potential, flow: str, n_chains: int = 100, n_iterations: int = 1000):
-    flow_object = create_flow_object(flow_name=flow, event_shape=target.event_shape)
+def neutra_hmc(target: callable, flow: str, event_shape, n_chains: int = 100, n_iterations: int = 1000):
+    """
+
+    :param target: target potential.
+    :param flow:
+    :param event_shape:
+    :param n_chains:
+    :param n_iterations:
+    :return:
+    """
+    flow_object = create_flow_object(flow_name=flow, event_shape=event_shape)
     return neutra_hmc_base(flow_object, target, n_chains, n_vi_iterations=n_iterations, n_hmc_iterations=n_iterations)
 
 
