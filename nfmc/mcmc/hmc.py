@@ -25,7 +25,7 @@ def hmc_step_b(x: torch.Tensor, momentum: torch.Tensor, step_size: float, potent
 
 def hmc_step_a(x: torch.Tensor, momentum: torch.Tensor, inv_mass_diag, step_size: float):
     # position update
-    return x + step_size * inv_mass_diag * momentum
+    return x + step_size * inv_mass_diag[None] * momentum
 
 
 def hmc_trajectory(x: torch.Tensor,
@@ -66,7 +66,6 @@ def hmc(x0: torch.Tensor,
     n_dim = int(torch.prod(torch.as_tensor(event_shape)))
     if step_size is None:
         step_size = n_dim ** (-1 / 4)
-    dual_avg = DualAveraging(math.log(step_size))
     if inv_mass_diag is None:
         inv_mass_diag = torch.std(x0, dim=0)  # has shape: event_shape
 
@@ -109,8 +108,6 @@ def hmc(x0: torch.Tensor,
 
                 inv_mass_diag = torch.std(x0, dim=0)
                 acceptance_rate = float(torch.mean(accepted_mask.float()))
-                dual_avg.step(target_acceptance_rate - acceptance_rate)
-                step_size = math.exp(dual_avg.value)
 
                 total_accepted += int(torch.sum(accepted_mask))
         else:
