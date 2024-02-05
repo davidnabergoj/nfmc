@@ -1,9 +1,6 @@
 import math
 
 
-# TODO add constants file to refer to NFs
-
-
 def get_supported_normalizing_flows():
     return [
         "nice",
@@ -12,8 +9,8 @@ def get_supported_normalizing_flows():
         # "iaf",
         "c-rqnsf",
         "ar-rqnsf",
-        "c-lrsnsf",
-        "ar-lrsnsf",
+        "c-lrsnsf",  # unstable
+        "ar-lrsnsf",  # unstable
         "c-naf",
         # "ar-naf",
         # "c-bnaf",
@@ -22,10 +19,10 @@ def get_supported_normalizing_flows():
         # "planar",
         # "radial",
         # "sylvester",
-        "i-resnet",
-        "resflow",
+        "i-resnet",  # needs 1 hour on cpu
+        "resflow",  # needs 1 hour on cpu
         "proximal-resflow",
-        "ffjord",
+        "ffjord",  # needs 6 hours on cpu
         "rnode",
         "ddnf",
         "ot-flow",
@@ -48,7 +45,9 @@ def create_flow_object(flow_name: str, event_shape, **kwargs):
         ResFlow,
         InvertibleResNet,
         DeepDiffeomorphicBijection,
-        NICE
+        NICE,
+        ProximalResFlow,
+        RNODE
     )
 
     assert flow_name in get_supported_normalizing_flows()
@@ -82,6 +81,10 @@ def create_flow_object(flow_name: str, event_shape, **kwargs):
         bijection = DeepDiffeomorphicBijection(event_shape, **kwargs)
     elif flow_name in ["c-naf"]:
         bijection = CouplingDSF(event_shape, **kwargs)
+    elif flow_name in ["proximal-resflow"]:
+        bijection = ProximalResFlow(event_shape, **kwargs)
+    elif flow_name in ["rnode"]:
+        bijection = RNODE(event_shape, **kwargs)
     else:
         raise ValueError
 
