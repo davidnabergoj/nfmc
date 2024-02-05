@@ -65,7 +65,7 @@ class JumpMCMC:
             raise ValueError("All initial states must be finite")
 
         # Fit the flow to the burned in states
-        self.flow.fit(x, **flow_fit_kwargs)
+        self.flow.fit(x.to(self.flow.get_device()), **flow_fit_kwargs)
         # We want a decent fit at this point.
 
         if self.show_progress:
@@ -90,14 +90,14 @@ class JumpMCMC:
             xs.append(x_mcmc)
 
             x_train = x_mcmc.view(-1, *event_shape)  # (n_steps * n_chains, *event_shape)
-            self.flow.fit(x_train, n_epochs=1, shuffle=False, **flow_fit_kwargs)
+            self.flow.fit(x_train.to(self.flow.get_device()), n_epochs=1, shuffle=False, **flow_fit_kwargs)
             x_proposed = self.flow.sample(n_chains).detach().cpu()  # (n_chains, *event_shape)
             if self.flow_adjustment:
                 x_current = x_mcmc[-1]
                 u_x = self.target_potential(x_current)
                 u_x_prime = self.target_potential(x_proposed)
-                f_x = self.flow.log_prob(x_current)
-                f_x_prime = self.flow.log_prob(x_proposed)
+                f_x = self.flow.log_prob(x_current.to(self.flow.get_device())).cpu()
+                f_x_prime = self.flow.log_prob(x_proposed.to(self.flow.get_device())).cpu()
                 log_alpha = metropolis_acceptance_log_ratio(
                     log_prob_curr=-u_x,
                     log_prob_prime=-u_x_prime,
