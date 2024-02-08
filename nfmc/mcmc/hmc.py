@@ -62,12 +62,13 @@ def hmc(x0: torch.Tensor,
     n_chains, *event_shape = x0.shape
 
     xs = torch.zeros(size=(n_iterations, *x0.shape), dtype=x0.dtype)
+    xs[0] = x0
     x = torch.clone(x0)
     n_dim = int(torch.prod(torch.as_tensor(event_shape)))
     if step_size is None:
         step_size = n_dim ** (-1 / 4)
     if inv_mass_diag is None:
-        inv_mass_diag = torch.std(x0, dim=0)  # has shape: event_shape
+        inv_mass_diag = torch.ones(size=event_shape)  # has shape: event_shape
 
     if show_progress:
         iterator = tqdm(range(n_iterations), desc='HMC')
@@ -106,7 +107,7 @@ def hmc(x0: torch.Tensor,
                 x[accepted_mask] = x_prime[accepted_mask]
                 x = x.detach()
 
-                inv_mass_diag = torch.std(x0, dim=0)
+                # inv_mass_diag = torch.std(x0, dim=0)
                 acceptance_rate = float(torch.mean(accepted_mask.float()))
 
                 total_accepted += int(torch.sum(accepted_mask))
@@ -119,7 +120,7 @@ def hmc(x0: torch.Tensor,
             iterator.set_postfix_str(f'accept-frac: {total_accepted / total_seen:.4f}')
 
         if full_output:
-            xs[i] = deepcopy(x)
+            xs[i] = deepcopy(x.detach())
 
     if full_output:
         ret_x = xs.detach()
