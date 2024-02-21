@@ -1,8 +1,8 @@
-from pyro.infer.mcmc import HMC, NUTS, MCMC
 import torch
 
 
 def nuts(n_dim, potential, n_iterations: int = 1000, warmup_steps: int = 50):
+    from pyro.infer.mcmc import NUTS, MCMC
     n_chains: int = 1
 
     def potential_wrapper(x_dict):
