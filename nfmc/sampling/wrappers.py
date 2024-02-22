@@ -64,7 +64,8 @@ def nf_mala(target: Potential,
             jump_period: int = 50,
             x0: torch.Tensor = None,
             device: torch.device = torch.device("cpu"),
-            edge_list: List[Tuple[int, int]] = None):
+            edge_list: List[Tuple[int, int]] = None,
+            **kwargs):
     flow_object = create_flow_object(flow_name=flow, event_shape=target.event_shape, edge_list=edge_list).to(device)
     if x0 is None:
         x0 = torch.randn(size=(n_chains, *target.event_shape))
@@ -73,7 +74,8 @@ def nf_mala(target: Potential,
         flow_object,
         target,
         n_jumps=n_iterations,
-        jump_period=jump_period
+        jump_period=jump_period,
+        **kwargs
     )
 
 
