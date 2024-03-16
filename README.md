@@ -34,7 +34,7 @@ An example using the Real NVP flow and a standard Gaussian potential is shown be
 ```python
 import torch
 from potentials.synthetic.gaussian.unit import StandardGaussian
-from nfmc.sampling import nf_mala, nf_ula, nf_imh, neutra_hmc, tess
+from nfmc.sampling_implementations import nf_mala, nf_ula, nf_imh, neutra_hmc, tess
 
 torch.manual_seed(0)  # Set the random seed for reproducible results
 

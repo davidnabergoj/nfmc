@@ -45,7 +45,7 @@ def base(x0: torch.Tensor,
         else:
             inv_mass_diag = torch.ones(*event_shape)
 
-    dual_avg = DualAveraging(math.log(step_size))
+    # dual_avg = DualAveraging(math.log(step_size))
 
     x = deepcopy(x0)
     for i in range(n_iterations):
@@ -81,9 +81,9 @@ def base(x0: torch.Tensor,
                 log_proposal_prime=-proposal_potential(x_prime, x, grad_u_x, 1 / inv_mass_diag ** 2, step_size)
             )
             adjustment_mask = torch.as_tensor(torch.log(torch.rand(n_chains)) < log_ratio)
-            acceptance_rate = float(torch.mean(adjustment_mask.float()))
-            dual_avg.step(target_acceptance_rate - acceptance_rate)
-            step_size = math.exp(dual_avg.value)
+            # acceptance_rate = float(torch.mean(adjustment_mask.float()))
+            # dual_avg.step(target_acceptance_rate - acceptance_rate)
+            # step_size = math.exp(dual_avg.value)
         else:
             # No adjustment (ULA)
             adjustment_mask = torch.ones(n_chains, dtype=torch.bool)

@@ -1,4 +1,4 @@
-from nfmc.sampling import nf_imh, nf_ula, nf_mala, tess, neutra_hmc, dlmc
+from nfmc.sampling_implementations import nf_imh, nf_ula, nf_mala, tess, neutra_hmc, dlmc
 import torch
 import pytest
 

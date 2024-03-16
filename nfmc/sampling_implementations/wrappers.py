@@ -1,28 +1,32 @@
-from typing import Tuple, List
+from typing import Tuple, List, Union
 
 import torch
 
-from nfmc.sampling.jump.hamiltonian_monte_carlo import adjusted_hmc_base, unadjusted_hmc_base
+from nfmc.sampling_implementations.jump.hamiltonian_monte_carlo import adjusted_hmc_base, unadjusted_hmc_base
+from normalizing_flows import Flow
 from potentials.base import Potential
 from potentials.synthetic.gaussian.unit import StandardGaussian
-from nfmc.sampling.neutra import neutra_hmc_base
-from nfmc.sampling.elliptical import transport_elliptical_slice_sampler, elliptical_slice_sampler
-from nfmc.sampling.independent_metropolis_hastings import independent_metropolis_hastings_base
-from nfmc.sampling.jump.langevin_monte_carlo import metropolis_adjusted_langevin_algorithm_base, \
+from nfmc.sampling_implementations.neutra import neutra_hmc_base
+from nfmc.sampling_implementations.elliptical import transport_elliptical_slice_sampler, elliptical_slice_sampler
+from nfmc.sampling_implementations.independent_metropolis_hastings import independent_metropolis_hastings_base
+from nfmc.sampling_implementations.jump.langevin_monte_carlo import metropolis_adjusted_langevin_algorithm_base, \
     unadjusted_langevin_algorithm_base
-from nfmc.sampling.deterministic_langevin import deterministic_langevin_monte_carlo_base
+from nfmc.sampling_implementations.deterministic_langevin import deterministic_langevin_monte_carlo_base
 from nfmc.util import create_flow_object
 
 
 def nf_hmc(target: Potential,
-           flow: str,
+           flow: Union[str, Flow],
            n_chains: int = 100,
            n_iterations: int = 100,
            n_mcmc_steps_per_iteration: int = 50,
            x0: torch.Tensor = None,
            edge_list: List[Tuple[int, int]] = None,
            **kwargs):
-    flow_object = create_flow_object(flow_name=flow, event_shape=target.event_shape)
+    if isinstance(flow, str):
+        flow_object = create_flow_object(flow_name=flow, event_shape=target.event_shape, edge_list=edge_list)
+    else:
+        flow_object = flow
     if x0 is None:
         x0 = torch.randn(size=(n_chains, *target.event_shape))
     return adjusted_hmc_base(
@@ -37,14 +41,17 @@ def nf_hmc(target: Potential,
 
 
 def nf_uhmc(target: Potential,
-            flow: str,
+            flow: Union[str, Flow],
             n_chains: int = 100,
             n_iterations: int = 100,
             n_mcmc_steps_per_iteration: int = 50,
             x0: torch.Tensor = None,
             edge_list: List[Tuple[int, int]] = None,
             **kwargs):
-    flow_object = create_flow_object(flow_name=flow, event_shape=target.event_shape, edge_list=edge_list)
+    if isinstance(flow, str):
+        flow_object = create_flow_object(flow_name=flow, event_shape=target.event_shape, edge_list=edge_list)
+    else:
+        flow_object = flow
     if x0 is None:
         x0 = torch.randn(size=(n_chains, *target.event_shape))
     return unadjusted_hmc_base(
@@ -58,7 +65,7 @@ def nf_uhmc(target: Potential,
 
 
 def nf_mala(target: Potential,
-            flow: str,
+            flow: Union[str, Flow],
             n_chains: int = 100,
             n_iterations: int = 100,
             jump_period: int = 50,
@@ -66,7 +73,10 @@ def nf_mala(target: Potential,
             device: torch.device = torch.device("cpu"),
             edge_list: List[Tuple[int, int]] = None,
             **kwargs):
-    flow_object = create_flow_object(flow_name=flow, event_shape=target.event_shape, edge_list=edge_list).to(device)
+    if isinstance(flow, str):
+        flow_object = create_flow_object(flow_name=flow, event_shape=target.event_shape, edge_list=edge_list).to(device)
+    else:
+        flow_object = flow.to(device)
     if x0 is None:
         x0 = torch.randn(size=(n_chains, *target.event_shape))
     return metropolis_adjusted_langevin_algorithm_base(
@@ -80,7 +90,7 @@ def nf_mala(target: Potential,
 
 
 def nf_ula(target: Potential,
-           flow: str,
+           flow: Union[str, Flow],
            n_chains: int = 100,
            n_iterations: int = 100,
            jump_period: int = 50,
@@ -88,7 +98,10 @@ def nf_ula(target: Potential,
            device: torch.device = torch.device("cpu"),
            edge_list: List[Tuple[int, int]] = None,
            **kwargs):
-    flow_object = create_flow_object(flow_name=flow, event_shape=target.event_shape, edge_list=edge_list).to(device)
+    if isinstance(flow, str):
+        flow_object = create_flow_object(flow_name=flow, event_shape=target.event_shape, edge_list=edge_list).to(device)
+    else:
+        flow_object = flow.to(device)
     if x0 is None:
         x0 = torch.randn(size=(n_chains, *target.event_shape))
     return unadjusted_langevin_algorithm_base(
@@ -102,12 +115,15 @@ def nf_ula(target: Potential,
 
 
 def nf_imh(target: Potential,
-           flow: str,
+           flow: Union[str, Flow],
            n_chains: int = 100,
            n_iterations: int = 1000,
            x0: torch.Tensor = None,
            edge_list: List[Tuple[int, int]] = None):
-    flow_object = create_flow_object(flow_name=flow, event_shape=target.event_shape, edge_list=edge_list)
+    if isinstance(flow, str):
+        flow_object = create_flow_object(flow_name=flow, event_shape=target.event_shape, edge_list=edge_list)
+    else:
+        flow_object = flow
     if x0 is None:
         x0 = torch.randn(size=(n_chains, *target.event_shape))
     else:
@@ -117,7 +133,7 @@ def nf_imh(target: Potential,
 
 
 def neutra_hmc(target: callable,
-               flow: str,
+               flow: Union[str, Flow],
                event_shape,
                n_chains: int = 100,
                n_iterations: int = 1000,
@@ -132,21 +148,27 @@ def neutra_hmc(target: callable,
     :param edge_list:
     :return:
     """
-    flow_object = create_flow_object(flow_name=flow, event_shape=event_shape, edge_list=edge_list)
+    if isinstance(flow, str):
+        flow_object = create_flow_object(flow_name=flow, event_shape=event_shape, edge_list=edge_list)
+    else:
+        flow_object = flow
     return neutra_hmc_base(flow_object, target, n_chains, n_vi_iterations=n_iterations, n_hmc_iterations=n_iterations)
 
 
 def tess(
         negative_log_likelihood: Potential,
-        flow: str,
+        flow: Union[str, Flow],
+        event_shape,
         n_chains: int = 100,
         n_iterations: int = 1000,
         show_progress: bool = True,
         edge_list: List[Tuple[int, int]] = None,
         **kwargs
 ):
-    flow_object = create_flow_object(flow_name=flow, event_shape=negative_log_likelihood.event_shape,
-                                     edge_list=edge_list)
+    if isinstance(flow, str):
+        flow_object = create_flow_object(flow_name=flow, event_shape=event_shape, edge_list=edge_list)
+    else:
+        flow_object = flow
     return transport_elliptical_slice_sampler(
         flow_object,
         negative_log_likelihood,
@@ -180,7 +202,7 @@ def ess(
 
 
 def dlmc(target: Potential,
-         flow: str,
+         flow: Union[str, Flow],
          prior: Potential = None,
          n_particles: int = 100,
          n_iterations: int = 500,
