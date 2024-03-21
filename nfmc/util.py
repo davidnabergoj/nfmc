@@ -105,26 +105,30 @@ def metropolis_acceptance_log_ratio(
 
 
 class DualAveraging:
-    def __init__(self, initial_value):
-        self.h_sum = 0.
-        self.x_bar = initial_value
-        self.t = 0
-        self.kappa = 0.75
-        self.mu = math.log(10)
-        self.gamma = 0.05
-        self.t0 = 10
+    def __init__(self, initial_step_size, kappa: float = 0.75, gamma: float = 0.05, t0: int = 10):
+        self.t = t0
+        self.error_sum = 0.0
 
-    def step(self, h_new):
-        self.t += 1
+        self.log_step_averaged = math.log(initial_step_size)
+        self.log_step = math.inf
+        self.kappa = kappa
+        self.mu = math.log(10 * initial_step_size)
+        self.gamma = gamma
+
+    def step(self, acceptance_rate_error):
+        self.error_sum += float(acceptance_rate_error)  # This will eventually converge to 0 if all is well
+
+        # Update raw step
+        self.log_step = self.mu - self.error_sum / (math.sqrt(self.t) * self.gamma)
+
+        # Update smoothed step
         eta = self.t ** -self.kappa
-        self.h_sum += h_new
-        x_new = self.mu - math.sqrt(self.t) / self.gamma / (self.t + self.t0) * self.h_sum
-        x_new_bar = eta * x_new + (1 - eta) * self.x_bar
-        self.x_bar = x_new_bar
+        self.log_step_averaged = eta * self.log_step + (1 - eta) * self.log_step_averaged
+        self.t += 1
 
     @property
     def value(self):
-        return self.x_bar
+        return math.exp(self.log_step_averaged)
 
 
 def compute_grad(fn_batched: callable, x):
