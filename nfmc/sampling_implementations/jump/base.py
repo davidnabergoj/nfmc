@@ -65,7 +65,25 @@ class JumpMCMC:
             raise ValueError("All initial states must be finite")
 
         # Fit the flow to the burned in states
-        self.flow.fit(x.to(self.flow.get_device()), **flow_fit_kwargs)
+
+        # Split x into training and validation if enough data is given
+        if len(x) >= 100:
+            perm = torch.randperm(len(x))
+            n_train = int(len(x) * 0.7)
+            # n_val = len(x) - n_train
+            x_train = x[perm][:n_train]
+            x_val = x[perm][n_train:]
+            self.flow.fit(
+                x_train=x_train.to(self.flow.get_device()),
+                x_val=x_val,
+                early_stopping=True,
+                **flow_fit_kwargs
+            )
+        else:
+            self.flow.fit(
+                x.to(self.flow.get_device()),
+                **flow_fit_kwargs
+            )
         # We want a decent fit at this point.
 
         if self.show_progress:
