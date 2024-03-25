@@ -32,10 +32,13 @@ class NFHMC(JumpMCMC):
             potential=self.target_potential,
             full_output=True,
             return_kernel_parameters=True,
-            **{**self.mcmc_kwargs, **{
-                "inv_mass_diag": self.inv_mass_diag,
-                "step_size": self.step_size}
-               }  # Reuse old kernel parameters and have them overwrite whatever is in kwargs
+            **{
+                **self.mcmc_kwargs,
+                **{
+                    "inv_mass_diag": self.inv_mass_diag,
+                    "step_size": self.step_size
+                }
+            }  # Reuse old kernel parameters and have them overwrite whatever is in kwargs
         )  # (n_steps, n_chains, *event_shape) where n_steps = self.jump_period - 1
         self.inv_mass_diag = kernel_params["inv_mass_diag"]
         self.step_size = kernel_params["step_size"]
