@@ -19,6 +19,7 @@ def jump_hmc(x0: torch.Tensor,
              train_fraction: float = 0.8,
              n_epochs: int = 50,
              early_stopping_threshold: int = 10,
+             fit_nf: bool = True,
              **kwargs):
     n_chains, *event_shape = x0.shape
     x = torch.clone(x0)
@@ -46,19 +47,20 @@ def jump_hmc(x0: torch.Tensor,
         step_index += len(xs_hmc)
 
         # Fit flow
-        n_data = step_index
-        perm = torch.randperm(n_data)
-        n_train = int(train_fraction * n_data)
-        x_train = xs[:n_data][perm].flatten(0, 1)[:n_train][:max_train_size]
-        x_val = xs[:n_data][perm].flatten(0, 1)[n_train:][:max_val_size]
-        pbar.set_postfix_str(f'Fitting NF')
-        flow.fit(
-            x_train=x_train,
-            x_val=x_val,
-            early_stopping=True,
-            n_epochs=n_epochs,
-            early_stopping_threshold=early_stopping_threshold
-        )
+        if fit_nf:
+            n_data = step_index
+            perm = torch.randperm(n_data)
+            n_train = int(train_fraction * n_data)
+            x_train = xs[:n_data][perm].flatten(0, 1)[:n_train][:max_train_size]
+            x_val = xs[:n_data][perm].flatten(0, 1)[n_train:][:max_val_size]
+            pbar.set_postfix_str(f'Fitting NF')
+            flow.fit(
+                x_train=x_train,
+                x_val=x_val,
+                early_stopping=True,
+                n_epochs=n_epochs,
+                early_stopping_threshold=early_stopping_threshold
+            )
 
         # Adjusted jump
         x_prime = flow.sample(n=n_chains).detach()
