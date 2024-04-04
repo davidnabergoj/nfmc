@@ -60,7 +60,8 @@ def hmc(x0: torch.Tensor,
         tune_step_size: bool = True,
         show_progress: bool = True,
         adjustment: bool = True,
-        full_output: bool = False):
+        full_output: bool = False,
+        imd_adjustment: float = 1e-3):
     if da_kwargs is None:
         da_kwargs = dict()
 
@@ -109,7 +110,8 @@ def hmc(x0: torch.Tensor,
             acc_rate = torch.mean(accepted_mask.float())
 
             if tune_inv_mass_diag:
-                inv_mass_diag = torch.var(x, dim=0)  # Mass matrix adaptation
+                # inv_mass_diag = torch.var(x, dim=0)  # Mass matrix adaptation
+                inv_mass_diag = imd_adjustment * torch.var(x, dim=0) + (1 - imd_adjustment) * inv_mass_diag
             if tune_step_size and adjustment:  # Step size tuning is only possible with adjustment right now
                 error = target_acceptance_rate - acc_rate
                 da.step(error)
