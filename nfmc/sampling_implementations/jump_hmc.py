@@ -20,6 +20,7 @@ def jump_hmc(x0: torch.Tensor,
              n_epochs: int = 50,
              early_stopping_threshold: int = 10,
              fit_nf: bool = True,
+             adjusted_jumps: bool = True,
              **kwargs):
     n_chains, *event_shape = x0.shape
     x = torch.clone(x0)
@@ -66,18 +67,19 @@ def jump_hmc(x0: torch.Tensor,
         x_prime = flow.sample(n=n_chains).detach()
 
         x = xs_hmc[-1]
-        u_x = potential(x)
-        u_x_prime = potential(x_prime)
-        f_x = flow.log_prob(x)
-        f_x_prime = flow.log_prob(x_prime)
-        log_alpha = metropolis_acceptance_log_ratio(
-            log_prob_curr=-u_x,
-            log_prob_prime=-u_x_prime,
-            log_proposal_curr=f_x,
-            log_proposal_prime=f_x_prime
-        )
-        acceptance_mask = torch.rand_like(log_alpha).log() < log_alpha
-        x[acceptance_mask] = x_prime[acceptance_mask]
+        if adjusted_jumps:
+            u_x = potential(x)
+            u_x_prime = potential(x_prime)
+            f_x = flow.log_prob(x)
+            f_x_prime = flow.log_prob(x_prime)
+            log_alpha = metropolis_acceptance_log_ratio(
+                log_prob_curr=-u_x,
+                log_prob_prime=-u_x_prime,
+                log_proposal_curr=f_x,
+                log_proposal_prime=f_x_prime
+            )
+            acceptance_mask = torch.rand_like(log_alpha).log() < log_alpha
+            x[acceptance_mask] = x_prime[acceptance_mask]
 
         xs[step_index] = x
         step_index += 1
