@@ -68,17 +68,21 @@ def jump_hmc(x0: torch.Tensor,
 
         x = xs_hmc[-1]
         if adjusted_jumps:
-            u_x = potential(x)
-            u_x_prime = potential(x_prime)
-            f_x = flow.log_prob(x)
-            f_x_prime = flow.log_prob(x_prime)
-            log_alpha = metropolis_acceptance_log_ratio(
-                log_prob_curr=-u_x,
-                log_prob_prime=-u_x_prime,
-                log_proposal_curr=f_x,
-                log_proposal_prime=f_x_prime
-            )
-            acceptance_mask = torch.rand_like(log_alpha).log() < log_alpha
+            try:
+                u_x = potential(x)
+                u_x_prime = potential(x_prime)
+                f_x = flow.log_prob(x)
+                f_x_prime = flow.log_prob(x_prime)
+                log_alpha = metropolis_acceptance_log_ratio(
+                    log_prob_curr=-u_x,
+                    log_prob_prime=-u_x_prime,
+                    log_proposal_curr=f_x,
+                    log_proposal_prime=f_x_prime
+                )
+                acceptance_mask = torch.rand_like(log_alpha).log() < log_alpha
+            except ValueError:
+                acceptance_mask = torch.zeros(size=x.shape[:-len(event_shape)], dtype=torch.bool)
+
             x[acceptance_mask] = x_prime[acceptance_mask]
 
         xs[step_index] = x
