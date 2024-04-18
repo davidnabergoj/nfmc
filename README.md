@@ -12,8 +12,8 @@ or only one.
 | Unadjusted Langevin algorithm                          |    NF-ULA    |       Sampling        |               Yes               |       No       |
 | NeuTra HMC                                             |    NeuTra    |       Sampling        |               No                |       No       |
 | Transport elliptical slice sampling                    |     TESS     |       Sampling        |               Yes               |       No       |
+| Deterministic Langevin Monte Carlo                     |     DLMC     |       Sampling        |               *No               |      Yes       |
 | Nested sampling                                        |    NESSAI    |       Transport       |               Yes               |      Yes       |
-| Deterministic Langevin Monte Carlo                     |     DLMC     |       Transport       |               *No               |      Yes       |
 | Stochastic normalizing flows                           |     SNF      |       Transport       |               No                |      Yes       |
 | Preconditioned Monte Carlo                             |     PMC      |       Transport       |               Yes               |      Yes       |
 | Annealed flow transport Monte Carlo                    |     AFT      |       Transport       |               No                |      Yes       |
@@ -30,10 +30,11 @@ Sampling NFMC algorithms require a target potential and a normalizing flow objec
 IMH, NeuTra and TESS output draws with shape `(n_iterations, n_chains, *event_shape)`.
 MALA and ULA output draws with shape `(n_iterations * jump_period, n_chains, *event_shape)`.
 An example using the Real NVP flow and a standard Gaussian potential is shown below.
+
 ```python
 import torch
 from potentials.synthetic.gaussian.unit import StandardGaussian
-from nfmc.sampling import mala, ula, imh, neutra_hmc, tess
+from nfmc.sampling_implementations import nf_mala, nf_ula, nf_imh, neutra_hmc, tess
 
 torch.manual_seed(0)  # Set the random seed for reproducible results
 
@@ -45,9 +46,9 @@ event_shape = (25,)  # Each draw (event) is a vector with size 25.
 target = StandardGaussian(event_shape=event_shape)
 
 # Draw samples with different NFMC sampling methods
-mala_samples = mala(target, "realnvp", n_chains, n_iterations)  # Using default jump period
-ula_samples = ula(target, "realnvp", n_chains, n_iterations)    # Using default jump period
-imh_samples = imh(target, "realnvp", n_chains, n_iterations)
+mala_samples = nf_mala(target, "realnvp", n_chains, n_iterations)  # Using default jump period
+ula_samples = nf_ula(target, "realnvp", n_chains, n_iterations)  # Using default jump period
+imh_samples = nf_imh(target, "realnvp", n_chains, n_iterations)
 neutra_samples = neutra_hmc(target, "realnvp", n_chains, n_iterations)
 tess_samples = tess(target, "realnvp", n_chains, n_iterations)
 ```

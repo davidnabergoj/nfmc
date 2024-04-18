@@ -1,4 +1,4 @@
-from nfmc.sampling import imh, ula, mala, tess, neutra_hmc, dlmc
+from nfmc.sampling_implementations import nf_imh, nf_ula, nf_mala, tess, neutra_hmc, dlmc
 import torch
 import pytest
 
@@ -19,7 +19,7 @@ all_jump_periods = [10, 50]
 def test_imh(event_shape, flow, n_chains, n_iterations):
     torch.manual_seed(0)
     target = StandardGaussian(event_shape)
-    draws = imh(target, flow, n_chains, n_iterations)
+    draws = nf_imh(target, flow, n_chains, n_iterations)
     assert draws.shape == (n_iterations, n_chains, *event_shape)
     assert torch.all(~torch.isnan(draws))
     assert torch.all(torch.isfinite(draws))
@@ -33,7 +33,7 @@ def test_imh(event_shape, flow, n_chains, n_iterations):
 def test_ula(event_shape, flow, n_chains, n_iterations, jump_period):
     torch.manual_seed(0)
     target = StandardGaussian(event_shape)
-    draws = ula(target, flow, n_chains, n_iterations, jump_period)
+    draws = nf_ula(target, flow, n_chains, n_iterations, jump_period)
     assert draws.shape == (n_iterations * jump_period, n_chains, *event_shape)
     assert torch.all(~torch.isnan(draws))
     assert torch.all(torch.isfinite(draws))
@@ -47,7 +47,7 @@ def test_ula(event_shape, flow, n_chains, n_iterations, jump_period):
 def test_mala(event_shape, flow, n_chains, n_iterations, jump_period):
     torch.manual_seed(0)
     target = StandardGaussian(event_shape)
-    draws = mala(target, flow, n_chains, n_iterations, jump_period)
+    draws = nf_mala(target, flow, n_chains, n_iterations, jump_period)
     assert draws.shape == (n_iterations * jump_period, n_chains, *event_shape)
     assert torch.all(~torch.isnan(draws))
     assert torch.all(torch.isfinite(draws))

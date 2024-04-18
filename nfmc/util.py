@@ -1,38 +1,17 @@
 import math
 
-import torch
-
-# TODO add constants file to refer to NFs
-
-from normalizing_flows import Flow
-from normalizing_flows.bijections import (
-    RealNVP,
-    MAF,
-    IAF,
-    CouplingRQNSF,
-    MaskedAutoregressiveRQNSF,
-    CouplingLRS,
-    MaskedAutoregressiveLRS,
-    OTFlow,
-    FFJORD,
-    ResFlow,
-    InvertibleResNet,
-    DeepDiffeomorphicBijection,
-    NICE
-)
-
 
 def get_supported_normalizing_flows():
     return [
         "nice",
         "realnvp",
         "maf",
-        "iaf",
+        # "iaf",
         "c-rqnsf",
         "ar-rqnsf",
-        "c-lrsnsf",
-        "ar-lrsnsf",
-        # "c-naf",
+        "c-lrsnsf",  # unstable
+        "ar-lrsnsf",  # unstable
+        "c-naf",
         # "ar-naf",
         # "c-bnaf",
         # "ar-bnaf",
@@ -40,17 +19,37 @@ def get_supported_normalizing_flows():
         # "planar",
         # "radial",
         # "sylvester",
-        # "i-resnet",
-        # "resflow",
-        # "proximal-resflow",
-        # "ffjord",
-        # "rnode",
-        # "ddnf",
-        # "ot-flow",
+        "i-resnet",  # needs 1 hour on cpu
+        "resflow",  # needs 1 hour on cpu
+        "proximal-resflow",
+        "ffjord",  # needs 6 hours on cpu
+        "rnode",
+        "ddnf",
+        "ot-flow",
     ]
 
 
 def create_flow_object(flow_name: str, event_shape, **kwargs):
+    from normalizing_flows import Flow
+    from normalizing_flows.bijections import (
+        RealNVP,
+        MAF,
+        IAF,
+        CouplingRQNSF,
+        MaskedAutoregressiveRQNSF,
+        CouplingLRS,
+        MaskedAutoregressiveLRS,
+        CouplingDSF,
+        OTFlow,
+        FFJORD,
+        ResFlow,
+        InvertibleResNet,
+        DeepDiffeomorphicBijection,
+        NICE,
+        ProximalResFlow,
+        RNODE
+    )
+
     assert flow_name in get_supported_normalizing_flows()
     flow_name = flow_name.lower()
 
@@ -80,6 +79,12 @@ def create_flow_object(flow_name: str, event_shape, **kwargs):
         bijection = ResFlow(event_shape, **kwargs)
     elif flow_name in ['ddnf']:
         bijection = DeepDiffeomorphicBijection(event_shape, **kwargs)
+    elif flow_name in ["c-naf"]:
+        bijection = CouplingDSF(event_shape, **kwargs)
+    elif flow_name in ["proximal-resflow"]:
+        bijection = ProximalResFlow(event_shape, **kwargs)
+    elif flow_name in ["rnode"]:
+        bijection = RNODE(event_shape, **kwargs)
     else:
         raise ValueError
 
@@ -100,29 +105,34 @@ def metropolis_acceptance_log_ratio(
 
 
 class DualAveraging:
-    def __init__(self, initial_value):
-        self.h_sum = 0.
-        self.x_bar = initial_value
-        self.t = 0
-        self.kappa = 0.75
-        self.mu = math.log(10)
-        self.gamma = 0.05
-        self.t0 = 10
+    def __init__(self, initial_step_size, kappa: float = 0.75, gamma: float = 0.05, t0: int = 10):
+        self.t = t0
+        self.error_sum = 0.0
 
-    def step(self, h_new):
-        self.t += 1
+        self.log_step_averaged = math.log(initial_step_size)
+        self.log_step = math.inf
+        self.kappa = kappa
+        self.mu = math.log(10 * initial_step_size)
+        self.gamma = gamma
+
+    def step(self, acceptance_rate_error):
+        self.error_sum += float(acceptance_rate_error)  # This will eventually converge to 0 if all is well
+
+        # Update raw step
+        self.log_step = self.mu - self.error_sum / (math.sqrt(self.t) * self.gamma)
+
+        # Update smoothed step
         eta = self.t ** -self.kappa
-        self.h_sum += h_new
-        x_new = self.mu - math.sqrt(self.t) / self.gamma / (self.t + self.t0) * self.h_sum
-        x_new_bar = eta * x_new + (1 - eta) * self.x_bar
-        self.x_bar = x_new_bar
+        self.log_step_averaged = eta * self.log_step + (1 - eta) * self.log_step_averaged
+        self.t += 1
 
     @property
     def value(self):
-        return self.x_bar
+        return math.exp(self.log_step_averaged)
 
 
-def compute_grad(fn_batched: callable, x: torch.Tensor):
+def compute_grad(fn_batched: callable, x):
+    import torch
     with torch.enable_grad():
         x_clone = torch.clone(x)
         x_clone.requires_grad_(True)
