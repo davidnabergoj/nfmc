@@ -2,7 +2,6 @@ from typing import Tuple, List, Union
 
 import torch
 
-from nfmc.sampling_implementations.jump.hamiltonian_monte_carlo import adjusted_hmc_base, unadjusted_hmc_base
 from normalizing_flows import Flow
 from potentials.base import Potential
 from potentials.synthetic.gaussian.unit import StandardGaussian
@@ -13,55 +12,6 @@ from nfmc.sampling_implementations.jump.langevin_monte_carlo import metropolis_a
     unadjusted_langevin_algorithm_base
 from nfmc.sampling_implementations.deterministic_langevin import deterministic_langevin_monte_carlo_base
 from nfmc.util import create_flow_object
-
-
-def nf_hmc(target: Potential,
-           flow: Union[str, Flow],
-           n_chains: int = 100,
-           n_iterations: int = 100,
-           n_mcmc_steps_per_iteration: int = 50,
-           x0: torch.Tensor = None,
-           edge_list: List[Tuple[int, int]] = None,
-           **kwargs):
-    if isinstance(flow, str):
-        flow_object = create_flow_object(flow_name=flow, event_shape=target.event_shape, edge_list=edge_list)
-    else:
-        flow_object = flow
-    if x0 is None:
-        x0 = torch.randn(size=(n_chains, *target.event_shape))
-    return adjusted_hmc_base(
-        x0,
-        flow_object,
-        target,
-        n_jumps=n_iterations,
-        jump_period=n_mcmc_steps_per_iteration,
-        edge_list=edge_list,
-        **kwargs
-    )
-
-
-def nf_uhmc(target: Potential,
-            flow: Union[str, Flow],
-            n_chains: int = 100,
-            n_iterations: int = 100,
-            n_mcmc_steps_per_iteration: int = 50,
-            x0: torch.Tensor = None,
-            edge_list: List[Tuple[int, int]] = None,
-            **kwargs):
-    if isinstance(flow, str):
-        flow_object = create_flow_object(flow_name=flow, event_shape=target.event_shape, edge_list=edge_list)
-    else:
-        flow_object = flow
-    if x0 is None:
-        x0 = torch.randn(size=(n_chains, *target.event_shape))
-    return unadjusted_hmc_base(
-        x0,
-        flow_object,
-        target,
-        n_jumps=n_iterations,
-        n_mcmc_steps_per_jump=n_mcmc_steps_per_iteration,
-        **kwargs
-    )
 
 
 def nf_mala(target: Potential,

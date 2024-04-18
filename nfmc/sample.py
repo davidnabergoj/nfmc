@@ -4,7 +4,7 @@ import torch
 
 from nfmc.sampling_implementations.elliptical import transport_elliptical_slice_sampler
 from nfmc.sampling_implementations.independent_metropolis_hastings import independent_metropolis_hastings_base
-from nfmc.sampling_implementations.jump.hamiltonian_monte_carlo import unadjusted_hmc_base, adjusted_hmc_base
+from nfmc.sampling_implementations.jump.hamiltonian_monte_carlo import jump_hmc
 from nfmc.sampling_implementations.jump.langevin_monte_carlo import unadjusted_langevin_algorithm_base, \
     metropolis_adjusted_langevin_algorithm_base
 from nfmc.sampling_implementations.neutra import neutra_hmc_base
@@ -64,19 +64,21 @@ def sample(target: callable,
             **kwargs
         )
     elif strategy == "jump_hmc":
-        return adjusted_hmc_base(
+        return jump_hmc(
             x0,
             flow_object,
             target,
             n_jumps=n_iterations,
+            jump_hmc_kwargs={'adjusted_jumps': False},
             **kwargs
         )
     elif strategy == "jump_uhmc":
-        return unadjusted_hmc_base(
+        return jump_hmc(
             x0,
             flow_object,
             target,
             n_jumps=n_iterations,
+            jump_hmc_kwargs={'adjusted_jumps': False},
             **kwargs
         )
     elif strategy == "tess":
