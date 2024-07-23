@@ -136,7 +136,8 @@ def hmc(x0: torch.Tensor,
 
             if tune_inv_mass_diag:
                 # inv_mass_diag = torch.var(x.flatten(1, -1), dim=0)  # Mass matrix adaptation
-                inv_mass_diag = imd_adjustment * torch.var(x.flatten(1, -1), dim=0) + (1 - imd_adjustment) * inv_mass_diag
+                inv_mass_diag = imd_adjustment * torch.var(x.flatten(1, -1), dim=0) + (
+                            1 - imd_adjustment) * inv_mass_diag
             if tune_step_size and adjustment:  # Step size tuning is only possible with adjustment right now
                 error = target_acceptance_rate - acc_rate
                 da.step(error)
@@ -152,6 +153,7 @@ def hmc(x0: torch.Tensor,
     if full_output:
         return xs, {
             'inv_mass_diag': inv_mass_diag,
-            'step_size': step_size
+            'step_size': step_size,
+            'n_leapfrog_steps': n_leapfrog_steps
         }
     return xs
