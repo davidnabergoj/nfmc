@@ -103,6 +103,9 @@ def jump_hmc(x0: torch.Tensor,
              pct_train: float = 0.8,
              initial_fit_kwargs: dict = None,
              jump_hmc_kwargs: dict = None,
+             skip_burnin_phase_1: bool = False,
+             skip_tuning: bool = False,
+             skip_burnin_phase_2: bool = False,
              **kwargs):
     if inv_mass_diag is None:
         inv_mass_diag = torch.ones(size=(flow.event_size,))
@@ -112,48 +115,61 @@ def jump_hmc(x0: torch.Tensor,
         jump_hmc_kwargs = dict()
 
     # burn-in phase 1
-    x_burn_in_1 = hmc(
-        potential=potential,
-        x0=x0,
-        n_iterations=max(n_burn_in_iterations // 2, 1),
-        n_leapfrog_steps=n_leapfrog_steps,
-        step_size=step_size,
-        inv_mass_diag=inv_mass_diag,
-        tune_step_size=False,
-        tune_inv_mass_diag=False,
-        show_progress=show_progress,
-        **kwargs
-    ).detach()
+    if skip_burnin_phase_1:
+        x_burn_in_1 = x0[None]
+    else:
+        x_burn_in_1 = hmc(
+            potential=potential,
+            x0=x0,
+            n_iterations=max(n_burn_in_iterations // 2, 1),
+            n_leapfrog_steps=n_leapfrog_steps,
+            step_size=step_size,
+            inv_mass_diag=inv_mass_diag,
+            tune_step_size=False,
+            tune_inv_mass_diag=False,
+            show_progress=show_progress,
+            **kwargs
+        ).detach()
 
     # tuning
-    x_tuning, kernel = hmc(
-        potential=potential,
-        x0=x_burn_in_1[-1],
-        n_iterations=n_tuning_iterations,
-        n_leapfrog_steps=n_leapfrog_steps,
-        step_size=step_size,
-        inv_mass_diag=inv_mass_diag,
-        tune_step_size=True,
-        tune_inv_mass_diag=True,
-        show_progress=show_progress,
-        full_output=True,
-        **kwargs
-    )
-    x_tuning = x_tuning.detach()
+    if skip_tuning:
+        x_tuning = x_burn_in_1
+        kernel = {
+            'inv_mass_diag': inv_mass_diag,
+            'step_size': step_size
+        }
+    else:
+        x_tuning, kernel = hmc(
+            potential=potential,
+            x0=x_burn_in_1[-1],
+            n_iterations=n_tuning_iterations,
+            n_leapfrog_steps=n_leapfrog_steps,
+            step_size=step_size,
+            inv_mass_diag=inv_mass_diag,
+            tune_step_size=True,
+            tune_inv_mass_diag=True,
+            show_progress=show_progress,
+            full_output=True,
+            **kwargs
+        )
+        x_tuning = x_tuning.detach()
 
     # burn-in phase 2
-    x_burn_in_2 = hmc(
-        potential=potential,
-        x0=x_tuning[-1],
-        n_iterations=max(n_burn_in_iterations // 2, 1),
-        n_leapfrog_steps=n_leapfrog_steps,
-        step_size=kernel['step_size'],
-        inv_mass_diag=kernel['inv_mass_diag'],
-        tune_step_size=False,
-        tune_inv_mass_diag=False,
-        show_progress=show_progress,
-        **kwargs
-    ).detach()
+    if skip_burnin_phase_2:
+        x_burn_in_2 = x_tuning
+    else:
+        x_burn_in_2 = hmc(
+            potential=potential,
+            x0=x_tuning[-1],
+            n_iterations=max(n_burn_in_iterations // 2, 1),
+            n_leapfrog_steps=n_leapfrog_steps,
+            step_size=kernel['step_size'],
+            inv_mass_diag=kernel['inv_mass_diag'],
+            tune_step_size=False,
+            tune_inv_mass_diag=False,
+            show_progress=show_progress,
+            **kwargs
+        ).detach()
 
     # NF fit
     x_burn_in_2_flat = x_burn_in_2.flatten(0, 1)
@@ -166,6 +182,7 @@ def jump_hmc(x0: torch.Tensor,
     x_train = x_burn_in_2_flat[:n_train]
     x_val = x_burn_in_2_flat[n_train:]
 
+    # TODO add option to skip flow fit
     flow.fit(x_train=x_train, x_val=x_val, early_stopping=True, show_progress=show_progress, **initial_fit_kwargs)
 
     # sampling
