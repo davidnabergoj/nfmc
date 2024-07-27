@@ -105,9 +105,10 @@ def jump_hmc(x0: torch.Tensor,
              pct_train: float = 0.8,
              initial_fit_kwargs: dict = None,
              jump_hmc_kwargs: dict = None,
-             skip_burnin_phase_1: bool = False,
+             skip_burnin_1: bool = False,
              skip_tuning: bool = False,
-             skip_burnin_phase_2: bool = False,
+             skip_burnin_2: bool = False,
+             skip_nf_fit: bool = False,
              **kwargs):
     if inv_mass_diag is None:
         inv_mass_diag = torch.ones(size=(flow.event_size,))
@@ -117,7 +118,7 @@ def jump_hmc(x0: torch.Tensor,
         jump_hmc_kwargs = dict()
 
     # burn-in phase 1
-    if skip_burnin_phase_1:
+    if skip_burnin_1:
         x_burn_in_1 = x0[None]
     else:
         x_burn_in_1 = hmc(
@@ -157,7 +158,7 @@ def jump_hmc(x0: torch.Tensor,
         x_tuning = x_tuning.detach()
 
     # burn-in phase 2
-    if skip_burnin_phase_2:
+    if skip_burnin_2:
         x_burn_in_2 = x_tuning
     else:
         x_burn_in_2 = hmc(
@@ -174,18 +175,14 @@ def jump_hmc(x0: torch.Tensor,
         ).detach()
 
     # NF fit
-    x_burn_in_2_flat = x_burn_in_2.flatten(0, 1)
-    n_data = len(x_burn_in_2_flat)
-    n_train = int(n_data * pct_train)
-    # n_val = n_data - n_train
-
-    x_burn_in_2_flat = x_burn_in_2_flat[torch.randperm(n_data)]  # shuffle data
-
-    x_train = x_burn_in_2_flat[:n_train]
-    x_val = x_burn_in_2_flat[n_train:]
-
-    # TODO add option to skip flow fit
-    flow.fit(x_train=x_train, x_val=x_val, early_stopping=True, show_progress=show_progress, **initial_fit_kwargs)
+    if not skip_nf_fit:
+        x_burn_in_2_flat = x_burn_in_2.flatten(0, 1)
+        n_data = len(x_burn_in_2_flat)
+        n_train = int(n_data * pct_train)
+        x_burn_in_2_flat = x_burn_in_2_flat[torch.randperm(n_data)]  # shuffle data
+        x_train = x_burn_in_2_flat[:n_train]
+        x_val = x_burn_in_2_flat[n_train:]
+        flow.fit(x_train=x_train, x_val=x_val, early_stopping=True, show_progress=show_progress, **initial_fit_kwargs)
 
     # sampling
     return jump_hmc_no_burn_in(
