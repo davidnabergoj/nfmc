@@ -23,6 +23,7 @@ def jump_hmc_no_burn_in(x0: torch.Tensor,
                         adjusted_jumps: bool = True,
                         show_progress: bool = False,
                         **kwargs):
+    # TODO more descriptive progress bar
     n_chains, *event_shape = x0.shape
     x = torch.clone(x0)
     xs = torch.zeros(size=(n_jumps * (n_trajectories_per_jump + 1), *x0.shape),
