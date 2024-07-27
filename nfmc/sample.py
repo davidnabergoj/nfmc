@@ -69,7 +69,7 @@ def sample(target: callable,
             flow_object,
             target,
             n_jumps=n_iterations,
-            jump_hmc_kwargs={'adjusted_jumps': False},
+            jump_hmc_kwargs={'adjusted_jumps': True},
             **kwargs
         )
     elif strategy == "jump_uhmc":
