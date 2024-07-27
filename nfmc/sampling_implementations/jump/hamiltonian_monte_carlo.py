@@ -83,6 +83,8 @@ def jump_hmc_no_burn_in(x0: torch.Tensor,
                 acceptance_mask = torch.zeros(size=x.shape[:-len(event_shape)], dtype=torch.bool)
 
             x[acceptance_mask] = x_prime[acceptance_mask]
+        else:
+            x = x_prime
 
         xs[step_index] = x
         step_index += 1
