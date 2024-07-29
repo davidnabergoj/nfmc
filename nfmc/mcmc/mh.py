@@ -31,10 +31,10 @@ class MetropolisHastings(Sampler):
 
 
 def mh(x0: torch.Tensor,
-       potential: callable,
-       full_output: bool = True,
+       target: callable,
        step_size: float = 1.0,
        **kwargs):
+    # TODO don't use the Sampler class, just write MH as a function. Otherwise there is too much abstraction.
     n_dim = x0.shape[1]
-    obj = MetropolisHastings(n_dim, potential, proposal_scale=torch.full(size=(1, n_dim), fill_value=step_size))
-    return obj.sample(x0, full_output=full_output, **kwargs)
+    obj = MetropolisHastings(n_dim, target, proposal_scale=torch.full(size=(1, n_dim), fill_value=step_size))
+    return obj.sample(x0, **kwargs)

@@ -1,8 +1,10 @@
 import math
+from typing import Union
+
 from tqdm import tqdm
 import torch
 
-from nfmc.util import DualAveraging
+from nfmc.util import DualAveraging, MCMCOutput
 from normalizing_flows.utils import sum_except_batch  # TODO Remove this dependency
 
 
@@ -74,8 +76,8 @@ def hmc(x0: torch.Tensor,
         tune_step_size: bool = True,
         show_progress: bool = True,
         adjustment: bool = True,
-        full_output: bool = False,
-        imd_adjustment: float = 1e-3):
+        full_output: bool = True,
+        imd_adjustment: float = 1e-3) -> Union[MCMCOutput, torch.Tensor]:
     """
 
     :param x0:
@@ -169,20 +171,17 @@ def hmc(x0: torch.Tensor,
             )
 
     if full_output:
-        kernel = {
-            'inv_mass_diag': inv_mass_diag,
-            'step_size': step_size,
-            'n_leapfrog_steps': n_leapfrog_steps
-        }
-        statistics = {
-            'n_accepted': accepted_total,
-            'n_divergences': n_divergences,
-            'acceptance_rate': accepted_total / (n_chains * n_iterations),
-        }
-        return {
-            'samples': xs,
-            'kernel': kernel,
-            'statistics': statistics
-        }
-    else:
-        return xs
+        return MCMCOutput(
+            samples=xs,
+            kernel={
+                'inv_mass_diag': inv_mass_diag,
+                'step_size': step_size,
+                'n_leapfrog_steps': n_leapfrog_steps
+            },
+            statistics={
+                'n_accepted': accepted_total,
+                'n_divergences': n_divergences,
+                'acceptance_rate': accepted_total / (n_chains * n_iterations),
+            }
+        )
+    return xs

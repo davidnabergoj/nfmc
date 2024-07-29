@@ -1,6 +1,7 @@
 import torch
 
 from nfmc.mcmc.hmc import hmc
+from nfmc.util import MCMCOutput
 from normalizing_flows import Flow
 
 
@@ -23,15 +24,16 @@ def neutra_hmc_base(flow: Flow,
         adjusted_log_prob = log_prob + log_det_inverse
         return -adjusted_log_prob
 
-    z = hmc(
+    # TODO handle HMC tuning here
+    output = hmc(
         z0.detach(),
         adjusted_potential,
-        full_output=True,
         n_iterations=n_hmc_iterations,
         show_progress=show_progress
     )
 
     with torch.no_grad():
-        x, _ = flow.bijection.batch_inverse(z, batch_size=128)
-        x = x.detach()
-    return x
+        xs, _ = flow.bijection.batch_inverse(output.samples, batch_size=128)
+        xs = xs.detach()
+
+    return MCMCOutput(samples=xs)

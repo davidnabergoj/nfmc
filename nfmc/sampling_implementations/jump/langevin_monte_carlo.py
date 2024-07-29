@@ -1,6 +1,7 @@
 import torch
 
 from nfmc.sampling_implementations.jump.base import JumpMCMC
+from nfmc.util import MCMCOutput
 from normalizing_flows import Flow
 from nfmc.mcmc.langevin_algorithm import base as base_langevin
 
@@ -26,55 +27,50 @@ class NFLMC(JumpMCMC):
         return "NF-LMC"
 
     def sample_mcmc(self, x: torch.Tensor):
-        x, kernel_params = base_langevin(
+        output = base_langevin(
             x0=x,
             n_iterations=self.jump_period - 1,
-            potential=self.target_potential,
-            full_output=True,
-            return_kernel_parameters=True,
+            target=self.target_potential,
             **{**self.mcmc_kwargs, **{
                 "inv_mass_diag": self.inv_mass_diag,
                 "step_size": self.step_size}
                }  # Reuse old kernel parameters and have them overwrite whatever is in kwargs
         )  # (n_steps, n_chains, *event_shape) where n_steps = self.jump_period - 1
-        self.inv_mass_diag = kernel_params["inv_mass_diag"]
-        self.step_size = kernel_params["step_size"]
-        return x
+        self.inv_mass_diag = output.kernel["inv_mass_diag"]
+        self.step_size = output.kernel["step_size"]
+        return output.samples
 
 
 def langevin_algorithm_base(x0: torch.Tensor,
                             flow: Flow,
-                            potential: callable,
+                            target: callable,
                             n_jumps: int = 25,
-                            jump_period: int = 50,
+                            n_trajectories_per_jump: int = 10,
                             batch_size: int = 128,
                             burnin: int = 1000,
                             nf_adjustment: bool = True,
                             show_progress: bool = True,
                             **kwargs):
     # Burnin with standard LMC
-    x, kernel_params = base_langevin(
+    output = base_langevin(
         x0=x0,
         n_iterations=burnin,
-        full_output=False,
-        potential=potential,
-        return_kernel_parameters=True,
+        target=target,
         **kwargs
     )
 
     nf_lmc = NFLMC(
-        target_potential=potential,
+        target_potential=target,
         flow=flow,
         n_jumps=n_jumps,
-        jump_period=jump_period,
+        jump_period=n_trajectories_per_jump,
         show_progress=show_progress,
         flow_adjustment=nf_adjustment,
-        inv_mass_diag=kernel_params["inv_mass_diag"],
-        step_size=kernel_params["step_size"]
+        **output.kernel
     )
 
-    x = nf_lmc.sample(x, flow_fit_kwargs={"batch_size": batch_size})
-    return x
+    xs = nf_lmc.sample(output.samples[-1], flow_fit_kwargs={"batch_size": batch_size})
+    return MCMCOutput(samples=xs)
 
 
 def unadjusted_langevin_algorithm_base(*args, **kwargs):

@@ -2,7 +2,7 @@ from copy import deepcopy
 import math
 import torch
 
-from nfmc.util import metropolis_acceptance_log_ratio, DualAveraging
+from nfmc.util import metropolis_acceptance_log_ratio, DualAveraging, MCMCOutput
 
 
 @torch.no_grad()
@@ -20,15 +20,26 @@ def proposal_potential(x_prime: torch.Tensor,
 
 
 def base(x0: torch.Tensor,
-         potential: callable,
+         target: callable,
          n_iterations: int = 1000,
          step_size: float = None,
-         full_output: bool = True,
          adjustment: bool = False,
          inv_mass_diag: torch.Tensor = None,
          tune_diagonal_preconditioning: bool = True,
-         target_acceptance_rate: float = 0.574,
-         return_kernel_parameters: bool = False):
+         target_acceptance_rate: float = 0.574):
+    """
+
+    :param x0:
+    :param target: target potential.
+    :param n_iterations:
+    :param step_size:
+    :param full_output:
+    :param adjustment:
+    :param inv_mass_diag:
+    :param tune_diagonal_preconditioning:
+    :param target_acceptance_rate:
+    :return:
+    """
     assert torch.all(torch.isfinite(x0))
 
     # TODO tune tau in MALA
@@ -53,7 +64,7 @@ def base(x0: torch.Tensor,
 
         # Compute potential and gradient at current state
         x.requires_grad_(True)
-        u_x = potential(x)
+        u_x = target(x)
         grad_u_x, = torch.autograd.grad(u_x.sum(), x)
         x.requires_grad_(False)  # Clear gradients
         x = x.detach()
@@ -67,7 +78,7 @@ def base(x0: torch.Tensor,
         if adjustment:
             # Compute potential and gradient at proposed state
             x_prime.requires_grad_(True)
-            u_x_prime = potential(x_prime)
+            u_x_prime = target(x_prime)
             grad_u_x_prime, = torch.autograd.grad(u_x_prime.sum(), x_prime)
             x_prime.requires_grad_(False)  # Clear gradients
             x_prime = x_prime.detach()
@@ -93,19 +104,16 @@ def base(x0: torch.Tensor,
         if x0.shape[0] > 1 and tune_diagonal_preconditioning:
             inv_mass_diag = torch.std(x, dim=0)  # root of the preconditioning matrix diagonal
 
-        if full_output:
-            xs.append(deepcopy(x))
+        xs.append(deepcopy(x))
 
-    if full_output:
-        x = torch.stack(xs)
-
-    if return_kernel_parameters:
-        return x, {
+    xs = torch.stack(xs)
+    return MCMCOutput(
+        samples=xs,
+        kernel={
             "inv_mass_diag": inv_mass_diag,
             "step_size": step_size
         }
-    else:
-        return x
+    )
 
 
 def mala(*args, **kwargs):

@@ -2,6 +2,7 @@ from typing import Union, List, Tuple, Optional
 
 import torch
 
+from nfmc.mcmc.langevin_algorithm import ula
 from nfmc.sampling_implementations.elliptical import transport_elliptical_slice_sampler
 from nfmc.sampling_implementations.independent_metropolis_hastings import imh, imh_fixed_flow
 from nfmc.sampling_implementations.jump.hamiltonian_monte_carlo import jhmc
@@ -12,6 +13,7 @@ from nfmc.util import create_flow_object
 from normalizing_flows import Flow
 from nfmc.mcmc import hmc, mh, nuts, mala
 from potentials.base import Potential
+from nfmc.util import MCMCOutput
 
 
 def sample(target: callable,
@@ -23,7 +25,7 @@ def sample(target: callable,
            x0: torch.Tensor = None,
            edge_list: List[Tuple[int, int]] = None,
            device: torch.device = torch.device("cpu"),
-           **kwargs):
+           **kwargs) -> Union[MCMCOutput, torch.Tensor]:
     if flow is not None:
         event_shape = flow.event_shape
     elif isinstance(target, Potential):
@@ -39,15 +41,15 @@ def sample(target: callable,
         elif strategy == "uhmc":
             return hmc(**base_kwargs, adjustment=False, **kwargs)
         elif strategy == "mala":
-            return mala(**base_kwargs, adjustment=True, **kwargs)
+            return mala(**base_kwargs, **kwargs)
         elif strategy == "ula":
-            return mala(**base_kwargs, adjustment=False, **kwargs)
+            return ula(**base_kwargs, **kwargs)
         elif strategy == "mh":
             return mh(**base_kwargs, **kwargs)
         else:
             raise ValueError(f"Unsupported sampling strategy: {strategy}")
     elif strategy in ["imh", "fixed_imh", "jump_mala", "jump_ula", "jhmc", "fixed_jhmc", "jump_uhmc",
-                      "neutra_hmc"]:
+                      "neutra_hmc", "tess"]:
         # NFMC
         if flow is None:
             raise ValueError("Flow object must be provided")

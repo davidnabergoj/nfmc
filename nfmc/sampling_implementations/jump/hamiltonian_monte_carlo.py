@@ -2,7 +2,7 @@ import torch
 from tqdm import tqdm
 
 from nfmc.mcmc import hmc
-from nfmc.util import metropolis_acceptance_log_ratio
+from nfmc.util import metropolis_acceptance_log_ratio, MCMCOutput
 from normalizing_flows import Flow
 
 
@@ -50,10 +50,10 @@ def jump_hmc_no_burn_in(x0: torch.Tensor,
             n_leapfrog_steps=n_leapfrog_steps,
             **kwargs
         )
-        xs[step_index:step_index + len(hmc_output['samples'])] = hmc_output['samples'].detach()
-        step_index += len(hmc_output['samples'])
-        n_total_hmc_divergences += hmc_output['statistics']['n_divergences']
-        n_total_hmc_accepts += hmc_output['statistics']['n_accepted']
+        xs[step_index:step_index + len(hmc_output.samples)] = hmc_output.samples.detach()
+        step_index += len(hmc_output.samples)
+        n_total_hmc_divergences += hmc_output.statistics['n_divergences']
+        n_total_hmc_accepts += hmc_output.statistics['n_accepted']
 
         # Fit flow
         if fit_nf:
@@ -75,7 +75,7 @@ def jump_hmc_no_burn_in(x0: torch.Tensor,
         pbar.set_description_str(f'JHMC (jumping)')
         x_prime = flow.sample(n=n_chains).detach()
 
-        x = hmc_output['samples'][-1]
+        x = hmc_output.samples[-1]
         if adjusted_jumps:
             try:
                 u_x = potential(x)
@@ -101,13 +101,13 @@ def jump_hmc_no_burn_in(x0: torch.Tensor,
         n_total_accepted_jumps += n_current_accepted_jumps
 
         hmc_total_acc_rate = n_total_hmc_accepts / (n_trajectories_per_jump * (i + 1) * n_chains)
-        hmc_current_acc_rate = hmc_output["statistics"]["acceptance_rate"]
-        hmc_current_divergences = hmc_output["statistics"]["n_divergences"]
+        hmc_current_acc_rate = hmc_output.statistics["acceptance_rate"]
+        hmc_current_divergences = hmc_output.statistics["n_divergences"]
         jump_total_acc_rate = n_total_accepted_jumps / ((i + 1) * n_chains)
         jump_current_acc_rate = n_current_accepted_jumps / n_chains
         total_acc_rate = (n_total_hmc_accepts + n_current_accepted_jumps) / (
                 (n_trajectories_per_jump + 1) * (i + 1) * n_chains)
-        current_acc_rate = (n_current_accepted_jumps + hmc_output['statistics']['n_accepted']) / (
+        current_acc_rate = (n_current_accepted_jumps + hmc_output.statistics['n_accepted']) / (
                 n_chains * (n_trajectories_per_jump + 1))
         pbar.set_postfix_str(
             f'Acceptance rate (total: {total_acc_rate:.3f}, current: {current_acc_rate:.3f}) | '
@@ -117,14 +117,14 @@ def jump_hmc_no_burn_in(x0: torch.Tensor,
         )
         xs[step_index] = x
         step_index += 1
-    return xs
+    return MCMCOutput(samples=xs)
 
 
 def jhmc(x0: torch.Tensor,
          flow: Flow,
          target: callable,
          n_burn_in_iterations: int = 400,
-         n_tuning_iterations: int = 1000,
+         n_tuning_iterations: int = 100,
          n_jumps: int = 250,
          n_trajectories_per_jump: int = 20,
          show_progress: bool = True,
@@ -173,7 +173,7 @@ def jhmc(x0: torch.Tensor,
     if skip_burnin_1:
         x_burn_in_1 = x0[None]
     else:
-        x_burn_in_1 = hmc(
+        hmc_burn_in_1_output = hmc(
             target=target,
             x0=x0,
             n_iterations=max(n_burn_in_iterations // 2, 1),
@@ -184,7 +184,8 @@ def jhmc(x0: torch.Tensor,
             tune_inv_mass_diag=False,
             show_progress=show_progress,
             **kwargs
-        ).detach()
+        )
+        x_burn_in_1 = hmc_burn_in_1_output.samples.detach()
 
     # tuning
     if skip_tuning:
@@ -208,14 +209,14 @@ def jhmc(x0: torch.Tensor,
             full_output=True,
             **kwargs
         )
-        x_tuning = hmc_tuning_output['samples'].detach()
-        kernel = hmc_tuning_output['kernel']
+        x_tuning = hmc_tuning_output.samples.detach()
+        kernel = hmc_tuning_output.kernel
 
     # burn-in phase 2
     if skip_burnin_2:
         x_burn_in_2 = x_tuning
     else:
-        x_burn_in_2 = hmc(
+        hmc_burn_in_2_output = hmc(
             target=target,
             x0=x_tuning[-1],
             n_iterations=max(n_burn_in_iterations // 2, 1),
@@ -226,7 +227,8 @@ def jhmc(x0: torch.Tensor,
             tune_inv_mass_diag=False,
             show_progress=show_progress,
             **kwargs
-        ).detach()
+        )
+        x_burn_in_2 = hmc_burn_in_2_output.samples.detach()
 
     # NF fit
     if not skip_nf_fit:

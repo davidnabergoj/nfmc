@@ -3,6 +3,8 @@ from typing import Tuple
 
 import torch
 
+from nfmc.util import MCMCOutput
+
 
 class Sampler:
     def __init__(self, n_dim: int, potential: callable, adjusted: bool = True):
@@ -30,18 +32,16 @@ class Sampler:
 
     def sample(self,
                x0: torch.Tensor,
-               full_output: bool = False,
                n_iterations: int = 1000):
         n_chains, n_dim = x0.shape
         x = deepcopy(x0).detach()
 
-        if full_output:
-            draws = torch.zeros(
-                size=(n_iterations, n_chains, n_dim),
-                dtype=torch.float,
-                requires_grad=False
-            )
-            draws[0] = x0
+        draws = torch.zeros(
+            size=(n_iterations, n_chains, n_dim),
+            dtype=torch.float,
+            requires_grad=False
+        )
+        draws[0] = x0
 
         for i in range(1, n_iterations):
             x_proposed, log_alpha = self.step(x)
@@ -51,11 +51,7 @@ class Sampler:
                 x = self.adjust(x_proposed, x, log_alpha)
             else:
                 x = x_proposed
-            if full_output:
-                draws[i] = torch.clone(x)
+            draws[i] = torch.clone(x)
             self.adapt()
 
-        if full_output:
-            return draws
-        else:
-            return x
+        return MCMCOutput(samples=draws)

@@ -4,6 +4,7 @@ from copy import deepcopy
 import torch
 from tqdm import tqdm
 
+from nfmc.util import MCMCOutput
 from potentials.base import Potential
 from normalizing_flows import Flow
 from normalizing_flows.utils import get_batch_shape
@@ -221,7 +222,8 @@ def transport_elliptical_slice_sampler(flow: Flow,
         if full_output:
             draws.append(deepcopy(x.detach()))
 
+    draws = torch.stack(draws)
+
     if full_output:
-        return torch.stack(draws)
-    else:
-        return draws[-1]
+        return MCMCOutput(samples=draws)
+    return draws

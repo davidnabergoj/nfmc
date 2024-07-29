@@ -3,7 +3,7 @@ from copy import deepcopy
 from tqdm import tqdm
 import torch
 
-from nfmc.util import metropolis_acceptance_log_ratio
+from nfmc.util import metropolis_acceptance_log_ratio, MCMCOutput
 from normalizing_flows import Flow
 
 
@@ -61,7 +61,7 @@ def imh_fixed_flow(x0: torch.Tensor,
         n_accepted += int(torch.sum(accepted_mask.long()))
         n_total += n_chains
         pbar.set_postfix_str(f'Acceptance rate: {n_accepted / n_total:.6f}')
-    return xs
+    return MCMCOutput(samples=xs)
 
 
 def imh(x0: torch.Tensor,
@@ -71,7 +71,7 @@ def imh(x0: torch.Tensor,
         adaptation_dropoff: float = 0.9999,
         train_dist: str = 'uniform',
         device=torch.device('cpu'),
-        show_progress:bool=True,
+        show_progress: bool = True,
         **kwargs):
     """
 
@@ -97,7 +97,7 @@ def imh(x0: torch.Tensor,
 
     n_chains, *event_shape = x0.shape
     x = deepcopy(x0)
-    for i in (pbar := tqdm(range(n_iterations), desc="Independent Metropolis-Hastings")):
+    for i in (pbar := tqdm(range(n_iterations), desc="Independent Metropolis-Hastings", disable=not show_progress)):
         with torch.no_grad():
             x_proposed = flow.sample(n_chains, no_grad=True).to(device)
 
@@ -144,7 +144,9 @@ def imh(x0: torch.Tensor,
 
         pbar.set_postfix_str(f'Acceptance rate: {n_accepted / n_total:.6f} | adapt-prob: {alpha_prime:.6f}')
 
-    return xs
+    return MCMCOutput(
+        samples=xs
+    )
 
 
 def aggressive_imh(x0: torch.Tensor,
