@@ -10,7 +10,7 @@ def test_log_ratio():
     x0 = torch.tensor([[-100.0, -100.0]])
     x1 = torch.tensor([[0.0, 0.0]])
 
-    target = StandardGaussian(event_shape=(2,))
+    target = StandardGaussian(2)
     proposal = DiagonalGaussian(mu=torch.zeros(2), sigma=torch.ones(2) * 100)
 
     # Move from x0 to x1

@@ -1,10 +1,9 @@
 import math
-from copy import deepcopy
 from tqdm import tqdm
 import torch
 
-from nfmc.util import metropolis_acceptance_log_ratio, DualAveraging
-from normalizing_flows.utils import sum_except_batch  # Remove this dependence
+from nfmc.util import DualAveraging
+from normalizing_flows.utils import sum_except_batch  # TODO Remove this dependency
 
 
 def mass_matrix_multiply(x: torch.Tensor, inverse_mass_matrix_diagonal: torch.Tensor, event_shape):
@@ -64,7 +63,7 @@ def hmc_trajectory(x: torch.Tensor,
 
 
 def hmc(x0: torch.Tensor,
-        potential: callable,
+        target: callable,
         n_iterations: int = 100,
         n_leapfrog_steps: int = 50,
         step_size: float = 0.01,
@@ -77,6 +76,24 @@ def hmc(x0: torch.Tensor,
         adjustment: bool = True,
         full_output: bool = False,
         imd_adjustment: float = 1e-3):
+    """
+
+    :param x0:
+    :param target: target potential.
+    :param n_iterations:
+    :param n_leapfrog_steps:
+    :param step_size:
+    :param target_acceptance_rate:
+    :param da_kwargs:
+    :param inv_mass_diag:
+    :param tune_inv_mass_diag:
+    :param tune_step_size:
+    :param show_progress:
+    :param adjustment:
+    :param full_output:
+    :param imd_adjustment:
+    :return:
+    """
     if da_kwargs is None:
         da_kwargs = dict()
 
@@ -104,16 +121,16 @@ def hmc(x0: torch.Tensor,
                 inv_mass_diag=inv_mass_diag,
                 step_size=step_size,
                 n_leapfrog_steps=n_leapfrog_steps,
-                potential=potential
+                potential=target
             )
 
             with torch.no_grad():
                 if adjustment:
-                    hamiltonian_start = potential(x) + 0.5 * sum_except_batch(
+                    hamiltonian_start = target(x) + 0.5 * sum_except_batch(
                         mass_matrix_multiply(p ** 2, inv_mass_diag, event_shape),
                         event_shape
                     )
-                    hamiltonian_end = potential(x_prime) + 0.5 * sum_except_batch(
+                    hamiltonian_end = target(x_prime) + 0.5 * sum_except_batch(
                         mass_matrix_multiply(p_prime ** 2, inv_mass_diag, event_shape),
                         event_shape
                     )
@@ -137,23 +154,35 @@ def hmc(x0: torch.Tensor,
             if tune_inv_mass_diag:
                 # inv_mass_diag = torch.var(x.flatten(1, -1), dim=0)  # Mass matrix adaptation
                 inv_mass_diag = imd_adjustment * torch.var(x.flatten(1, -1), dim=0) + (
-                            1 - imd_adjustment) * inv_mass_diag
+                        1 - imd_adjustment) * inv_mass_diag
             if tune_step_size and adjustment:  # Step size tuning is only possible with adjustment right now
                 error = target_acceptance_rate - acc_rate
                 da.step(error)
                 step_size = da.value  # Step size adaptation
             pbar.set_postfix_str(
-                f'acc: {accepted_total / (n_chains * (i + 1)):.3f} [{acc_rate:.3f}], '
+                f'Total accepted: {accepted_total / (n_chains * (i + 1)):.3f} [curr: {acc_rate:.3f}], '
                 f'log step: {math.log(step_size):.2f}, '
                 f'imd_max_norm: {torch.max(torch.abs(inv_mass_diag)):.2f}, '
                 f'da_error: {da.error_sum:.2f}, '
                 # f'da_log_step: {da.log_step:.2f}, '
-                f'n_divergences: {n_divergences}'
+                f'divergences: {n_divergences}'
             )
+
     if full_output:
-        return xs, {
+        kernel = {
             'inv_mass_diag': inv_mass_diag,
             'step_size': step_size,
             'n_leapfrog_steps': n_leapfrog_steps
         }
-    return xs
+        statistics = {
+            'n_accepted': accepted_total,
+            'n_divergences': n_divergences,
+            'acceptance_rate': accepted_total / (n_chains * n_iterations),
+        }
+        return {
+            'samples': xs,
+            'kernel': kernel,
+            'statistics': statistics
+        }
+    else:
+        return xs

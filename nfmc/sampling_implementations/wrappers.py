@@ -7,7 +7,7 @@ from potentials.base import Potential
 from potentials.synthetic.gaussian.unit import StandardGaussian
 from nfmc.sampling_implementations.neutra import neutra_hmc_base
 from nfmc.sampling_implementations.elliptical import transport_elliptical_slice_sampler, elliptical_slice_sampler
-from nfmc.sampling_implementations.independent_metropolis_hastings import independent_metropolis_hastings_base
+from nfmc.sampling_implementations.independent_metropolis_hastings import imh
 from nfmc.sampling_implementations.jump.langevin_monte_carlo import metropolis_adjusted_langevin_algorithm_base, \
     unadjusted_langevin_algorithm_base
 from nfmc.sampling_implementations.deterministic_langevin import deterministic_langevin_monte_carlo_base
@@ -79,7 +79,7 @@ def nf_imh(target: Potential,
     else:
         # n_chains = x0.shape[0]
         assert x0.shape[1:] == target.event_shape
-    return independent_metropolis_hastings_base(x0, flow_object, target, n_iterations=n_iterations)
+    return imh(x0, flow_object, target, n_iterations=n_iterations)
 
 
 def neutra_hmc(target: callable,

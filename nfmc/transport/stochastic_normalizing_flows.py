@@ -72,7 +72,7 @@ class HMCLayer(MCMCLayer):
     def sample(self, x, potential: callable, **kwargs):
         x = hmc(
             x0=x,
-            potential=potential,
+            target=potential,
             full_output=False,
             n_iterations=100,
             **kwargs

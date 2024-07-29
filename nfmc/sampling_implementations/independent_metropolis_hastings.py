@@ -16,14 +16,75 @@ def sample_bounded_geom(p, max_val):
     return int(torch.searchsorted(cdf, u, right=True))
 
 
-def independent_metropolis_hastings_base(x0: torch.Tensor,
-                                         flow: Flow,
-                                         potential: callable,
-                                         n_iterations: int = 1000,
-                                         adaptation_dropoff: float = 0.9999,
-                                         train_dist: str = 'uniform',
-                                         device=torch.device('cpu'),
-                                         **kwargs):
+def imh_fixed_flow(x0: torch.Tensor,
+                   flow: Flow,
+                   target: callable,
+                   n_iterations: int = 1000,
+                   device=torch.device('cpu'),
+                   show_progress: bool = True):
+    """
+
+    :param x0:
+    :param flow:
+    :param target: target potential.
+    :param n_iterations:
+    :param device:
+    :param show_progress:
+    :return:
+    """
+    xs = torch.empty(size=(n_iterations, *x0.shape), dtype=x0.dtype)
+    n_accepted = 0
+    n_total = 0
+    n_chains, *event_shape = x0.shape
+    x = deepcopy(x0)
+    for i in (pbar := tqdm(range(n_iterations), desc="Independent Metropolis-Hastings", disable=not show_progress)):
+        with torch.no_grad():
+            x_proposed = flow.sample(n_chains, no_grad=True).to(device)
+            try:
+                log_alpha = metropolis_acceptance_log_ratio(
+                    log_prob_curr=-target(x).to(device),
+                    log_prob_prime=-target(x_proposed).to(device),
+                    log_proposal_curr=flow.log_prob(x).to(device),
+                    log_proposal_prime=flow.log_prob(x_proposed).to(device)
+                )
+            except ValueError as e:
+                print("Encountered error in Metropolis acceptance ratio computation")
+                print(e)
+                torch.fill(xs[i:], torch.nan)
+                break
+
+            log_u = torch.rand(n_chains).log().to(log_alpha)
+            accepted_mask = torch.less(log_u, log_alpha)
+            x[accepted_mask] = x_proposed[accepted_mask]
+            x = x.detach()
+            xs[i] = deepcopy(x)
+        n_accepted += int(torch.sum(accepted_mask.long()))
+        n_total += n_chains
+        pbar.set_postfix_str(f'Acceptance rate: {n_accepted / n_total:.6f}')
+    return xs
+
+
+def imh(x0: torch.Tensor,
+        flow: Flow,
+        target: callable,
+        n_iterations: int = 1000,
+        adaptation_dropoff: float = 0.9999,
+        train_dist: str = 'uniform',
+        device=torch.device('cpu'),
+        show_progress:bool=True,
+        **kwargs):
+    """
+
+    :param x0:
+    :param flow:
+    :param target: target potential.
+    :param n_iterations:
+    :param adaptation_dropoff:
+    :param train_dist:
+    :param device:
+    :param kwargs:
+    :return:
+    """
     # FIXME sometimes IMH disables autograd for flows in place
     assert train_dist in ['bounded_geom_approx', 'bounded_geom', 'uniform']
     # Exponentially diminishing adaptation probability sequence
@@ -42,8 +103,8 @@ def independent_metropolis_hastings_base(x0: torch.Tensor,
 
             try:
                 log_alpha = metropolis_acceptance_log_ratio(
-                    log_prob_curr=-potential(x).to(device),
-                    log_prob_prime=-potential(x_proposed).to(device),
+                    log_prob_curr=-target(x).to(device),
+                    log_prob_prime=-target(x_proposed).to(device),
                     log_proposal_curr=flow.log_prob(x).to(device),
                     log_proposal_prime=flow.log_prob(x_proposed).to(device)
                 )
@@ -81,7 +142,7 @@ def independent_metropolis_hastings_base(x0: torch.Tensor,
             x_train = xs[k]
             flow.fit(x_train, n_epochs=1, **kwargs)
 
-        pbar.set_postfix_str(f'accept-frac: {n_accepted / n_total:.6f} | adapt-prob: {alpha_prime:.6f}')
+        pbar.set_postfix_str(f'Acceptance rate: {n_accepted / n_total:.6f} | adapt-prob: {alpha_prime:.6f}')
 
     return xs
 
