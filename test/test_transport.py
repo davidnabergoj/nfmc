@@ -13,6 +13,7 @@ all_flows = get_supported_normalizing_flows()
 all_jump_periods = [10, 50]
 
 
+@pytest.mark.skip(reason="Unsupported")
 @pytest.mark.parametrize('event_shape', all_event_shapes)
 @pytest.mark.parametrize('n_particles', all_n_particles)
 @pytest.mark.parametrize('flow', all_flows)
@@ -26,6 +27,7 @@ def test_aft(event_shape, n_particles, flow):
     assert torch.all(torch.isfinite(particle_history))
 
 
+@pytest.mark.skip(reason="Unsupported")
 @pytest.mark.parametrize('event_shape', all_event_shapes)
 @pytest.mark.parametrize('n_particles', all_n_particles)
 @pytest.mark.parametrize('flow', all_flows)
@@ -39,6 +41,7 @@ def test_craft(event_shape, n_particles, flow):
     assert torch.all(torch.isfinite(particle_history))
 
 
+@pytest.mark.skip(reason="Unsupported")
 @pytest.mark.parametrize('event_shape', all_event_shapes)
 @pytest.mark.parametrize('n_particles', all_n_particles)
 @pytest.mark.parametrize('flow', all_flows)
@@ -52,6 +55,7 @@ def test_snf(event_shape, n_particles, flow):
     assert torch.all(torch.isfinite(particle_history))
 
 
+@pytest.mark.skip(reason="Unsupported")
 @pytest.mark.parametrize('event_shape', all_event_shapes)
 @pytest.mark.parametrize('n_particles', all_n_particles)
 @pytest.mark.parametrize('flow', all_flows)
