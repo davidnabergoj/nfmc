@@ -1,4 +1,14 @@
 import math
+from dataclasses import dataclass
+import torch
+from typing import Dict, Any, Optional
+
+
+@dataclass
+class MCMCOutput:
+    samples: torch.Tensor
+    kernel: Optional[Dict[str, Any]] = None
+    statistics: Optional[Dict[str, Any]] = None
 
 
 def get_supported_normalizing_flows():
