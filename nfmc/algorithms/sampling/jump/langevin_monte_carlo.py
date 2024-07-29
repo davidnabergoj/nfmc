@@ -1,9 +1,9 @@
 import torch
 
-from nfmc.sampling_implementations.jump.base import JumpMCMC
+from nfmc.algorithms.sampling.jump.base import JumpMCMC
 from nfmc.util import MCMCOutput
 from normalizing_flows import Flow
-from nfmc.mcmc.langevin_algorithm import base as base_langevin
+from nfmc.algorithms.mcmc.langevin_algorithm import base as base_langevin
 
 
 class NFLMC(JumpMCMC):
@@ -29,7 +29,7 @@ class NFLMC(JumpMCMC):
     def sample_mcmc(self, x: torch.Tensor):
         output = base_langevin(
             x0=x,
-            n_iterations=self.jump_period - 1,
+            n_iterations=self.n_trajectories_per_jump - 1,
             target=self.target_potential,
             **{**self.mcmc_kwargs, **{
                 "inv_mass_diag": self.inv_mass_diag,
@@ -44,7 +44,7 @@ class NFLMC(JumpMCMC):
 def langevin_algorithm_base(x0: torch.Tensor,
                             flow: Flow,
                             target: callable,
-                            n_jumps: int = 25,
+                            n_iterations: int = 25,
                             n_trajectories_per_jump: int = 10,
                             batch_size: int = 128,
                             burnin: int = 1000,
@@ -62,8 +62,8 @@ def langevin_algorithm_base(x0: torch.Tensor,
     nf_lmc = NFLMC(
         target_potential=target,
         flow=flow,
-        n_jumps=n_jumps,
-        jump_period=n_trajectories_per_jump,
+        n_iterations=n_iterations,
+        n_trajectories_per_jump=n_trajectories_per_jump,
         show_progress=show_progress,
         flow_adjustment=nf_adjustment,
         **output.kernel

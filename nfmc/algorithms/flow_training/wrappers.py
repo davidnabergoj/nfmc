@@ -1,4 +1,4 @@
-from nfmc.flow_training import flow_annealed_importance_sampling_bootstrap_base
+from nfmc.flow_training_algorithms import flow_annealed_importance_sampling_bootstrap_base
 from potentials.base import Potential
 from nfmc.util import create_flow_object
 

@@ -14,8 +14,8 @@ class JumpMCMC:
     def __init__(self,
                  target_potential: callable,
                  flow: Flow,
-                 n_jumps: int = 100,
-                 jump_period: int = 500,
+                 n_iterations: int = 100,
+                 n_trajectories_per_jump: int = 500,
                  flow_adjustment: bool = True,
                  show_progress: bool = True):
         """
@@ -29,8 +29,8 @@ class JumpMCMC:
         self.target_potential = target_potential
         self.flow = flow
 
-        self.n_jumps = n_jumps
-        self.jump_period = jump_period
+        self.n_iterations = n_iterations
+        self.n_trajectories_per_jump = n_trajectories_per_jump
         self.flow_adjustment = flow_adjustment
         self.show_progress = show_progress
 
@@ -89,14 +89,14 @@ class JumpMCMC:
         if self.show_progress:
             from tqdm import tqdm
             progress_bar = tqdm(
-                range(self.n_jumps),
+                range(self.n_iterations),
                 desc=f'{self.name} '
                      f'({n_chains} chains, '
-                     f'{self.jump_period} MCMC iterations per jump, '
+                     f'{self.n_trajectories_per_jump} MCMC iterations per jump, '
                      f'{"adjusted" if self.flow_adjustment else "unadjusted"} jumps)'
             )
         else:
-            progress_bar = range(self.n_jumps)
+            progress_bar = range(self.n_iterations)
 
         total_accepted = 0
         total_seen = 0

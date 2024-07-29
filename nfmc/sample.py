@@ -2,16 +2,13 @@ from typing import Union, List, Tuple, Optional
 
 import torch
 
-from nfmc.mcmc.langevin_algorithm import ula
-from nfmc.sampling_implementations.elliptical import transport_elliptical_slice_sampler
-from nfmc.sampling_implementations.independent_metropolis_hastings import imh, imh_fixed_flow
-from nfmc.sampling_implementations.jump.hamiltonian_monte_carlo import jhmc
-from nfmc.sampling_implementations.jump.langevin_monte_carlo import unadjusted_langevin_algorithm_base, \
-    metropolis_adjusted_langevin_algorithm_base
-from nfmc.sampling_implementations.neutra import neutra_hmc_base
+from nfmc.algorithms.mcmc import ula, mala, hmc, nuts, mh
+from nfmc.algorithms.sampling.elliptical import transport_elliptical_slice_sampler
+from nfmc.algorithms.sampling.neutra import neutra_hmc_base
+from nfmc.algorithms.sampling.wrappers import jump_mala_wrapper, imh_wrapper
+
 from nfmc.util import create_flow_object
 from normalizing_flows import Flow
-from nfmc.mcmc import hmc, mh, nuts, mala
 from potentials.base import Potential
 from nfmc.util import MCMCOutput
 
@@ -61,15 +58,15 @@ def sample(target: callable,
             raise ValueError(f"Unknown type for normalizing flow: {type(flow)}")
         base_kwargs = {'x0': x0, 'target': target, 'flow': flow_object}
         if strategy == "imh":
-            return imh(**base_kwargs, n_iterations=n_iterations, **kwargs)
+            return imh_wrapper(**base_kwargs, n_iterations=n_iterations, **kwargs)
         if strategy == "fixed_imh":
-            return imh_fixed_flow(**base_kwargs, n_iterations=n_iterations, **kwargs)
+            return imh_fixed_flow_wrapper(**base_kwargs, n_iterations=n_iterations, **kwargs)
         elif strategy == 'jump_mala':
-            return metropolis_adjusted_langevin_algorithm_base(**base_kwargs, n_jumps=n_iterations, **kwargs)
+            return jump_mala_wrapper(**base_kwargs, n_iterations=n_iterations, **kwargs)
         elif strategy == 'jump_ula':
-            return unadjusted_langevin_algorithm_base(**base_kwargs, n_jumps=n_iterations, **kwargs)
+            return jump_ula_wrapper(**base_kwargs, n_iterations=n_iterations, **kwargs)
         elif strategy == 'jhmc':
-            return jhmc(**base_kwargs, n_jumps=n_iterations, jump_hmc_kwargs={'adjusted_jumps': True}, **kwargs)
+            return jhmc(**base_kwargs, n_iterations=n_iterations, jump_hmc_kwargs={'adjusted_jumps': True}, **kwargs)
         elif strategy == 'fixed_jhmc':
             return jhmc(
                 **base_kwargs,

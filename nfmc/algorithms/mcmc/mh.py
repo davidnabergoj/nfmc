@@ -2,7 +2,7 @@ from typing import Tuple
 
 import torch
 
-from nfmc.mcmc.base import Sampler
+from nfmc.algorithms.mcmc.base import Sampler
 from nfmc.util import metropolis_acceptance_log_ratio
 
 

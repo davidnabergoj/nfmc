@@ -1,7 +1,7 @@
 import torch
 from tqdm import tqdm
 
-from nfmc.mcmc import hmc
+from nfmc.algorithms.mcmc import hmc
 from nfmc.util import metropolis_acceptance_log_ratio, MCMCOutput
 from normalizing_flows import Flow
 

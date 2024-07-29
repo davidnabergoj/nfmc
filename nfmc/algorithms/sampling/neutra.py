@@ -1,6 +1,6 @@
 import torch
 
-from nfmc.mcmc.hmc import hmc
+from nfmc.algorithms.mcmc.hmc import hmc
 from nfmc.util import MCMCOutput
 from normalizing_flows import Flow
 

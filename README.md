@@ -34,7 +34,7 @@ An example using the Real NVP flow and a standard Gaussian potential is shown be
 ```python
 import torch
 from potentials.synthetic.gaussian.unit import StandardGaussian
-from nfmc.sampling_implementations import nf_mala, nf_ula, nf_imh, neutra_hmc, tess
+from nfmc.sampling_algorithms import nf_mala, nf_ula, nf_imh, neutra_hmc, tess
 
 torch.manual_seed(0)  # Set the random seed for reproducible results
 
@@ -57,11 +57,12 @@ Transport NFMC algorithms move particles from a prior potential to a target pote
 They output a particle history with shape `(n_iterations, n_particles, *event_shape)`.
 The last iteration represents particles that are distributed according to the target.
 An example using the Real NVP flow, a standard Gaussian prior potential, and a diagonal Gaussian target potential is shown below:
+
 ```python
 import torch
 from potentials.synthetic.gaussian.unit import StandardGaussian
 from potentials.synthetic.gaussian.diagonal import DiagonalGaussian0
-from nfmc.transport import aft, craft, snf, ns, dlmc
+from nfmc.transport_algorithms import aft, craft, snf, ns, dlmc
 
 torch.manual_seed(0)  # Set the random seed for reproducible results
 

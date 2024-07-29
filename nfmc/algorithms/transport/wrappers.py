@@ -1,7 +1,7 @@
 from potentials.base import Potential
-from nfmc.transport.stochastic_normalizing_flows import stochastic_normalizing_flow_hmc_base
-from nfmc.transport.nested import nested_sampling_base
-from nfmc.transport.annealed_flow_transport import annealed_flow_transport_base, \
+from nfmc.transport_algorithms.stochastic_normalizing_flows import stochastic_normalizing_flow_hmc_base
+from nfmc.transport_algorithms.nested import nested_sampling_base
+from nfmc.transport_algorithms.annealed_flow_transport import annealed_flow_transport_base, \
     continual_repeated_annealed_flow_transport_base
 from nfmc.util import create_flow_object
 

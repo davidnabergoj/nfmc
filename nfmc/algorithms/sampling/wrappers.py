@@ -5,24 +5,24 @@ import torch
 from normalizing_flows import Flow
 from potentials.base import Potential
 from potentials.synthetic.gaussian.unit import StandardGaussian
-from nfmc.sampling_implementations.neutra import neutra_hmc_base
-from nfmc.sampling_implementations.elliptical import transport_elliptical_slice_sampler, elliptical_slice_sampler
-from nfmc.sampling_implementations.independent_metropolis_hastings import imh
-from nfmc.sampling_implementations.jump.langevin_monte_carlo import metropolis_adjusted_langevin_algorithm_base, \
+from nfmc.algorithms.sampling.neutra import neutra_hmc_base
+from nfmc.algorithms.sampling.elliptical import transport_elliptical_slice_sampler, elliptical_slice_sampler
+from nfmc.algorithms.sampling.independent_metropolis_hastings import imh
+from nfmc.algorithms.sampling.jump.langevin_monte_carlo import metropolis_adjusted_langevin_algorithm_base, \
     unadjusted_langevin_algorithm_base
-from nfmc.sampling_implementations.deterministic_langevin import deterministic_langevin_monte_carlo_base
+from nfmc.algorithms.sampling.deterministic_langevin import deterministic_langevin_monte_carlo_base
 from nfmc.util import create_flow_object
 
 
-def nf_mala(target: Potential,
-            flow: Union[str, Flow],
-            n_chains: int = 100,
-            n_iterations: int = 100,
-            jump_period: int = 50,
-            x0: torch.Tensor = None,
-            device: torch.device = torch.device("cpu"),
-            edge_list: List[Tuple[int, int]] = None,
-            **kwargs):
+def jump_mala_wrapper(target: Potential,
+              flow: Union[str, Flow],
+              n_chains: int = 100,
+              n_iterations: int = 100,
+              n_trajectories_per_jump: int = 50,
+              x0: torch.Tensor = None,
+              device: torch.device = torch.device("cpu"),
+              edge_list: List[Tuple[int, int]] = None,
+              **kwargs):
     if isinstance(flow, str):
         flow_object = create_flow_object(flow_name=flow, event_shape=target.event_shape, edge_list=edge_list).to(device)
     else:
@@ -33,21 +33,21 @@ def nf_mala(target: Potential,
         x0,
         flow_object,
         target,
-        n_jumps=n_iterations,
-        jump_period=jump_period,
+        n_iterations=n_iterations,
+        n_trajectories_per_jump=n_trajectories_per_jump,
         **kwargs
     )
 
 
-def nf_ula(target: Potential,
-           flow: Union[str, Flow],
-           n_chains: int = 100,
-           n_iterations: int = 100,
-           jump_period: int = 50,
-           x0: torch.Tensor = None,
-           device: torch.device = torch.device("cpu"),
-           edge_list: List[Tuple[int, int]] = None,
-           **kwargs):
+def jump_ula_wrapper(target: Potential,
+             flow: Union[str, Flow],
+             n_chains: int = 100,
+             n_iterations: int = 100,
+             jump_period: int = 50,
+             x0: torch.Tensor = None,
+             device: torch.device = torch.device("cpu"),
+             edge_list: List[Tuple[int, int]] = None,
+             **kwargs):
     if isinstance(flow, str):
         flow_object = create_flow_object(flow_name=flow, event_shape=target.event_shape, edge_list=edge_list).to(device)
     else:
@@ -64,12 +64,12 @@ def nf_ula(target: Potential,
     )
 
 
-def nf_imh(target: Potential,
-           flow: Union[str, Flow],
-           n_chains: int = 100,
-           n_iterations: int = 1000,
-           x0: torch.Tensor = None,
-           edge_list: List[Tuple[int, int]] = None):
+def imh_wrapper(target: Potential,
+        flow: Union[str, Flow],
+        n_chains: int = 100,
+        n_iterations: int = 1000,
+        x0: torch.Tensor = None,
+        edge_list: List[Tuple[int, int]] = None):
     if isinstance(flow, str):
         flow_object = create_flow_object(flow_name=flow, event_shape=target.event_shape, edge_list=edge_list)
     else:
@@ -82,7 +82,7 @@ def nf_imh(target: Potential,
     return imh(x0, flow_object, target, n_iterations=n_iterations)
 
 
-def neutra_hmc(target: callable,
+def neutra_hmc_wrapper(target: callable,
                flow: Union[str, Flow],
                event_shape,
                n_chains: int = 100,
@@ -105,7 +105,7 @@ def neutra_hmc(target: callable,
     return neutra_hmc_base(flow_object, target, n_chains, n_vi_iterations=n_iterations, n_hmc_iterations=n_iterations)
 
 
-def tess(
+def tess_wrapper(
         negative_log_likelihood: Potential,
         flow: Union[str, Flow],
         event_shape,
@@ -129,7 +129,8 @@ def tess(
     )
 
 
-def ess(
+# TODO move ess to MCMC
+def ess_wrapper(
         negative_log_likelihood: Potential,
         n_chains: int = 100,
         n_iterations: int = 1000,
@@ -151,7 +152,7 @@ def ess(
     )
 
 
-def dlmc(target: Potential,
+def dlmc_wrapper(target: Potential,
          flow: Union[str, Flow],
          prior: Potential = None,
          n_particles: int = 100,
