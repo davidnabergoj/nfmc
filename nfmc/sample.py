@@ -7,8 +7,9 @@ from nfmc.algorithms.sampling.mcmc.ess import ESSKernel, ESSParameters, ESS
 from nfmc.algorithms.sampling.mcmc.hmc import HMCKernel, HMCParameters, UHMC, HMC
 from nfmc.algorithms.sampling.mcmc.langevin import LangevinKernel, LangevinParameters, ULA, MALA
 from nfmc.algorithms.sampling.mcmc.mh import MHKernel, MHParameters, MH
+from nfmc.algorithms.sampling.nfmc.dlmc import DLMCKernel, DLMCParameters, DLMC
 from nfmc.algorithms.sampling.nfmc.imh import IMHKernel, IMHParameters, AdaptiveIMH
-from nfmc.algorithms.sampling.nfmc.jump import JumpNFMCParameters, JumpULA, JumpHMC, JumpUHMC, JumpMALA
+from nfmc.algorithms.sampling.nfmc.jump import JumpNFMCParameters, JumpULA, JumpHMC, JumpUHMC, JumpMALA, JumpMH, JumpESS
 from nfmc.algorithms.sampling.nfmc.neutra import NeuTraKernel, NeuTraParameters, NeuTraHMC
 from nfmc.algorithms.sampling.nfmc.tess import TESSKernel, TESSParameters, TESS
 from nfmc.util import create_flow_object
@@ -18,7 +19,7 @@ from potentials.base import Potential
 
 def sample(target: callable,
            event_shape: Optional[Union[torch.Size, Tuple[int]]] = None,
-           flow: Optional[Union[str, Flow]] = None,
+           flow: Optional[Union[str, Flow]] = 'realnvp',
            strategy: str = "imh",
            n_chains: int = 100,
            n_iterations: int = 100,
@@ -30,8 +31,8 @@ def sample(target: callable,
            inner_kernel_kwargs: Optional[dict] = None,
            inner_param_kwargs: Optional[dict] = None,
            device: torch.device = torch.device("cpu"),
-           **kwargs) -> Union[MCMCOutput, torch.Tensor]:
-    if flow is not None:
+           **kwargs) -> MCMCOutput:
+    if flow is not None and not isinstance(flow, str):
         event_shape = flow.event_shape
     elif isinstance(target, Potential):
         event_shape = target.event_shape
@@ -76,7 +77,18 @@ def sample(target: callable,
             return ESS(event_shape, target, negative_log_likelihood, kernel, params).sample(x0, **kwargs)
         else:
             raise ValueError(f"Unsupported sampling strategy: {strategy}")
-    elif strategy in ["imh", "jump_mala", "jump_ula", "jump_hmc", "jump_uhmc", "neutra_hmc", "tess"]:
+    elif strategy in [
+        "imh",
+        "jump_mala",
+        "jump_ula",
+        "jump_hmc",
+        "jump_uhmc",
+        "jump_ess",
+        "jump_mh",
+        "neutra_hmc",
+        "tess",
+        "dlmc"
+    ]:
         # NFMC
         if flow is None:
             raise ValueError("Flow object must be provided")
@@ -93,30 +105,116 @@ def sample(target: callable,
         elif strategy == 'jump_mala':
             kernel = NFMCKernel(event_shape, flow=flow_object)
             params = JumpNFMCParameters(n_iterations=n_iterations, **param_kwargs)
-            return JumpMALA(event_shape, target, kernel, params).sample(x0, **kwargs)
+            inner_kernel = LangevinKernel(
+                event_size=int(torch.prod(torch.as_tensor(event_shape))),
+                **inner_kernel_kwargs
+            )
+            inner_params = LangevinParameters(**inner_param_kwargs)
+            return JumpMALA(
+                event_shape,
+                target,
+                kernel=kernel,
+                params=params,
+                inner_kernel=inner_kernel,
+                inner_params=inner_params
+            ).sample(x0, **kwargs)
         elif strategy == 'jump_ula':
             kernel = NFMCKernel(event_shape, flow=flow_object)
             params = JumpNFMCParameters(n_iterations=n_iterations, **param_kwargs)
-            return JumpULA(event_shape, target, kernel, params).sample(x0, **kwargs)
+            inner_kernel = LangevinKernel(
+                event_size=int(torch.prod(torch.as_tensor(event_shape))),
+                **inner_kernel_kwargs
+            )
+            inner_params = LangevinParameters(**inner_param_kwargs)
+            return JumpULA(
+                event_shape,
+                target,
+                kernel=kernel,
+                params=params,
+                inner_kernel=inner_kernel,
+                inner_params=inner_params
+            ).sample(x0, **kwargs)
         elif strategy == 'jump_hmc':
             kernel = NFMCKernel(event_shape, flow=flow_object)
             params = JumpNFMCParameters(n_iterations=n_iterations, **param_kwargs)
-            return JumpHMC(event_shape, target, kernel, params).sample(x0, **kwargs)
+            inner_kernel = HMCKernel(
+                event_size=int(torch.prod(torch.as_tensor(event_shape))),
+                **inner_kernel_kwargs
+            )
+            inner_params = HMCParameters(**inner_param_kwargs)
+            return JumpHMC(
+                event_shape,
+                target,
+                kernel=kernel,
+                params=params,
+                inner_kernel=inner_kernel,
+                inner_params=inner_params
+            ).sample(x0, **kwargs)
         elif strategy == 'jump_uhmc':
             kernel = NFMCKernel(event_shape, flow=flow_object)
             params = JumpNFMCParameters(n_iterations=n_iterations, **param_kwargs)
-            return JumpUHMC(event_shape, target, kernel, params).sample(x0, **kwargs)
+            inner_kernel = HMCKernel(
+                event_size=int(torch.prod(torch.as_tensor(event_shape))),
+                **inner_kernel_kwargs
+            )
+            inner_params = HMCParameters(**inner_param_kwargs)
+            return JumpUHMC(
+                event_shape,
+                target,
+                kernel=kernel,
+                params=params,
+                inner_kernel=inner_kernel,
+                inner_params=inner_params
+            ).sample(x0, **kwargs)
+        elif strategy == 'jump_mh':
+            kernel = NFMCKernel(event_shape, flow=flow_object)
+            params = JumpNFMCParameters(n_iterations=n_iterations, **param_kwargs)
+            inner_kernel = MHKernel(
+                event_size=int(torch.prod(torch.as_tensor(event_shape))),
+                **inner_kernel_kwargs
+            )
+            inner_params = MHParameters(**inner_param_kwargs)
+            return JumpMH(
+                event_shape,
+                target,
+                kernel=kernel,
+                params=params,
+                inner_kernel=inner_kernel,
+                inner_params=inner_params
+            ).sample(x0, **kwargs)
+        elif strategy == 'jump_ess':
+            if negative_log_likelihood is None:
+                raise ValueError("Negative log likelihood must be provided")
+            kernel = NFMCKernel(event_shape, flow=flow_object)
+            params = JumpNFMCParameters(n_iterations=n_iterations, **param_kwargs)
+            inner_kernel = ESSKernel(event_shape=event_shape, **inner_kernel_kwargs)
+            inner_params = ESSParameters(**inner_param_kwargs)
+            return JumpESS(
+                event_shape,
+                target,
+                negative_log_likelihood=negative_log_likelihood,
+                kernel=kernel,
+                params=params,
+                inner_kernel=inner_kernel,
+                inner_params=inner_params
+            ).sample(x0, **kwargs)
         elif strategy == "tess":
             if negative_log_likelihood is None:
                 raise ValueError("Negative log likelihood must be provided")
             kernel = TESSKernel(event_shape, flow=flow_object)
             params = TESSParameters(n_iterations=n_iterations, **param_kwargs)
             return TESS(event_shape, target, negative_log_likelihood, kernel, params).sample(x0, **kwargs)
+        elif strategy == "dlmc":
+            if negative_log_likelihood is None:
+                raise ValueError("Negative log likelihood must be provided")
+            kernel = DLMCKernel(event_shape, flow=flow_object)
+            params = DLMCParameters(n_iterations=n_iterations, **param_kwargs)
+            return DLMC(event_shape, target, negative_log_likelihood, kernel, params).sample(x0, **kwargs)
         elif strategy == 'neutra_hmc':
             kernel = NeuTraKernel(event_shape, flow=flow_object)
             params = NeuTraParameters(n_iterations=n_iterations, **param_kwargs)
             inner_kernel = HMCKernel(event_size=int(torch.prod(torch.as_tensor(event_shape))), **inner_kernel_kwargs)
             inner_params = HMCParameters(**inner_param_kwargs)
             return NeuTraHMC(event_shape, target, inner_kernel, inner_params, kernel, params).sample(x0, **kwargs)
-    else:
-        raise ValueError(f"Unsupported sampling strategy: {strategy}")
+        else:
+            raise ValueError(f"Unsupported sampling strategy: {strategy}")
