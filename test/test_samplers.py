@@ -24,7 +24,6 @@ from nfmc.algorithms.sampling.nfmc import (
     FixedIMH,
     AdaptiveIMH
 )
-from nfmc.algorithms.sampling.nfmc.jump import JumpNFMCParameters
 from potentials.synthetic.gaussian.unit import StandardGaussian
 from nfmc.algorithms.base import MCMCOutput
 
@@ -102,16 +101,18 @@ def test_jump_ess():
     output = sampler.sample(x0=x0, show_progress=False)
 
     assert isinstance(output, MCMCOutput)
-    assert output.samples.shape == (n_iterations * (sampler.inner_sampler.params.n_iterations + 1), n_chains, *event_shape)
+    assert output.samples.shape == (
+        n_iterations * (sampler.inner_sampler.params.n_iterations + 1), n_chains, *event_shape)
     assert torch.isfinite(output.samples).all()
 
 
-def test_tess():
+@pytest.mark.parametrize('sampler_class', [TESS, DLMC])
+def test_nfmc_with_nll(sampler_class):
     torch.manual_seed(0)
     n_iterations = 3
     n_chains = 4
     event_shape = (5,)
-    sampler = TESS(
+    sampler = sampler_class(
         event_shape=event_shape,
         target=StandardGaussian(n_dim=event_shape[0]),
         negative_log_likelihood=StandardGaussian(n_dim=event_shape[0])
@@ -150,6 +151,33 @@ def test_jump_nfmc(sampler_class):
     assert isinstance(output, MCMCOutput)
     assert output.samples.shape == (
         n_iterations * (sampler.inner_sampler.params.n_iterations + 1),
+        n_chains,
+        *event_shape
+    )
+    assert torch.isfinite(output.samples).all()
+
+
+@pytest.mark.parametrize('sampler_class', [
+    NeuTraHMC,
+    FixedIMH,
+    AdaptiveIMH
+])
+def test_other_nfmc(sampler_class):
+    torch.manual_seed(0)
+    n_iterations = 3
+    n_chains = 4
+    event_shape = (5,)
+    sampler = sampler_class(
+        event_shape=event_shape,
+        target=StandardGaussian(n_dim=event_shape[0]),
+    )
+    sampler.params.n_iterations = n_iterations
+    x0 = torch.randn(size=(n_chains, *event_shape))
+    output = sampler.sample(x0=x0, show_progress=False)
+
+    assert isinstance(output, MCMCOutput)
+    assert output.samples.shape == (
+        n_iterations,
         n_chains,
         *event_shape
     )

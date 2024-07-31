@@ -36,7 +36,7 @@ class DLMC(Sampler):
         self.kernel: DLMCKernel
         self.params: DLMCParameters
         n_chains, *event_shape = x0.shape
-        statistics = MCMCStatistics(n_accepted_trajectories=0)
+        statistics = MCMCStatistics()
 
         # Initial update
         grad = compute_grad(self.negative_log_likelihood, x0)
@@ -76,7 +76,7 @@ class DLMC(Sampler):
             xs[i] = x
 
             statistics.n_accepted_trajectories += int(torch.sum(accepted_mask))
+            statistics.n_attempted_trajectories += n_chains
             pbar.set_postfix_str(f'{statistics}')
 
-        statistics.acceptance_rate = statistics.n_accepted_trajectories / (self.params.n_iterations * n_chains)
         return MCMCOutput(samples=xs, statistics=statistics)

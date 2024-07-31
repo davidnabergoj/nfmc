@@ -1,7 +1,7 @@
 from collections import defaultdict
 from copy import deepcopy
 from dataclasses import dataclass
-from typing import Sized
+from typing import Sized, Optional
 
 from tqdm import tqdm
 import torch
@@ -39,8 +39,12 @@ class AdaptiveIMH(Sampler):
     def __init__(self,
                  event_shape: Sized,
                  target: callable,
-                 kernel: IMHKernel,
-                 params: IMHParameters):
+                 kernel: Optional[IMHKernel] = None,
+                 params: Optional[IMHParameters] = None):
+        if kernel is None:
+            kernel = IMHKernel(event_shape)
+        if params is None:
+            params = IMHParameters()
         super().__init__(event_shape, target, kernel, params)
 
     def sample(self, x0: torch.Tensor, show_progress: bool = False) -> MCMCOutput:
@@ -101,7 +105,15 @@ class AdaptiveIMH(Sampler):
 
 
 class FixedIMH(Sampler):
-    def __init__(self, event_shape: Sized, target: callable, kernel: IMHKernel, params: IMHParameters):
+    def __init__(self,
+                 event_shape: Sized,
+                 target: callable,
+                 kernel: Optional[IMHKernel] = None,
+                 params: Optional[IMHParameters] = None):
+        if kernel is None:
+            kernel = IMHKernel(event_shape)
+        if params is None:
+            params = IMHParameters()
         super().__init__(event_shape, target, kernel, params)
 
     def sample(self, x0: torch.Tensor, show_progress: bool = False) -> MCMCOutput:
