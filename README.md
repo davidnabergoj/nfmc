@@ -20,9 +20,7 @@ or only one.
 | Continual repeated annealed flow transport Monte Carlo |    CRAFT     |       Transport       |               No                |      Yes       |
 | Flow annealed importance sampling bootstrap            |     FAB      | Variational inference |               Yes               |       No       |
 
-&ast; Standard DLMC only requires the forward map, but latent DLMC requires the inverse map as well. 
-
-
+&ast; Standard DLMC only requires the forward map, but latent DLMC requires the inverse map as well.
 
 ## Example use
 
@@ -34,55 +32,57 @@ An example using the Real NVP flow and a standard Gaussian potential is shown be
 ```python
 import torch
 from potentials.synthetic.gaussian.unit import StandardGaussian
-from nfmc.sampling_algorithms import nf_mala, nf_ula, nf_imh, neutra_hmc, tess
+from nfmc import sample
 
 torch.manual_seed(0)  # Set the random seed for reproducible results
 
 n_iterations = 1000
 n_chains = 100
-event_shape = (25,)  # Each draw (event) is a vector with size 25.
+n_dim = 25  # Each draw (event) is a vector with size 25.
 
 # Define the target potential
-target = StandardGaussian(event_shape=event_shape)
+target = StandardGaussian(n_dim=n_dim)
 
 # Draw samples with different NFMC sampling methods
-mala_samples = nf_mala(target, "realnvp", n_chains, n_iterations)  # Using default jump period
-ula_samples = nf_ula(target, "realnvp", n_chains, n_iterations)  # Using default jump period
-imh_samples = nf_imh(target, "realnvp", n_chains, n_iterations)
-neutra_samples = neutra_hmc(target, "realnvp", n_chains, n_iterations)
-tess_samples = tess(target, "realnvp", n_chains, n_iterations)
+mala_out = sample(
+    target,
+    strategy="jump_mala",
+    flow="realnvp",
+    n_chains=n_chains,
+    n_iterations=n_iterations
+)
+ula_out = sample(
+    target,
+    strategy="jump_ula",
+    flow="realnvp",
+    n_chains=n_chains,
+    n_iterations=n_iterations
+)
+imh_out = sample(
+    target,
+    strategy="imh",
+    flow="realnvp",
+    n_chains=n_chains,
+    n_iterations=n_iterations
+)
+neutra_out = sample(
+    target,
+    strategy="neutra_hmc",
+    flow="realnvp",
+    n_chains=n_chains,
+    n_iterations=n_iterations
+)
+tess_out = sample(
+    target,
+    strategy="tess",
+    flow="realnvp",
+    n_chains=n_chains,
+    n_iterations=n_iterations
+)
 ```
 
-Transport NFMC algorithms move particles from a prior potential to a target potential.
-They output a particle history with shape `(n_iterations, n_particles, *event_shape)`.
-The last iteration represents particles that are distributed according to the target.
-An example using the Real NVP flow, a standard Gaussian prior potential, and a diagonal Gaussian target potential is shown below:
+You can check the supported normalizing flows with:
 
-```python
-import torch
-from potentials.synthetic.gaussian.unit import StandardGaussian
-from potentials.synthetic.gaussian.diagonal import DiagonalGaussian0
-from nfmc.transport_algorithms import aft, craft, snf, ns, dlmc
-
-torch.manual_seed(0)  # Set the random seed for reproducible results
-
-n_iterations = 1000
-n_particles = 100
-event_shape = (25,)  # Each draw (event) is a vector with size 25.
-
-# Define the target potential
-prior = StandardGaussian(event_shape)
-target = DiagonalGaussian0(event_shape)
-
-# Transport particles with different NFMC transport methods
-snf_particles = snf(prior, target, "realnvp", n_particles, n_iterations)
-aft_particles = aft(prior, target, "realnvp", n_particles, n_iterations)
-craft_particles = craft(prior, target, "realnvp", n_particles, n_iterations)
-dlmc_particles = dlmc(prior, target, "realnvp", n_particles, n_iterations)
-ns_particles = ns(prior, target, "realnvp", n_particles, n_iterations)
-```
-
-You can see which normalizing flows are supported as follows:
 ```python
 from nfmc.util import get_supported_normalizing_flows
 

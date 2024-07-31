@@ -49,7 +49,7 @@ class MH(Sampler):
             params = MHParameters()
         super().__init__(event_shape, target, kernel, params)
 
-    def sample(self, x0: torch.Tensor, show_progress: bool = False) -> MCMCOutput:
+    def sample(self, x0: torch.Tensor, show_progress: bool = True) -> MCMCOutput:
         self.params: MHParameters
         self.kernel: MHKernel
 

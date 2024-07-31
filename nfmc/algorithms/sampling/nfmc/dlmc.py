@@ -32,7 +32,7 @@ class DLMC(Sampler):
         super().__init__(event_shape, target, kernel, params)
         self.negative_log_likelihood = negative_log_likelihood
 
-    def sample(self, x0: torch.Tensor, show_progress: bool = False) -> MCMCOutput:
+    def sample(self, x0: torch.Tensor, show_progress: bool = True) -> MCMCOutput:
         self.kernel: DLMCKernel
         self.params: DLMCParameters
         n_chains, *event_shape = x0.shape

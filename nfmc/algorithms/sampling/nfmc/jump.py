@@ -49,7 +49,7 @@ class JumpNFMC(Sampler):
         super().__init__(event_shape, target, kernel, params)
         self.inner_sampler = inner_sampler
 
-    def sample(self, x0: torch.Tensor, show_progress: bool = False) -> MCMCOutput:
+    def sample(self, x0: torch.Tensor, show_progress: bool = True) -> MCMCOutput:
         self.kernel: NFMCKernel
         self.params: JumpNFMCParameters
 

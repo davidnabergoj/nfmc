@@ -40,7 +40,7 @@ class NeuTraHMC(Sampler):
         self.inner_params = inner_params
         self.inner_params.n_iterations = self.params.n_iterations  # TODO handle this better
 
-    def sample(self, x0: torch.Tensor, show_progress: bool = False) -> MCMCOutput:
+    def sample(self, x0: torch.Tensor, show_progress: bool = True) -> MCMCOutput:
         self.kernel: NeuTraKernel
         self.params: NeuTraParameters
         self.inner_params.n_iterations = self.params.n_iterations  # TODO handle this better

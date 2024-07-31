@@ -47,7 +47,7 @@ class AdaptiveIMH(Sampler):
             params = IMHParameters()
         super().__init__(event_shape, target, kernel, params)
 
-    def sample(self, x0: torch.Tensor, show_progress: bool = False) -> MCMCOutput:
+    def sample(self, x0: torch.Tensor, show_progress: bool = True) -> MCMCOutput:
         # FIXME sometimes IMH disables autograd for flows in place
         # TODO make initial states be sampled from the flow
 
@@ -116,7 +116,7 @@ class FixedIMH(Sampler):
             params = IMHParameters()
         super().__init__(event_shape, target, kernel, params)
 
-    def sample(self, x0: torch.Tensor, show_progress: bool = False) -> MCMCOutput:
+    def sample(self, x0: torch.Tensor, show_progress: bool = True) -> MCMCOutput:
         xs = torch.empty(size=(self.params.n_iterations, *x0.shape), dtype=x0.dtype, device=x0.device)
         n_chains, *event_shape = x0.shape
         statistics = MCMCStatistics(n_accepted_trajectories=0, n_divergences=0)
