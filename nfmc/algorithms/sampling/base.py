@@ -29,6 +29,7 @@ class NFMCKernel(MCMCKernel):
 @dataclass
 class MCMCParameters:
     n_iterations: int = 100
+    n_warmup_iterations: int = 100
 
     def __post_init__(self):
         pass

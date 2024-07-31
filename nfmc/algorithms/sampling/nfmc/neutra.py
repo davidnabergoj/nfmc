@@ -15,8 +15,19 @@ class NeuTraKernel(NFMCKernel):
 
 @dataclass
 class NeuTraParameters(NFMCParameters):
-    n_vi_iterations: int = 100
     batch_inverse_size: int = 128
+    warmup_fit_kwargs: dict = None
+
+    def __post_init__(self):
+        if self.warmup_fit_kwargs is None:
+            self.warmup_fit_kwargs = {
+                'early_stopping': True,
+                'early_stopping_threshold': 50,
+                'keep_best_weights': True,
+                'n_samples': 1,
+                'n_epochs': 500,
+                'lr': 0.05
+            }
 
 
 class NeuTraHMC(Sampler):
@@ -36,38 +47,39 @@ class NeuTraHMC(Sampler):
         if params is None:
             params = NeuTraParameters()
         super().__init__(event_shape, target, kernel, params)
-        self.inner_kernel = inner_kernel
-        self.inner_params = inner_params
-        self.inner_params.n_iterations = self.params.n_iterations  # TODO handle this better
+        inner_params.n_iterations = self.params.n_iterations
+        self.inner_sampler = HMC(event_shape, self.adjusted_target, inner_kernel, inner_params)
 
-    def sample(self, x0: torch.Tensor, show_progress: bool = True) -> MCMCOutput:
+    def adjusted_target(self, _z):
+        _x, log_det_inverse = self.kernel.flow.bijection.inverse(_z)
+        log_prob = -self.target(_x)
+        adjusted_log_prob = log_prob + log_det_inverse
+        return -adjusted_log_prob
+
+    def warmup(self, x0: torch.Tensor, show_progress: bool = True) -> MCMCOutput:
         self.kernel: NeuTraKernel
         self.params: NeuTraParameters
-        self.inner_params.n_iterations = self.params.n_iterations  # TODO handle this better
-
-        n_chains, *event_shape = x0.shape
 
         # Fit flow to target via variational inference
         self.kernel.flow.variational_fit(
             lambda v: -self.target(v),
-            n_epochs=self.params.n_vi_iterations,
+            **self.params.warmup_fit_kwargs,
             show_progress=show_progress
         )
 
+        # Tune HMC
+        warmup_output = self.inner_sampler.warmup(x0, show_progress=show_progress)
+        return warmup_output
+
+    def sample(self, x0: torch.Tensor, show_progress: bool = True) -> MCMCOutput:
+        self.kernel: NeuTraKernel
+        self.params: NeuTraParameters
+        n_chains, *event_shape = x0.shape
+        self.inner_sampler.params.n_iterations = self.params.n_iterations
+
         # Run HMC with target being the flow
-        x0 = self.kernel.flow.sample(n_chains)
-        z0, _ = self.kernel.flow.bijection.forward(x0)
-
-        def adjusted_target(_z):
-            _x, log_det_inverse = self.kernel.flow.bijection.inverse(_z)
-            log_prob = -self.target(_x)
-            adjusted_log_prob = log_prob + log_det_inverse
-            return -adjusted_log_prob
-
-        # TODO handle HMC tuning here
-        inner_sampler = HMC(event_shape, adjusted_target, self.inner_kernel, self.inner_params)
-        mcmc_output = inner_sampler.sample(z0.detach(), show_progress=show_progress)
-
+        z0 = self.kernel.flow.base_sample((n_chains,)).detach()
+        mcmc_output = self.inner_sampler.sample(z0, show_progress=show_progress)
         with torch.no_grad():
             xs, _ = self.kernel.flow.bijection.batch_inverse(
                 mcmc_output.samples,

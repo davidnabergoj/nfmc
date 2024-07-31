@@ -20,10 +20,20 @@ class IMHKernel(NFMCKernel):
 class IMHParameters(NFMCParameters):
     train_distribution: str = 'uniform'
     adaptation_dropoff: float = 0.9999
+    warmup_fit_kwargs: dict = None
 
     def __post_init__(self):
         if self.train_distribution not in ['bounded_geom_approx', 'bounded_geom', 'uniform']:
             raise ValueError
+        if self.warmup_fit_kwargs is None:
+            self.warmup_fit_kwargs = {
+                'early_stopping': True,
+                'early_stopping_threshold': 50,
+                'keep_best_weights': True,
+                'n_samples': 1,
+                'n_epochs': 500,
+                'lr': 0.05
+            }
 
 
 def sample_bounded_geom(p, max_val):
@@ -46,6 +56,17 @@ class AdaptiveIMH(Sampler):
         if params is None:
             params = IMHParameters()
         super().__init__(event_shape, target, kernel, params)
+
+    def warmup(self, x0: torch.Tensor, show_progress: bool = True) -> MCMCOutput:
+        self.kernel: IMHKernel
+        self.params: IMHParameters
+
+        self.kernel.flow.variational_fit(
+            lambda v: -self.target(v),
+            **self.params.warmup_fit_kwargs,
+            show_progress=show_progress
+        )
+        return MCMCOutput(samples=self.kernel.flow.sample(x0.shape[0]).detach()[None])
 
     def sample(self, x0: torch.Tensor, show_progress: bool = True) -> MCMCOutput:
         # FIXME sometimes IMH disables autograd for flows in place
@@ -78,7 +99,7 @@ class AdaptiveIMH(Sampler):
                     statistics.n_divergences += 1
             xs[i] = x
             statistics.n_accepted_trajectories += int(torch.sum(accepted_mask))
-            statistics.acceptance_rate + statistics.n_accepted_trajectories / ((i + 1) * n_chains)
+            statistics.n_attempted_trajectories += n_chains
 
             u_prime = torch.rand(size=())
             alpha_prime = self.params.adaptation_dropoff ** i
@@ -116,6 +137,17 @@ class FixedIMH(Sampler):
             params = IMHParameters()
         super().__init__(event_shape, target, kernel, params)
 
+    def warmup(self, x0: torch.Tensor, show_progress: bool = True) -> MCMCOutput:
+        self.kernel: IMHKernel
+        self.params: IMHParameters
+
+        self.kernel.flow.variational_fit(
+            lambda v: -self.target(v),
+            **self.params.warmup_fit_kwargs,
+            show_progress=show_progress
+        )
+        return MCMCOutput(samples=self.kernel.flow.sample(x0.shape[0]).detach()[None])
+
     def sample(self, x0: torch.Tensor, show_progress: bool = True) -> MCMCOutput:
         xs = torch.empty(size=(self.params.n_iterations, *x0.shape), dtype=x0.dtype, device=x0.device)
         n_chains, *event_shape = x0.shape
@@ -140,12 +172,13 @@ class FixedIMH(Sampler):
                     statistics.n_divergences += 1
             xs[i] = x
             statistics.n_accepted_trajectories += int(torch.sum(accepted_mask))
-            statistics.acceptance_rate + statistics.n_accepted_trajectories / ((i + 1) * n_chains)
+            statistics.n_attempted_trajectories += n_chains
 
             pbar.set_postfix_str(f'{statistics}')
         return MCMCOutput(samples=xs, statistics=statistics)
 
 
+# TODO delete these functions
 def imh_fixed_flow(x0: torch.Tensor,
                    flow: Flow,
                    target: callable,

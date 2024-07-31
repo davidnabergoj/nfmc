@@ -209,6 +209,7 @@ def test_sample_wrapper_no_jump(strategy: str):
     )
     assert isinstance(output, MCMCOutput)
     assert output.samples.shape == (n_iterations, n_chains, n_dim)
+    assert torch.isfinite(output.samples).all()
 
 
 @pytest.mark.parametrize('strategy', ['dlmc', 'tess', "ess"])
@@ -227,6 +228,7 @@ def test_sample_wrapper_nll(strategy: str):
     )
     assert isinstance(output, MCMCOutput)
     assert output.samples.shape == (n_iterations, n_chains, n_dim)
+    assert torch.isfinite(output.samples).all()
 
 
 @pytest.mark.parametrize('strategy', ["jump_mala", "jump_ula", "jump_hmc", "jump_uhmc", "jump_mh"])
@@ -246,6 +248,7 @@ def test_sample_wrapper_jump(strategy: str):
     )
     assert isinstance(output, MCMCOutput)
     assert output.samples.shape == (n_iterations * (n_trajectories_per_jump + 1), n_chains, n_dim)
+    assert torch.isfinite(output.samples).all()
 
 
 def test_sample_wrapper_jump_ess():
@@ -265,3 +268,4 @@ def test_sample_wrapper_jump_ess():
     )
     assert isinstance(output, MCMCOutput)
     assert output.samples.shape == (n_iterations * (n_trajectories_per_jump + 1), n_chains, n_dim)
+    assert torch.isfinite(output.samples).all()

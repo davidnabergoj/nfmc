@@ -51,7 +51,9 @@ class JumpNFMC(Sampler):
         self.inner_sampler = inner_sampler
 
     def warmup(self, x0: torch.Tensor, show_progress: bool = True) -> MCMCOutput:
+        self.kernel: NFMCKernel
         self.params: JumpNFMCParameters
+
         mcmc_output = self.inner_sampler.warmup(x0, show_progress=True)
         x_train, x_val = train_val_split(
             mcmc_output.samples,
@@ -60,6 +62,7 @@ class JumpNFMC(Sampler):
             max_val_size=self.params.max_val_size
         )
         self.kernel.flow.fit(x_train=x_train, x_val=x_val, **self.params.flow_fit_kwargs)
+        return MCMCOutput(samples=self.kernel.flow.sample(x0.shape[0]).detach()[None])
 
     def sample(self, x0: torch.Tensor, show_progress: bool = True) -> MCMCOutput:
         self.kernel: NFMCKernel

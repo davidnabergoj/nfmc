@@ -1,4 +1,5 @@
 import math
+from copy import deepcopy
 from dataclasses import dataclass
 from typing import Sized, Optional
 import torch
@@ -48,6 +49,21 @@ class MH(Sampler):
         if params is None:
             params = MHParameters()
         super().__init__(event_shape, target, kernel, params)
+
+    def warmup(self, x0: torch.Tensor, show_progress: bool = True) -> MCMCOutput:
+        self.kernel: MHKernel
+        self.params: MHParameters
+
+        warmup_copy = deepcopy(self)
+        warmup_copy.params.tune_inv_mass_diag = True
+        warmup_copy.params.tune_step_size = True
+        warmup_copy.params.n_iterations = self.params.n_warmup_iterations
+        warmup_output = warmup_copy.sample(x0, show_progress=show_progress)
+
+        self.kernel = warmup_copy.kernel
+        self.params = warmup_copy.params
+
+        return warmup_output
 
     def sample(self, x0: torch.Tensor, show_progress: bool = True) -> MCMCOutput:
         self.params: MHParameters
