@@ -9,6 +9,7 @@ from tqdm import tqdm
 
 from nfmc.algorithms.sampling.mcmc import HMC, UHMC, MALA, ULA, MH, NUTS
 from nfmc.algorithms.sampling.mcmc.ess import ESS
+from nfmc.algorithms.sampling.tuning import train_val_split
 from nfmc.util import metropolis_acceptance_log_ratio
 
 
@@ -49,6 +50,17 @@ class JumpNFMC(Sampler):
         super().__init__(event_shape, target, kernel, params)
         self.inner_sampler = inner_sampler
 
+    def warmup(self, x0: torch.Tensor, show_progress: bool = True) -> MCMCOutput:
+        self.params: JumpNFMCParameters
+        mcmc_output = self.inner_sampler.warmup(x0, show_progress=True)
+        x_train, x_val = train_val_split(
+            mcmc_output.samples,
+            train_pct=self.params.train_pct,
+            max_train_size=self.params.max_train_size,
+            max_val_size=self.params.max_val_size
+        )
+        self.kernel.flow.fit(x_train=x_train, x_val=x_val, **self.params.flow_fit_kwargs)
+
     def sample(self, x0: torch.Tensor, show_progress: bool = True) -> MCMCOutput:
         self.kernel: NFMCKernel
         self.params: JumpNFMCParameters
@@ -64,7 +76,7 @@ class JumpNFMC(Sampler):
         x = torch.clone(x0)
         for i in (pbar := tqdm(range(self.params.n_iterations), desc='Jump MCMC', disable=not show_progress)):
             # Trajectories
-            pbar.set_description_str(f'Jump MCMC: sampling')
+            pbar.set_description_str(f'[Jump MCMC] sampling')
             mcmc_output = self.inner_sampler.sample(x0=x, show_progress=False)
             statistics.n_accepted_trajectories += mcmc_output.statistics.n_accepted_trajectories
             statistics.n_attempted_trajectories += mcmc_output.statistics.n_attempted_trajectories
@@ -74,19 +86,17 @@ class JumpNFMC(Sampler):
 
             # Fit flow
             if self.params.fit_nf:
-                pbar.set_description_str(f'Jump MCMC: training NF')
-
-                x_train = xs.flatten(0, 1)
-                x_train = x_train[torch.randperm(len(x_train))]
-                n_train = int(self.params.train_pct * len(x_train))
-                x_train, x_val = x_train[:n_train], x_train[n_train:]
-                x_train = x_train[:self.params.max_train_size]
-                x_val = x_val[:self.params.max_val_size]
-
+                pbar.set_description_str(f'[Jump MCMC] training')
+                x_train, x_val = train_val_split(
+                    xs,
+                    train_pct=self.params.train_pct,
+                    max_train_size=self.params.max_train_size,
+                    max_val_size=self.params.max_val_size
+                )
                 self.kernel.flow.fit(x_train=x_train, x_val=x_val, **self.params.flow_fit_kwargs)
 
             # Jump
-            pbar.set_description_str(f'Jump MCMC: jumping')
+            pbar.set_description_str(f'[Jump MCMC] jumping')
             x_prime = self.kernel.flow.sample(n_chains).detach()
             x = mcmc_output.samples[-1]
             if self.params.adjusted_jumps:

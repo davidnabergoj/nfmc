@@ -1,6 +1,8 @@
 import math
 from dataclasses import dataclass
 
+import torch
+
 
 @dataclass
 class DualAveragingParams:
@@ -37,3 +39,14 @@ class DualAveraging:
 
     def __repr__(self):
         return f'DA error: {self.error_sum:.2f}'
+
+
+def train_val_split(x: torch.Tensor, train_pct: float, max_train_size: int, max_val_size: int, shuffle: bool = True):
+    x_train = x.flatten(0, 1)
+    if shuffle:
+        x_train = x_train[torch.randperm(len(x_train))]
+    n_train = int(train_pct * len(x_train))
+    x_train, x_val = x_train[:n_train], x_train[n_train:]
+    x_train = x_train[:max_train_size]
+    x_val = x_val[:max_val_size]
+    return x_train, x_val

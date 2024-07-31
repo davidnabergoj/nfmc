@@ -47,7 +47,8 @@ class NFMCParameters(MCMCParameters):
             self.flow_fit_kwargs = {
                 'early_stopping': True,
                 'early_stopping_threshold': 50,
-                'batch_size': 'adaptive'
+                'batch_size': 'adaptive',
+                'show_progress': False
             }
 
 
@@ -89,6 +90,9 @@ class Sampler:
         self.target = target
         self.kernel = kernel
         self.params = params
+
+    def warmup(self, x0: torch.Tensor, show_progress: bool = True) -> MCMCOutput:
+        raise NotImplementedError
 
     def sample(self, x0: torch.Tensor, show_progress: bool = True) -> MCMCOutput:
         raise NotImplementedError
