@@ -2,7 +2,7 @@ from typing import Union, List, Tuple, Optional
 
 import torch
 
-from nfmc.algorithms.base import NFMCKernel, MCMCOutput
+from nfmc.algorithms.sampling.base import NFMCKernel, MCMCOutput
 from nfmc.algorithms.sampling.mcmc.ess import ESSKernel, ESSParameters, ESS
 from nfmc.algorithms.sampling.mcmc.hmc import HMCKernel, HMCParameters, UHMC, HMC
 from nfmc.algorithms.sampling.mcmc.langevin import LangevinKernel, LangevinParameters, ULA, MALA

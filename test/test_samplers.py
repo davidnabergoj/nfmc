@@ -27,7 +27,7 @@ from nfmc.algorithms.sampling.nfmc import (
     AdaptiveIMH
 )
 from potentials.synthetic.gaussian.unit import StandardGaussian
-from nfmc.algorithms.base import MCMCOutput
+from nfmc.algorithms.sampling.base import MCMCOutput
 
 
 @pytest.mark.parametrize('sampler_class', [

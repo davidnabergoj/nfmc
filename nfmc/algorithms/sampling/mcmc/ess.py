@@ -4,8 +4,7 @@ from typing import Sized
 import torch
 from tqdm import tqdm
 
-from nfmc.algorithms.base import Sampler, MCMCKernel, MCMCParameters, MCMCStatistics
-from nfmc.algorithms.base import MCMCOutput
+from nfmc.algorithms.sampling.base import Sampler, MCMCKernel, MCMCParameters, MCMCStatistics, MCMCOutput
 from nfmc.util import multivariate_normal_sample
 from normalizing_flows.utils import get_batch_shape
 

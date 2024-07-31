@@ -6,7 +6,7 @@ from typing import Sized, Optional
 from tqdm import tqdm
 import torch
 
-from nfmc.algorithms.base import Sampler, NFMCKernel, NFMCParameters, MCMCStatistics, MCMCOutput
+from nfmc.algorithms.sampling.base import Sampler, NFMCKernel, NFMCParameters, MCMCStatistics, MCMCOutput
 from nfmc.util import metropolis_acceptance_log_ratio
 from normalizing_flows import Flow
 

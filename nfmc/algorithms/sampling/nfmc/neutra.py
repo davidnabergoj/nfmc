@@ -3,7 +3,7 @@ from typing import Sized
 
 import torch
 
-from nfmc.algorithms.base import Sampler, NFMCKernel, NFMCParameters, MCMCOutput
+from nfmc.algorithms.sampling.base import Sampler, NFMCKernel, NFMCParameters, MCMCOutput
 from nfmc.algorithms.sampling.mcmc import HMC
 from nfmc.algorithms.sampling.mcmc.hmc import HMCKernel, HMCParameters
 

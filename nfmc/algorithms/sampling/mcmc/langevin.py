@@ -3,11 +3,11 @@ from typing import Sized, Optional
 
 import torch
 
-from nfmc.algorithms.base import Sampler, MCMCOutput, MCMCKernel, MCMCParameters, MCMCStatistics
+from nfmc.algorithms.sampling.base import Sampler, MCMCOutput, MCMCKernel, MCMCParameters, MCMCStatistics
 from dataclasses import dataclass
 from tqdm import tqdm
-
-from nfmc.util import DualAveraging, DualAveragingParams, metropolis_acceptance_log_ratio
+from nfmc.algorithms.sampling.tuning import DualAveragingParams, DualAveraging
+from nfmc.util import metropolis_acceptance_log_ratio
 
 
 @dataclass

@@ -1,9 +1,9 @@
-from typing import Sized, Optional, Any
+from typing import Sized, Optional
 
 from tqdm import tqdm
 import torch
 
-from nfmc.algorithms.base import Sampler, MCMCOutput, MCMCParameters, MCMCStatistics, NFMCKernel, NFMCParameters
+from nfmc.algorithms.sampling.base import Sampler, MCMCOutput, MCMCStatistics, NFMCKernel, NFMCParameters
 from nfmc.util import metropolis_acceptance_log_ratio, compute_grad
 from dataclasses import dataclass
 

@@ -1,11 +1,11 @@
 import math
 from typing import Sized, Optional
 from tqdm import tqdm
-from nfmc.algorithms.base import Sampler, MCMCKernel, MCMCParameters, MCMCOutput, MCMCStatistics
+from nfmc.algorithms.sampling.base import Sampler, MCMCKernel, MCMCParameters, MCMCOutput, MCMCStatistics
 from dataclasses import dataclass
 import torch
 
-from nfmc.util import DualAveragingParams, DualAveraging
+from nfmc.algorithms.sampling.tuning import DualAveragingParams, DualAveraging
 from normalizing_flows.utils import sum_except_batch
 
 

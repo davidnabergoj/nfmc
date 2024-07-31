@@ -4,7 +4,7 @@ from typing import Sized, Optional
 import torch
 from tqdm import tqdm
 
-from nfmc.algorithms.base import Sampler, NFMCParameters, MCMCStatistics, NFMCKernel, MCMCOutput
+from nfmc.algorithms.sampling.base import Sampler, NFMCParameters, MCMCStatistics, NFMCKernel, MCMCOutput
 from nfmc.algorithms.sampling.mcmc.ess import ESSKernel, ESSParameters
 from nfmc.util import multivariate_normal_sample
 from potentials.base import Potential
