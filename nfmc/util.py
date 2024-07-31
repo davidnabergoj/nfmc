@@ -1,14 +1,6 @@
 import math
 from dataclasses import dataclass
 import torch
-from typing import Dict, Any, Optional
-
-
-@dataclass
-class MCMCOutput:
-    samples: torch.Tensor
-    kernel: Optional[Dict[str, Any]] = None
-    statistics: Optional[Dict[str, Any]] = None
 
 
 def get_supported_normalizing_flows():
@@ -114,31 +106,41 @@ def metropolis_acceptance_log_ratio(
     return log_prob_prime - log_prob_curr + log_proposal_curr - log_proposal_prime
 
 
+@dataclass
+class DualAveragingParams:
+    target_acceptance_rate: float = 0.651
+    kappa: float = 0.75
+    gamma: float = 0.05
+    t0: int = 10
+
+
 class DualAveraging:
-    def __init__(self, initial_step_size, kappa: float = 0.75, gamma: float = 0.05, t0: int = 10):
-        self.t = t0
+    def __init__(self, initial_step_size, params: DualAveragingParams):
+        self.t = params.t0
         self.error_sum = 0.0
 
         self.log_step_averaged = math.log(initial_step_size)
         self.log_step = math.inf
-        self.kappa = kappa
         self.mu = math.log(10 * initial_step_size)
-        self.gamma = gamma
+        self.p = params
 
     def step(self, acceptance_rate_error):
         self.error_sum += float(acceptance_rate_error)  # This will eventually converge to 0 if all is well
 
         # Update raw step
-        self.log_step = self.mu - self.error_sum / (math.sqrt(self.t) * self.gamma)
+        self.log_step = self.mu - self.error_sum / (math.sqrt(self.t) * self.p.gamma)
 
         # Update smoothed step
-        eta = self.t ** -self.kappa
+        eta = self.t ** -self.p.kappa
         self.log_step_averaged = eta * self.log_step + (1 - eta) * self.log_step_averaged
         self.t += 1
 
     @property
     def value(self):
         return math.exp(self.log_step_averaged)
+
+    def __repr__(self):
+        return f'DA error: {self.error_sum:.2f}'
 
 
 def compute_grad(fn_batched: callable, x):
@@ -153,3 +155,19 @@ def compute_grad(fn_batched: callable, x):
 
 def relative_error(x_true, x_approx):
     return (x_true - x_approx) / x_true
+
+
+def multivariate_normal_sample(batch_shape, event_shape, cov):
+    """
+    Draw samples from N(0, cov).
+    If cov is None, we assume cov = identity.
+    """
+    if cov is None:
+        samples = torch.randn(size=(*batch_shape, *event_shape))
+    else:
+        event_size = int(torch.prod(torch.as_tensor(event_shape)))
+        assert cov.shape == (event_size, event_size)
+        samples_dist = torch.distributions.MultivariateNormal(loc=torch.zeros(event_size), covariance_matrix=cov)
+        samples_flat = samples_dist.sample(batch_shape)
+        samples = samples_flat.view(*batch_shape, *event_shape)
+    return samples

@@ -1,1 +1,3 @@
-from nfmc.algorithms.sampling.wrappers import jump_ula_wrapper, jump_mala_wrapper, imh_wrapper, tess_wrapper, neutra_hmc_wrapper, ess_wrapper, dlmc_wrapper
+from nfmc.algorithms.sampling.mcmc import MH, ULA, MALA, NUTS, UHMC, HMC, RandomWalk, ESS
+from nfmc.algorithms.sampling.nfmc import TESS, DLMC, JumpMH, JumpUHMC, JumpULA, JumpESS, JumpHMC, JumpMALA, JumpNUTS, \
+    NeuTraHMC, FixedIMH, AdaptiveIMH

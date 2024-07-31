@@ -1,64 +1,156 @@
-from nfmc import sample
-from normalizing_flows.flows import Flow
-from normalizing_flows.architectures import RealNVP
-from potentials.synthetic.gaussian.unit import StandardGaussian
-import pytest
-from nfmc.util import MCMCOutput
 import torch
+import pytest
+from nfmc.algorithms.sampling.mcmc import (
+    MH,
+    RandomWalk,
+    HMC,
+    UHMC,
+    NUTS,
+    MALA,
+    ULA,
+    ESS
+)
+from nfmc.algorithms.sampling.nfmc import (
+    JumpMALA,
+    JumpMH,
+    JumpHMC,
+    JumpUHMC,
+    JumpULA,
+    JumpESS,
+    JumpNUTS,
+    TESS,
+    DLMC,
+    NeuTraHMC,
+    FixedIMH,
+    AdaptiveIMH
+)
+from nfmc.algorithms.sampling.nfmc.jump import JumpNFMCParameters
+from potentials.synthetic.gaussian.unit import StandardGaussian
+from nfmc.algorithms.base import MCMCOutput
 
 
-@pytest.mark.parametrize('strategy', ['hmc', 'uhmc', 'ula', 'mala', 'mh'])
-def test_mcmc(strategy):
+@pytest.mark.parametrize('sampler_class', [
+    MH,
+    RandomWalk,
+    HMC,
+    UHMC,
+    # NUTS,  # only supports one chain at the moment
+    MALA,
+    ULA
+])
+def test_mcmc(sampler_class):
     torch.manual_seed(0)
-    n_iterations, n_chains, n_dim = (5, 7, 10)
-    target = StandardGaussian(n_dim)
-    output = sample(target, strategy=strategy, n_iterations=n_iterations, n_chains=n_chains)
+    n_iterations = 3
+    n_chains = 4
+    event_shape = (5,)
+    sampler = sampler_class(event_shape=event_shape, target=StandardGaussian(n_dim=event_shape[0]))
+    sampler.params.n_iterations = n_iterations
+    x0 = torch.randn(size=(n_chains, *event_shape))
+    output = sampler.sample(x0=x0, show_progress=False)
+
     assert isinstance(output, MCMCOutput)
-    assert output.samples.shape == (n_iterations, n_chains, n_dim)
+    assert output.samples.shape == (n_iterations, n_chains, *event_shape)
+    assert torch.isfinite(output.samples).all()
 
 
-@pytest.mark.parametrize('strategy', ["imh", "fixed_imh"])
-def test_imh(strategy):
+def test_nuts():
     torch.manual_seed(0)
-    n_iterations, n_chains, n_dim = (5, 7, 10)
-    target = StandardGaussian(n_dim)
-    flow = Flow(RealNVP(target.event_shape))
-    output = sample(target, flow=flow, strategy=strategy, n_iterations=n_iterations, n_chains=n_chains)
+    n_iterations = 3
+    n_chains = 1
+    event_shape = (5,)
+    sampler = NUTS(event_shape=event_shape, target=StandardGaussian(n_dim=event_shape[0]))
+    sampler.params.n_iterations = n_iterations
+    x0 = torch.randn(size=(n_chains, *event_shape))
+    output = sampler.sample(x0=x0, show_progress=False)
+
     assert isinstance(output, MCMCOutput)
-    assert output.samples.shape == (n_iterations, n_chains, n_dim)
+    assert output.samples.shape == (n_iterations, n_chains, *event_shape)
+    assert torch.isfinite(output.samples).all()
 
 
-@pytest.mark.parametrize('strategy', ["jump_mala", "jump_ula", "jhmc", "fixed_jhmc", "jump_uhmc"])
-def test_nfmc_jumps(strategy):
+def test_ess():
     torch.manual_seed(0)
-    n_iterations, n_chains, n_dim = (5, 7, 10)
-    n_trajectories_per_jump = 3
-    target = StandardGaussian(n_dim)
-    flow = Flow(RealNVP(target.event_shape))
-    output = sample(
-        target,
-        flow=flow,
-        strategy=strategy,
-        n_iterations=n_iterations,
-        n_trajectories_per_jump=n_trajectories_per_jump,
-        n_chains=n_chains
+    n_iterations = 3
+    n_chains = 4
+    event_shape = (5,)
+    sampler = ESS(
+        event_shape=event_shape,
+        target=StandardGaussian(n_dim=event_shape[0]),
+        negative_log_likelihood=StandardGaussian(n_dim=event_shape[0])
     )
+    sampler.params.n_iterations = n_iterations
+    x0 = torch.randn(size=(n_chains, *event_shape))
+    output = sampler.sample(x0=x0, show_progress=False)
+
     assert isinstance(output, MCMCOutput)
-    assert output.samples.shape == (n_iterations * (n_trajectories_per_jump + 1), n_chains, n_dim)
+    assert output.samples.shape == (n_iterations, n_chains, *event_shape)
+    assert torch.isfinite(output.samples).all()
 
 
-@pytest.mark.parametrize('strategy', ["neutra_hmc", "tess"])
-def test_nfmc_preconditioning(strategy):
+def test_jump_ess():
     torch.manual_seed(0)
-    n_iterations, n_chains, n_dim = (5, 7, 10)
-    target = StandardGaussian(n_dim)
-    flow = Flow(RealNVP(target.event_shape))
-    output = sample(
-        target,
-        flow=flow,
-        strategy=strategy,
-        n_iterations=n_iterations,
-        n_chains=n_chains
+    n_iterations = 3
+    n_chains = 4
+    event_shape = (5,)
+    sampler = JumpESS(
+        event_shape=event_shape,
+        target=StandardGaussian(n_dim=event_shape[0]),
+        negative_log_likelihood=StandardGaussian(n_dim=event_shape[0])
     )
+    sampler.params.n_iterations = n_iterations
+    x0 = torch.randn(size=(n_chains, *event_shape))
+    output = sampler.sample(x0=x0, show_progress=False)
+
     assert isinstance(output, MCMCOutput)
-    assert output.samples.shape == (n_iterations, n_chains, n_dim)
+    assert output.samples.shape == (n_iterations * (sampler.inner_sampler.params.n_iterations + 1), n_chains, *event_shape)
+    assert torch.isfinite(output.samples).all()
+
+
+def test_tess():
+    torch.manual_seed(0)
+    n_iterations = 3
+    n_chains = 4
+    event_shape = (5,)
+    sampler = TESS(
+        event_shape=event_shape,
+        target=StandardGaussian(n_dim=event_shape[0]),
+        negative_log_likelihood=StandardGaussian(n_dim=event_shape[0])
+    )
+    sampler.params.n_iterations = n_iterations
+    x0 = torch.randn(size=(n_chains, *event_shape))
+    output = sampler.sample(x0=x0, show_progress=False)
+
+    assert isinstance(output, MCMCOutput)
+    assert output.samples.shape == (
+        n_iterations,
+        n_chains,
+        *event_shape
+    )
+    assert torch.isfinite(output.samples).all()
+
+
+@pytest.mark.parametrize('sampler_class', [
+    JumpMALA,
+    JumpMH,
+    JumpHMC,
+    JumpUHMC,
+    JumpULA,
+    # JumpNUTS,  # does not work with multiple chains
+])
+def test_jump_nfmc(sampler_class):
+    torch.manual_seed(0)
+    n_iterations = 3
+    n_chains = 4
+    event_shape = (5,)
+    sampler = sampler_class(event_shape=event_shape, target=StandardGaussian(n_dim=event_shape[0]))
+    sampler.params.n_iterations = n_iterations
+    x0 = torch.randn(size=(n_chains, *event_shape))
+    output = sampler.sample(x0=x0, show_progress=False)
+
+    assert isinstance(output, MCMCOutput)
+    assert output.samples.shape == (
+        n_iterations * (sampler.inner_sampler.params.n_iterations + 1),
+        n_chains,
+        *event_shape
+    )
+    assert torch.isfinite(output.samples).all()
