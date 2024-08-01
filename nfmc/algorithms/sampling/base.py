@@ -66,7 +66,7 @@ class MCMCStatistics:
         return self.n_accepted_trajectories / self.n_attempted_trajectories
 
     def __repr__(self):
-        return (f"accepted: {self.n_accepted_trajectories} [{self.acceptance_rate:.3f}], "
+        return (f"acceptance rate: {self.acceptance_rate:.3f}, "
                 f"divergences: {self.n_divergences}")
 
 
