@@ -118,6 +118,7 @@ class HMC(Sampler):
 
         self.kernel = warmup_copy.kernel
         new_params = warmup_copy.params
+        new_params.n_iterations = self.params.n_iterations
         new_params.tune_step_size = self.params.tune_step_size
         new_params.tune_inv_mass_diag = self.params.tune_inv_mass_diag
         self.params = new_params
