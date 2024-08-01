@@ -76,7 +76,7 @@ class MH(Sampler):
         statistics = MCMCStatistics(n_accepted_trajectories=0, n_divergences=0)
         x = torch.clone(x0).detach()
 
-        for i in (pbar := tqdm(range(self.params.n_iterations), desc='LMC', disable=not show_progress)):
+        for i in (pbar := tqdm(range(self.params.n_iterations), desc='MH', disable=not show_progress)):
             try:
                 noise = torch.randn_like(x) * self.kernel.inv_mass_diag
                 x_prime = x + noise
@@ -104,12 +104,12 @@ class MH(Sampler):
                             self.params.imd_adjustment * torch.var(x.flatten(1, -1), dim=0) +
                             (1 - self.params.imd_adjustment) * self.kernel.inv_mass_diag
                     )
-                if self.params.tune_step_size and self.params.adjustment:
-                    # Step size tuning is only possible with adjustment right now
-                    acc_rate = torch.mean(accepted_mask.float())
-                    error = self.params.da_params.target_acceptance_rate - acc_rate
-                    da.step(error)
-                    self.kernel.step_size = da.value  # Step size adaptation
+                # if self.params.tune_step_size and self.params.adjustment:
+                #     # Step size tuning is only possible with adjustment right now
+                #     acc_rate = torch.mean(accepted_mask.float())
+                #     error = self.params.da_params.target_acceptance_rate - acc_rate
+                #     da.step(error)
+                #     self.kernel.step_size = da.value  # Step size adaptation
                 pbar.set_postfix_str(f'{statistics} | {self.kernel} | {da}')
 
         return MCMCOutput(samples=xs, statistics=statistics)
