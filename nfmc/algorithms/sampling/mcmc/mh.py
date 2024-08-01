@@ -1,4 +1,5 @@
 import math
+import time
 from copy import deepcopy
 from dataclasses import dataclass
 from typing import Sized, Optional
@@ -25,7 +26,7 @@ class MHKernel(MCMCKernel):
                 raise ValueError
 
     def __repr__(self):
-        return (f'log step: {math.log(self.step_size)}, '
+        return (f'log step: {math.log(self.step_size):.2f}, '
                 f'mass norm: {torch.max(torch.abs(self.inv_mass_diag)):.2f}')
 
 
@@ -61,28 +62,35 @@ class MH(Sampler):
         warmup_output = warmup_copy.sample(x0, show_progress=show_progress)
 
         self.kernel = warmup_copy.kernel
-        self.params = warmup_copy.params
+        new_params = warmup_copy.params
+        new_params.tune_step_size = self.params.tune_step_size
+        new_params.tune_inv_mass_diag = self.params.tune_inv_mass_diag
+        self.params = new_params
 
         return warmup_output
 
     def sample(self, x0: torch.Tensor, show_progress: bool = True) -> MCMCOutput:
         self.params: MHParameters
         self.kernel: MHKernel
+        statistics = MCMCStatistics(n_accepted_trajectories=0, n_divergences=0)
 
         # Initialize
+        t0 = time.time()
         n_chains, *event_shape = x0.shape
         xs = torch.zeros(size=(self.params.n_iterations, n_chains, *event_shape), dtype=x0.dtype, device=x0.device)
         da = DualAveraging(initial_step_size=self.kernel.step_size, params=self.params.da_params)
-        statistics = MCMCStatistics(n_accepted_trajectories=0, n_divergences=0)
         x = torch.clone(x0).detach()
+        statistics.elapsed_time_seconds += time.time() - t0
 
         for i in (pbar := tqdm(range(self.params.n_iterations), desc='MH', disable=not show_progress)):
+            t0 = time.time()
             try:
                 noise = torch.randn_like(x) * self.kernel.inv_mass_diag
                 x_prime = x + noise
 
                 if self.params.adjustment:
                     log_ratio = metropolis_acceptance_log_ratio(-self.target(x), -self.target(x_prime), 0, 0)
+                    statistics.n_target_calls += 2 * n_chains
                     accepted_mask = torch.as_tensor(torch.log(torch.rand(n_chains)) < log_ratio)
                 else:
                     accepted_mask = torch.ones(n_chains, dtype=torch.bool)
@@ -91,9 +99,10 @@ class MH(Sampler):
                 accepted_mask = torch.zeros(n_chains, dtype=torch.bool)
                 statistics.n_divergences += 1
 
+            statistics.n_accepted_trajectories += int(torch.sum(accepted_mask))
+            statistics.n_attempted_trajectories += n_chains
+
             with torch.no_grad():
-                statistics.n_accepted_trajectories += int(torch.sum(accepted_mask))
-                statistics.n_attempted_trajectories += n_chains
                 x = x.detach()
                 xs[i] = x
 
@@ -110,7 +119,9 @@ class MH(Sampler):
                 #     error = self.params.da_params.target_acceptance_rate - acc_rate
                 #     da.step(error)
                 #     self.kernel.step_size = da.value  # Step size adaptation
-                pbar.set_postfix_str(f'{statistics} | {self.kernel} | {da}')
+
+            statistics.elapsed_time_seconds += time.time() - t0
+            pbar.set_postfix_str(f'{statistics} | {self.kernel} | {da}')
 
         return MCMCOutput(samples=xs, statistics=statistics)
 

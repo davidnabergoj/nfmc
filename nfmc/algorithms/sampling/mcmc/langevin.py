@@ -1,4 +1,5 @@
 import math
+import time
 from copy import deepcopy
 from typing import Sized, Optional
 
@@ -30,7 +31,7 @@ class LangevinKernel(MCMCKernel):
                 raise ValueError
 
     def __repr__(self):
-        return (f'log step: {math.log(self.step_size)}, '
+        return (f'log step: {math.log(self.step_size):.2f}, '
                 f'mass norm: {torch.max(torch.abs(self.inv_mass_diag)):.2f}')
 
 
@@ -80,7 +81,10 @@ class Langevin(Sampler):
         warmup_output = warmup_copy.sample(x0, show_progress=show_progress)
 
         self.kernel = warmup_copy.kernel
-        self.params = warmup_copy.params
+        new_params = warmup_copy.params
+        new_params.tune_step_size = self.params.tune_step_size
+        new_params.tune_inv_mass_diag = self.params.tune_inv_mass_diag
+        self.params = new_params
 
         return warmup_output
 
@@ -89,19 +93,25 @@ class Langevin(Sampler):
         self.kernel: LangevinKernel
 
         # Initialize
+        statistics = MCMCStatistics(n_accepted_trajectories=0, n_divergences=0)
+
+        t0 = time.time()
         n_chains, *event_shape = x0.shape
         xs = torch.zeros(size=(self.params.n_iterations, n_chains, *event_shape), dtype=x0.dtype, device=x0.device)
         da = DualAveraging(initial_step_size=self.kernel.step_size, params=self.params.da_params)
-        statistics = MCMCStatistics(n_accepted_trajectories=0, n_divergences=0)
         x = torch.clone(x0).detach()
+        statistics.elapsed_time_seconds += time.time() - t0
 
         for i in (pbar := tqdm(range(self.params.n_iterations), desc='LMC', disable=not show_progress)):
+            t0 = time.time()
             noise = torch.randn_like(x)
             try:
                 # Compute potential and gradient at current state
                 x.requires_grad_(True)
                 u_x = self.target(x)
+                statistics.n_target_calls += n_chains
                 grad_u_x, = torch.autograd.grad(u_x.sum(), x)
+                statistics.n_target_gradient_calls += n_chains
                 x.requires_grad_(False)  # Clear gradients
                 x = x.detach()
                 x.grad = None  # Clear gradients
@@ -115,7 +125,9 @@ class Langevin(Sampler):
                     # Compute potential and gradient at proposed state
                     x_prime.requires_grad_(True)
                     u_x_prime = self.target(x_prime)
+                    statistics.n_target_calls += n_chains
                     grad_u_x_prime, = torch.autograd.grad(u_x_prime.sum(), x_prime)
+                    statistics.n_target_gradient_calls += n_chains
                     x_prime.requires_grad_(False)  # Clear gradients
                     x_prime = x_prime.detach()
                     x_prime.grad = None  # Clear gradients
@@ -148,9 +160,10 @@ class Langevin(Sampler):
                 accepted_mask = torch.zeros(n_chains, dtype=torch.bool)
                 statistics.n_divergences += 1
 
+            statistics.n_accepted_trajectories += int(torch.sum(accepted_mask))
+            statistics.n_attempted_trajectories += n_chains
+
             with torch.no_grad():
-                statistics.n_accepted_trajectories += int(torch.sum(accepted_mask))
-                statistics.n_attempted_trajectories += n_chains
                 x = x.detach()
                 xs[i] = x
 
@@ -167,7 +180,9 @@ class Langevin(Sampler):
                     error = self.params.da_params.target_acceptance_rate - acc_rate
                     da.step(error)
                     self.kernel.step_size = da.value  # Step size adaptation
-                pbar.set_postfix_str(f'{statistics} | {self.kernel} | {da}')
+
+            statistics.elapsed_time_seconds += time.time() - t0
+            pbar.set_postfix_str(f'{statistics} | {self.kernel} | {da}')
 
         return MCMCOutput(samples=xs, statistics=statistics)
 

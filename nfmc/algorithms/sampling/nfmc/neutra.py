@@ -1,9 +1,10 @@
+import time
 from dataclasses import dataclass
 from typing import Sized
 
 import torch
 
-from nfmc.algorithms.sampling.base import Sampler, NFMCKernel, NFMCParameters, MCMCOutput
+from nfmc.algorithms.sampling.base import Sampler, NFMCKernel, NFMCParameters, MCMCOutput, MCMCStatistics
 from nfmc.algorithms.sampling.mcmc import HMC
 from nfmc.algorithms.sampling.mcmc.hmc import HMCKernel, HMCParameters
 
@@ -80,14 +81,22 @@ class NeuTraHMC(Sampler):
         self.inner_sampler.params.tune_step_size = False
         self.inner_sampler.params.tune_inv_mass_diag = False
 
+
         # Run HMC with the adjusted target
+        t0 = time.time()
         z0 = self.kernel.flow.base_sample((n_chains,)).detach()
+        t1 = time.time()
+
         mcmc_output = self.inner_sampler.sample(z0, show_progress=show_progress)
+        mcmc_output.statistics.elapsed_time_seconds += t1 - t0
+
+        t0 = time.time()
         with torch.no_grad():
             xs, _ = self.kernel.flow.bijection.batch_inverse(
                 mcmc_output.samples,
                 batch_size=self.params.batch_inverse_size
             )
             xs = xs.detach()
+        mcmc_output.statistics.elapsed_time_seconds += time.time() - t0
 
         return MCMCOutput(samples=xs, statistics=mcmc_output.statistics)

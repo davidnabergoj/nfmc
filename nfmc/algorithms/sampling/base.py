@@ -58,6 +58,9 @@ class MCMCStatistics:
     n_accepted_trajectories: Optional[int] = 0
     n_attempted_trajectories: Optional[int] = 0
     n_divergences: Optional[int] = 0
+    n_target_gradient_calls: Optional[int] = 0
+    n_target_calls: Optional[int] = 0
+    elapsed_time_seconds: Optional[float] = 0.0
 
     @property
     def acceptance_rate(self):
@@ -65,9 +68,25 @@ class MCMCStatistics:
             return torch.nan
         return self.n_accepted_trajectories / self.n_attempted_trajectories
 
+    @property
+    def calls_per_second(self):
+        if self.elapsed_time_seconds > 0:
+            return self.n_target_calls / self.elapsed_time_seconds
+        return torch.nan
+
+    @property
+    def grads_per_second(self):
+        if self.elapsed_time_seconds > 0:
+            return self.n_target_gradient_calls / self.elapsed_time_seconds
+        return torch.nan
+
     def __repr__(self):
-        return (f"acceptance rate: {self.acceptance_rate:.3f}, "
-                f"divergences: {self.n_divergences}")
+        return (
+            f"acc-rate: {self.acceptance_rate:.2f}, "
+            f"kcalls/s: {self.calls_per_second / 1000:.2f}, "
+            f"kgrads/s: {self.grads_per_second / 1000:.2f}, "
+            f"divergences: {self.n_divergences}"
+        )
 
 
 @dataclass

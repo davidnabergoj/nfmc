@@ -1,3 +1,4 @@
+import time
 from collections import defaultdict
 from copy import deepcopy
 from dataclasses import dataclass
@@ -74,13 +75,16 @@ class AdaptiveIMH(Sampler):
 
         self.kernel: IMHKernel
         self.params: IMHParameters
+        statistics = MCMCStatistics(n_accepted_trajectories=0, n_divergences=0)
 
+        t0 = time.time()
         xs = torch.empty(size=(self.params.n_iterations, *x0.shape), dtype=x0.dtype, device=x0.device)
         n_chains, *event_shape = x0.shape
         x = deepcopy(x0)
-        statistics = MCMCStatistics(n_accepted_trajectories=0, n_divergences=0)
+        statistics.elapsed_time_seconds += time.time() - t0
 
         for i in (pbar := tqdm(range(self.params.n_iterations), desc="Adaptive IMH", disable=not show_progress)):
+            t0 = time.time()
             with torch.no_grad():
                 x_prime = self.kernel.flow.sample(n_chains, no_grad=True).to(xs)
                 try:
@@ -90,11 +94,12 @@ class AdaptiveIMH(Sampler):
                         log_proposal_curr=self.kernel.flow.log_prob(x).to(xs),
                         log_proposal_prime=self.kernel.flow.log_prob(x_prime).to(xs)
                     )
+                    statistics.n_target_calls += 2 * n_chains
                     log_u = torch.rand(n_chains).log().to(log_alpha)
                     accepted_mask = torch.less(log_u, log_alpha)
                     x[accepted_mask] = x_prime[accepted_mask]
                     x = x.detach()
-                except ValueError as e:
+                except ValueError:
                     accepted_mask = torch.zeros(size=(n_chains,), dtype=torch.bool, device=x0.device)
                     statistics.n_divergences += 1
             xs[i] = x
@@ -120,7 +125,8 @@ class AdaptiveIMH(Sampler):
                 x_train = xs[k]
                 self.kernel.flow.fit(x_train, n_epochs=1)
 
-            pbar.set_postfix_str(f'{statistics} | adaptation probability: {alpha_prime:.6f}')
+            statistics.elapsed_time_seconds += time.time() - t0
+            pbar.set_postfix_str(f'{statistics} | adaptation probability: {alpha_prime:.2f}')
 
         return MCMCOutput(samples=xs, statistics=statistics)
 

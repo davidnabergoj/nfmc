@@ -1,3 +1,4 @@
+import time
 from typing import Sized, Optional
 
 from tqdm import tqdm
@@ -39,12 +40,17 @@ class DLMC(Sampler):
         statistics = MCMCStatistics()
 
         # Initial update
+        t0 = time.time()
         grad = compute_grad(self.negative_log_likelihood, x0)
         x = x0 - self.kernel.step_size * grad
         x.requires_grad_(False)
-
         xs = torch.zeros(size=(self.params.n_iterations, n_chains, *event_shape), dtype=x.dtype, device=x.device)
+        statistics.n_target_calls += n_chains
+        statistics.n_target_gradient_calls += n_chains
+        statistics.elapsed_time_seconds += time.time() - t0
+
         for i in (pbar := tqdm(range(self.params.n_iterations), desc='DLMC sampling', disable=not show_progress)):
+            t0 = time.time()
             x_train = x.detach().clone()
             x_train = x_train[torch.randperm(len(x_train))]
             n_train = int(len(x_train) * self.params.train_pct)
@@ -58,9 +64,13 @@ class DLMC(Sampler):
                 grad = compute_grad(self.target, x)
                 z = z - self.kernel.step_size * (grad - z)
                 x, _ = self.kernel.flow.bijection.inverse(z)
+                statistics.n_target_calls += n_chains
+                statistics.n_target_gradient_calls += n_chains
             else:
                 grad = compute_grad(lambda v: self.target(v) + self.kernel.flow.log_prob(v), x)
                 x = x - self.kernel.step_size * grad
+                statistics.n_target_calls += n_chains
+                statistics.n_target_gradient_calls += n_chains
 
             x_tilde = self.kernel.flow.sample(n_chains, no_grad=True)
             log_alpha = metropolis_acceptance_log_ratio(
@@ -69,6 +79,7 @@ class DLMC(Sampler):
                 log_proposal_curr=self.kernel.flow.log_prob(x),
                 log_proposal_prime=self.kernel.flow.log_prob(x_tilde)
             )
+            statistics.n_target_calls += 2 * n_chains
             log_u = torch.rand(n_chains).log().to(log_alpha)
             accepted_mask = torch.less(log_u, log_alpha)
             x[accepted_mask] = x_tilde[accepted_mask]
@@ -77,6 +88,7 @@ class DLMC(Sampler):
 
             statistics.n_accepted_trajectories += int(torch.sum(accepted_mask))
             statistics.n_attempted_trajectories += n_chains
+            statistics.elapsed_time_seconds += time.time() - t0
             pbar.set_postfix_str(f'{statistics}')
 
         return MCMCOutput(samples=xs, statistics=statistics)

@@ -1,3 +1,4 @@
+import time
 from dataclasses import dataclass
 from typing import Sized
 
@@ -17,6 +18,19 @@ from nfmc.util import metropolis_acceptance_log_ratio
 class JumpNFMCParameters(NFMCParameters):
     adjusted_jumps: bool = True
     fit_nf: bool = False
+    warmup_fit_kwargs: dict = None
+
+    def __post_init__(self):
+        super().__post_init__()
+        if self.warmup_fit_kwargs is None:
+            self.warmup_fit_kwargs = {
+                'early_stopping': True,
+                'early_stopping_threshold': 50,
+                'keep_best_weights': True,
+                'n_samples': 1,
+                'n_epochs': 500,
+                'lr': 0.05
+            }
 
 
 @dataclass
@@ -32,8 +46,13 @@ class JumpNFMCStatistics(MCMCStatistics):
         return self.n_accepted_jumps / self.n_attempted_jumps
 
     def __repr__(self):
-        return (f'mcmc acceptance rate: {self.acceptance_rate:.3f} | '
-                f'jump acceptance rate: {self.jump_acceptance_rate:.3f}')
+        return (
+            f"MCMC acc-rate: {self.acceptance_rate:.2f}, "
+            f"Jump acc-rate: {self.jump_acceptance_rate:.2f}, "
+            f"kcalls/s: {self.calls_per_second / 1000:.2f}, "
+            f"kgrads/s: {self.grads_per_second / 1000:.2f}, "
+            f"divergences: {self.n_divergences}"
+        )
 
 
 class JumpNFMC(Sampler):
@@ -54,7 +73,13 @@ class JumpNFMC(Sampler):
         self.kernel: NFMCKernel
         self.params: JumpNFMCParameters
 
-        # TODO variational fit here and initialize inner sampler to flow samples
+        # Fit flow to target via variational inference
+        self.kernel.flow.variational_fit(
+            lambda v: -self.target(v),
+            **self.params.warmup_fit_kwargs,
+            show_progress=show_progress
+        )
+        x0 = self.kernel.flow.sample(len(x0)).detach()
 
         mcmc_output = self.inner_sampler.warmup(x0, show_progress=True)
         x_train, x_val = train_val_split(
@@ -94,6 +119,11 @@ class JumpNFMC(Sampler):
             statistics.n_attempted_trajectories += mcmc_output.statistics.n_attempted_trajectories
             statistics.n_divergences += mcmc_output.statistics.n_divergences
 
+            statistics.n_target_calls += mcmc_output.statistics.n_target_calls
+            statistics.n_target_gradient_calls += mcmc_output.statistics.n_target_gradient_calls
+            statistics.elapsed_time_seconds += mcmc_output.statistics.elapsed_time_seconds
+
+            t0 = time.time()
             xs[i, :-1] = mcmc_output.samples
 
             # Fit flow
@@ -114,7 +144,11 @@ class JumpNFMC(Sampler):
             if self.params.adjusted_jumps:
                 try:
                     u_x = self.target(x)
+                    statistics.n_target_calls += n_chains
+
                     u_x_prime = self.target(x_prime)
+                    statistics.n_target_calls += n_chains
+
                     f_x = self.kernel.flow.log_prob(x)
                     f_x_prime = self.kernel.flow.log_prob(x_prime)
                     log_alpha = metropolis_acceptance_log_ratio(
@@ -129,6 +163,9 @@ class JumpNFMC(Sampler):
             else:
                 acceptance_mask = torch.ones(size=x.shape[:-len(event_shape)], dtype=torch.bool)
             x[acceptance_mask] = x_prime[acceptance_mask]
+            t1 = time.time()
+
+            statistics.elapsed_time_seconds += t1 - t0
             statistics.n_attempted_jumps += n_chains
             statistics.n_accepted_jumps += int(torch.sum(acceptance_mask))
             pbar.set_postfix_str(f'{statistics}')
