@@ -231,6 +231,10 @@ def sample(target: callable,
            inner_param_kwargs: Optional[dict] = None,
            device: torch.device = torch.device("cpu"),
            **kwargs) -> MCMCOutput:
+    if flow is not None and not isinstance(flow, str):
+        event_shape = flow.event_shape
+    elif isinstance(target, Potential):
+        event_shape = target.event_shape
     sampler = create_sampler(
         target=target,
         event_shape=event_shape,
