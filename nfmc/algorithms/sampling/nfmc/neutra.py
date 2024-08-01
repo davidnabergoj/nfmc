@@ -74,10 +74,13 @@ class NeuTraHMC(Sampler):
     def sample(self, x0: torch.Tensor, show_progress: bool = True) -> MCMCOutput:
         self.kernel: NeuTraKernel
         self.params: NeuTraParameters
+
         n_chains, *event_shape = x0.shape
         self.inner_sampler.params.n_iterations = self.params.n_iterations
+        self.inner_sampler.params.tune_step_size = False
+        self.inner_sampler.params.tune_inv_mass_diag = False
 
-        # Run HMC with target being the flow
+        # Run HMC with the adjusted target
         z0 = self.kernel.flow.base_sample((n_chains,)).detach()
         mcmc_output = self.inner_sampler.sample(z0, show_progress=show_progress)
         with torch.no_grad():
