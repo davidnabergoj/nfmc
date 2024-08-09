@@ -91,8 +91,14 @@ class MCMCStatistics:
 
 @dataclass
 class MCMCOutput:
-    samples: torch.Tensor
+    samples: torch.Tensor  # (n_iterations, n_chains, n_dim)
     statistics: Optional[MCMCStatistics] = None
+    kernel: Optional[MCMCKernel] = None
+
+    def resample(self, n: int) -> torch.Tensor:
+        flat = self.samples.flatten(0, -2)
+        mask = torch.randint(low=0, high=len(flat), size=(n,))
+        return flat[mask]  # (n, n_dim)
 
 
 class Sampler:
