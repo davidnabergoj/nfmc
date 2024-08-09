@@ -99,4 +99,8 @@ class NeuTraHMC(Sampler):
             xs = xs.detach()
         mcmc_output.statistics.elapsed_time_seconds += time.time() - t0
 
-        return MCMCOutput(samples=xs, statistics=mcmc_output.statistics)
+        return MCMCOutput(
+            samples=xs,
+            statistics=mcmc_output.statistics,
+            kernel=self.kernel
+        )
