@@ -171,7 +171,11 @@ class JumpNFMC(Sampler):
             pbar.set_postfix_str(f'{statistics}')
             xs[i, -1] = x
         xs = xs.flatten(0, 1)
-        return MCMCOutput(samples=xs, statistics=statistics)
+        return MCMCOutput(
+            samples=xs,
+            statistics=statistics,
+            kernel=self.kernel
+        )
 
 
 class JumpHMC(JumpNFMC):
