@@ -19,6 +19,7 @@ class JumpNFMCParameters(NFMCParameters):
     adjusted_jumps: bool = True
     fit_nf: bool = False
     warmup_fit_kwargs: dict = None
+    n_jumps_before_training: int = 10
 
     def __post_init__(self):
         super().__post_init__()
@@ -81,9 +82,10 @@ class JumpNFMC(Sampler):
         )
         x0 = self.kernel.flow.sample(len(x0)).detach()
 
-        mcmc_output = self.inner_sampler.warmup(x0, show_progress=True)
+        self.inner_sampler.warmup(x0, show_progress=show_progress)
+        burn_in_output = self.inner_sampler.sample(x0, show_progress=show_progress)
         x_train, x_val = train_val_split(
-            mcmc_output.samples,
+            burn_in_output.samples,
             train_pct=self.params.train_pct,
             max_train_size=self.params.max_train_size,
             max_val_size=self.params.max_val_size
@@ -127,7 +129,7 @@ class JumpNFMC(Sampler):
             xs[i, :-1] = mcmc_output.samples
 
             # Fit flow
-            if self.params.fit_nf:
+            if self.params.fit_nf and i >= self.params.n_jumps_before_training:
                 pbar.set_description_str(f'Jump MCMC (training)')
                 x_train, x_val = train_val_split(
                     xs,

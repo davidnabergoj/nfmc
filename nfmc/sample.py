@@ -13,7 +13,7 @@ from nfmc.algorithms.sampling.nfmc.jump import JumpNFMCParameters, JumpULA, Jump
 from nfmc.algorithms.sampling.nfmc.neutra import NeuTraKernel, NeuTraParameters, NeuTraHMC
 from nfmc.algorithms.sampling.nfmc.tess import TESSKernel, TESSParameters, TESS
 from nfmc.util import create_flow_object
-from normalizing_flows import Flow
+from torchflows.flows import Flow
 from potentials.base import Potential
 
 

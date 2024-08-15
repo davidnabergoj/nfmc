@@ -3,7 +3,7 @@ from typing import Sized, Optional, Any
 
 import torch
 
-from normalizing_flows import Flow, RealNVP
+from torchflows import Flow, RealNVP
 
 
 @dataclass

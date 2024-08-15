@@ -8,7 +8,7 @@ from dataclasses import dataclass
 import torch
 
 from nfmc.algorithms.sampling.tuning import DualAveragingParams, DualAveraging
-from normalizing_flows.utils import sum_except_batch
+from torchflows.utils import sum_except_batch
 
 
 @dataclass

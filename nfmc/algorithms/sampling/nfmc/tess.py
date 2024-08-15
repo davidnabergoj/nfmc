@@ -9,8 +9,8 @@ from nfmc.algorithms.sampling.base import Sampler, NFMCParameters, MCMCStatistic
 from nfmc.algorithms.sampling.mcmc.ess import ESSKernel, ESSParameters
 from nfmc.util import multivariate_normal_sample
 from potentials.base import Potential
-from normalizing_flows import Flow
-from normalizing_flows.utils import get_batch_shape
+from torchflows.flows import Flow
+from torchflows.utils import get_batch_shape
 
 
 @torch.no_grad()

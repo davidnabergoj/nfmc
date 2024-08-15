@@ -1,5 +1,4 @@
 import time
-from copy import deepcopy
 from dataclasses import dataclass
 from typing import Sized
 
@@ -8,7 +7,7 @@ from tqdm import tqdm
 
 from nfmc.algorithms.sampling.base import Sampler, MCMCKernel, MCMCParameters, MCMCStatistics, MCMCOutput
 from nfmc.util import multivariate_normal_sample
-from normalizing_flows.utils import get_batch_shape
+from torchflows.utils import get_batch_shape
 
 
 @torch.no_grad()

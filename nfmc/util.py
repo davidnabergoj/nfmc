@@ -30,8 +30,8 @@ def get_supported_normalizing_flows():
 
 
 def create_flow_object(flow_name: str, event_shape, **kwargs):
-    from normalizing_flows import Flow
-    from normalizing_flows.bijections import (
+    from torchflows.flows import Flow
+    from torchflows.architectures import (
         RealNVP,
         MAF,
         IAF,
