@@ -82,10 +82,9 @@ class JumpNFMC(Sampler):
         )
         x0 = self.kernel.flow.sample(len(x0)).detach()
 
-        self.inner_sampler.warmup(x0, show_progress=show_progress)
-        burn_in_output = self.inner_sampler.sample(x0, show_progress=show_progress)
+        warmup_output = self.inner_sampler.warmup(x0, show_progress=show_progress)
         x_train, x_val = train_val_split(
-            burn_in_output.samples,
+            warmup_output.samples,
             train_pct=self.params.train_pct,
             max_train_size=self.params.max_train_size,
             max_val_size=self.params.max_val_size
