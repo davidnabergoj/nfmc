@@ -136,7 +136,10 @@ def create_sampler(target: callable,
                 event_size=int(torch.prod(torch.as_tensor(event_shape))),
                 **inner_kernel_kwargs
             )
-            inner_params = HMCParameters(**inner_param_kwargs)
+            inner_params = HMCParameters(
+                n_iterations=5,  # Default is 10, can be overwritten in **inner_param_kwargs
+                **inner_param_kwargs
+            )
             return JumpHMC(
                 event_shape,
                 target,
