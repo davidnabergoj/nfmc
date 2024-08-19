@@ -213,6 +213,7 @@ def create_sampler(target: callable,
             return NeuTraHMC(event_shape, target, inner_kernel, inner_params, kernel, params)
         else:
             raise ValueError(f"Unsupported sampling strategy: {strategy}")
+    raise ValueError(f"Unsupported sampling strategy: {strategy}")
 
 
 def sample(target: callable,
