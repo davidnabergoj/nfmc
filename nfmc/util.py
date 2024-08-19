@@ -6,7 +6,7 @@ def get_supported_normalizing_flows():
         "nice",
         "realnvp",
         "maf",
-        # "iaf",
+        "iaf",
         "c-rqnsf",
         "ar-rqnsf",
         "c-lrsnsf",  # unstable
