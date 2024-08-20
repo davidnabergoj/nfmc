@@ -91,14 +91,23 @@ class MCMCStatistics:
 
 @dataclass
 class MCMCOutput:
-    samples: torch.Tensor  # (n_iterations, n_chains, n_dim)
+    samples: torch.Tensor  # (n_iterations, n_chains, *event_shape)
     statistics: Optional[MCMCStatistics] = None
     kernel: Optional[MCMCKernel] = None
 
     def resample(self, n: int) -> torch.Tensor:
-        flat = self.samples.flatten(0, -2)
+        flat = self.samples.flatten(0, 1)
         mask = torch.randint(low=0, high=len(flat), size=(n,))
-        return flat[mask]  # (n, n_dim)
+        return flat[mask]  # (n, *event_shape)
+
+    def estimate_mean(self):
+        return torch.mean(self.samples, dim=(0, 1))
+
+    def estimate_variance(self):
+        return torch.var(self.samples, dim=(0, 1))
+
+    def estimate_second_moment(self):
+        return self.estimate_variance() + self.estimate_mean() ** 2
 
 
 class Sampler:
