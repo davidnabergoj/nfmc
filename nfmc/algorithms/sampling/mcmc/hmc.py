@@ -106,7 +106,7 @@ class HMC(Sampler):
             params = HMCParameters()
         super().__init__(event_shape, target, kernel, params)
 
-    def warmup(self, x0: torch.Tensor, show_progress: bool = True) -> MCMCOutput:
+    def warmup(self, x0: torch.Tensor, show_progress: bool = True, thinning: int = 1) -> MCMCOutput:
         self.kernel: HMCKernel
         self.params: HMCParameters
 
@@ -114,7 +114,7 @@ class HMC(Sampler):
         warmup_copy.params.tune_inv_mass_diag = True
         warmup_copy.params.tune_step_size = True
         warmup_copy.params.n_iterations = self.params.n_warmup_iterations
-        warmup_output = warmup_copy.sample(x0, show_progress=show_progress)
+        warmup_output = warmup_copy.sample(x0, show_progress=show_progress, thinning=thinning)
 
         self.kernel = warmup_copy.kernel
         new_params = warmup_copy.params
@@ -125,7 +125,7 @@ class HMC(Sampler):
 
         return warmup_output
 
-    def sample(self, x0: torch.Tensor, show_progress: bool = True) -> MCMCOutput:
+    def sample(self, x0: torch.Tensor, show_progress: bool = True, thinning: int = 1) -> MCMCOutput:
         self.kernel: HMCKernel
         self.params: HMCParameters
 
@@ -134,11 +134,16 @@ class HMC(Sampler):
 
         t0 = time.time()
         n_chains, *event_shape = x0.shape
-        xs = torch.zeros(size=(self.params.n_iterations, n_chains, *event_shape), dtype=x0.dtype, device=x0.device)
+        xs = torch.zeros(
+            size=(self.params.n_iterations // thinning, n_chains, *event_shape),
+            dtype=x0.dtype,
+            device=x0.device
+        )
         da = DualAveraging(initial_step_size=self.kernel.step_size, params=self.params.da_params)
         x = torch.clone(x0).detach()
         statistics.elapsed_time_seconds += time.time() - t0
 
+        sample_index: int = 0
         for i in (pbar := tqdm(range(self.params.n_iterations), desc='HMC', disable=not show_progress)):
             t0 = time.time()
             p = mass_matrix_multiply(torch.randn_like(x), 1 / self.kernel.inv_mass_diag.sqrt(), event_shape)
@@ -172,7 +177,11 @@ class HMC(Sampler):
 
             with torch.no_grad():
                 x = x.detach()
-                xs[i] = x
+
+                if i % thinning == 0:
+                    xs[sample_index] = x
+                    sample_index += 1
+
                 if n_chains > 1 and self.params.tune_inv_mass_diag:
                     # inv_mass_diag = torch.var(x.flatten(1, -1), dim=0)  # Mass matrix adaptation
                     self.kernel.inv_mass_diag = (

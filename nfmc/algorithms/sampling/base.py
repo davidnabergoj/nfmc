@@ -126,8 +126,8 @@ class Sampler:
         self.kernel = kernel
         self.params = params
 
-    def warmup(self, x0: torch.Tensor, show_progress: bool = True) -> MCMCOutput:
+    def warmup(self, x0: torch.Tensor, show_progress: bool = True, thinning: int = 1) -> MCMCOutput:
         raise NotImplementedError
 
-    def sample(self, x0: torch.Tensor, show_progress: bool = True) -> MCMCOutput:
+    def sample(self, x0: torch.Tensor, show_progress: bool = True, thinning: int = 1) -> MCMCOutput:
         raise NotImplementedError
