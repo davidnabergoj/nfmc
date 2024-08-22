@@ -22,15 +22,17 @@ def create_sampler(target: callable,
                    flow: Optional[Union[str, Flow]] = 'realnvp',
                    strategy: str = "imh",
                    n_iterations: int = 100,
-                   edge_list: List[Tuple[int, int]] = None,
                    negative_log_likelihood: callable = None,
                    kernel_kwargs: Optional[dict] = None,
                    param_kwargs: Optional[dict] = None,
                    inner_kernel_kwargs: Optional[dict] = None,
                    inner_param_kwargs: Optional[dict] = None,
-                   device: torch.device = torch.device("cpu")) -> Sampler:
+                   device: torch.device = torch.device("cpu"),
+                   flow_kwargs: Optional[dict] = None) -> Sampler:
     if flow is not None and not isinstance(flow, str):
         event_shape = flow.event_shape
+    if flow_kwargs is None:
+        flow_kwargs = dict()
     elif isinstance(target, Potential):
         event_shape = target.event_shape
     if kernel_kwargs is None:
@@ -88,7 +90,7 @@ def create_sampler(target: callable,
         if flow is None:
             raise ValueError("Flow object must be provided")
         if isinstance(flow, str):
-            flow_object = create_flow_object(flow_name=flow, event_shape=event_shape, edge_list=edge_list).to(device)
+            flow_object = create_flow_object(flow_name=flow, event_shape=event_shape, **flow_kwargs).to(device)
         elif isinstance(flow, Flow):
             flow_object = flow.to(device)
         else:
@@ -227,12 +229,12 @@ def sample(target: callable,
            n_iterations: int = 100,
            x0: torch.Tensor = None,
            warmup: bool = False,
-           edge_list: List[Tuple[int, int]] = None,
            negative_log_likelihood: callable = None,
            kernel_kwargs: Optional[dict] = None,
            param_kwargs: Optional[dict] = None,
            inner_kernel_kwargs: Optional[dict] = None,
            inner_param_kwargs: Optional[dict] = None,
+           flow_kwargs: Optional[dict] = None,
            device: torch.device = torch.device("cpu"),
            sample_kwargs: dict = None,
            **kwargs) -> MCMCOutput:
@@ -246,13 +248,13 @@ def sample(target: callable,
         flow=flow,
         strategy=strategy,
         n_iterations=n_iterations,
-        edge_list=edge_list,
         negative_log_likelihood=negative_log_likelihood,
         kernel_kwargs=kernel_kwargs,
         param_kwargs=param_kwargs,
         inner_kernel_kwargs=inner_kernel_kwargs,
         inner_param_kwargs=inner_param_kwargs,
-        device=device
+        flow_kwargs=flow_kwargs,
+        device=device,
     )
     if x0 is None:
         x0 = torch.randn(size=(n_chains, *event_shape))
