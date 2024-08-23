@@ -1,35 +1,55 @@
+from typing import Dict, List
+
 import torch
 
+FLOW_NAMES: Dict[str, List[str]] = {
+    'realnvp': ["realnvp", 'real_nvp', 'rnvp'],
+    'nice': ['nice'],
+    'maf': ['maf'],
+    'iaf': ['iaf'],
+    'c-rqnsf': ['c-rqnsf'],
+    'ma-rqnsf': ['ma-rqnsf', 'maf-rqnsf'],
+    'ia-rqnsf': ['ia-rqnsf', 'iaf-rqnsf'],
+    'c-lrsnsf': ['c-lrsnsf', 'c-lrs'],
+    'ma-lrsnsf': ['ma-lrsnsf', 'maf-lrsnsf', 'ma-lrs', 'maf-lrs'],
+    'ia-lrsnsf': ['ia-lrsnsf', 'iaf-lrsnsf', 'ia-lrs', 'iaf-lrs'],
+    'ot-flow': ['ot-flow', 'otflow', 'ot flow'],
+    'ffjord': ['ffjord'],
+    'i-resnet': ['iresnet', 'invertible resnet', 'invertible-resnet', 'i-resnet'],
+    'resflow': ['resflow', 'residual flow', 'residual-flow', 'res-flow'],
+    'ddb': ['ddnf', 'ddb'],
+    'c-naf-deep': ['c-naf-deep'],
+    'c-naf-deep-dense': ['c-naf-deep-dense'],
+    'c-naf-dense': ['c-naf-dense'],
+    'proximal-resflow': ["proximal-resflow", 'p-resflow', 'presflow', 'proximal resflow'],
+    'rnode': ["rnode", 'r-node'],
+    'planar': ['planar'],
+    'radial': ['radial'],
+    'sylvester': ['sylvester'],
+}
 
-def get_supported_normalizing_flows():
-    return [
-        "nice",
-        "realnvp",
-        "maf",
-        "iaf",
-        "c-rqnsf",
-        "ar-rqnsf",
-        "c-lrsnsf",  # unstable
-        "ar-lrsnsf",  # unstable
-        "c-naf",
-        # "ar-naf",
-        # "c-bnaf",
-        # "ar-bnaf",
-        # "umnn-maf",
-        # "planar",
-        # "radial",
-        # "sylvester",
-        "i-resnet",  # needs 1 hour on cpu
-        "resflow",  # needs 1 hour on cpu
-        "proximal-resflow",
-        "ffjord",  # needs 6 hours on cpu
-        "rnode",
-        "ddnf",
-        "ot-flow",
-    ]
+
+def is_flow_supported(flow_name: str):
+    flow_name = flow_name.lower()
+    for key, value in FLOW_NAMES.items():
+        if flow_name in value:
+            return True
+    return False
+
+
+def get_supported_normalizing_flows(synonyms: bool = True):
+    supported = []
+    for key, value in FLOW_NAMES.items():
+        if synonyms:
+            supported.extend(value)
+        else:
+            supported.append(key)
+    return supported
 
 
 def create_flow_object(flow_name: str, event_shape, **kwargs):
+    assert is_flow_supported(flow_name)
+
     from torchflows.flows import Flow
     from torchflows.architectures import (
         RealNVP,
@@ -37,9 +57,13 @@ def create_flow_object(flow_name: str, event_shape, **kwargs):
         IAF,
         CouplingRQNSF,
         MaskedAutoregressiveRQNSF,
+        InverseAutoregressiveRQNSF,
         CouplingLRS,
         MaskedAutoregressiveLRS,
-        CouplingDSF,
+        InverseAutoregressiveLRS,
+        CouplingDeepSF,
+        CouplingDenseSF,
+        CouplingDeepDenseSF,
         OTFlow,
         FFJORD,
         ResFlow,
@@ -47,44 +71,58 @@ def create_flow_object(flow_name: str, event_shape, **kwargs):
         DeepDiffeomorphicBijection,
         NICE,
         ProximalResFlow,
-        RNODE
+        RNODE,
+        PlanarFlow,
+        RadialFlow,
+        SylvesterFlow
     )
 
-    assert flow_name in get_supported_normalizing_flows()
-    flow_name = flow_name.lower()
-
-    if flow_name in ["realnvp"]:
+    if flow_name in FLOW_NAMES['realnvp']:
         bijection = RealNVP(event_shape, **kwargs)
-    elif flow_name in ["nice"]:
+    elif flow_name in FLOW_NAMES["nice"]:
         bijection = NICE(event_shape, **kwargs)
-    elif flow_name in ['maf']:
+    elif flow_name in FLOW_NAMES['maf']:
         bijection = MAF(event_shape, **kwargs)
-    elif flow_name in ['iaf']:
+    elif flow_name in FLOW_NAMES['iaf']:
         bijection = IAF(event_shape, **kwargs)
-    elif flow_name in ['c-rqnsf']:
+    elif flow_name in FLOW_NAMES['c-rqnsf']:
         bijection = CouplingRQNSF(event_shape, **kwargs)
-    elif flow_name in ['ar-rqnsf']:
+    elif flow_name in FLOW_NAMES['ma-rqnsf']:
         bijection = MaskedAutoregressiveRQNSF(event_shape, **kwargs)
-    elif flow_name in ['c-lrsnsf']:
+    elif flow_name in FLOW_NAMES['ia-rqnsf']:
+        bijection = InverseAutoregressiveRQNSF(event_shape, **kwargs)
+    elif flow_name in FLOW_NAMES['c-lrsnsf']:
         bijection = CouplingLRS(event_shape, **kwargs)
-    elif flow_name in ['ar-lrsnsf']:
+    elif flow_name in FLOW_NAMES['ma-lrsnsf']:
         bijection = MaskedAutoregressiveLRS(event_shape, **kwargs)
-    elif flow_name in ['ot-flow', 'otflow']:
+    elif flow_name in FLOW_NAMES['ia-lrsnsf']:
+        bijection = InverseAutoregressiveLRS(event_shape, **kwargs)
+    elif flow_name in FLOW_NAMES['ot-flow']:
         bijection = OTFlow(event_shape, **kwargs)
-    elif flow_name in ['ffjord']:
+    elif flow_name in FLOW_NAMES['ffjord']:
         bijection = FFJORD(event_shape, **kwargs)
-    elif flow_name in ['iresnet', 'invertible resnet', 'invertible-resnet', 'i-resnet']:
+    elif flow_name in FLOW_NAMES['i-resnet']:
         bijection = InvertibleResNet(event_shape, **kwargs)
-    elif flow_name in ['resflow', 'residual flow', 'residual-flow', 'res-flow']:
+    elif flow_name in FLOW_NAMES['resflow']:
         bijection = ResFlow(event_shape, **kwargs)
-    elif flow_name in ['ddnf']:
+    elif flow_name in FLOW_NAMES['ddb']:
         bijection = DeepDiffeomorphicBijection(event_shape, **kwargs)
-    elif flow_name in ["c-naf"]:
-        bijection = CouplingDSF(event_shape, **kwargs)
-    elif flow_name in ["proximal-resflow"]:
+    elif flow_name in FLOW_NAMES["c-naf-deep"]:
+        bijection = CouplingDeepSF(event_shape, **kwargs)
+    elif flow_name in FLOW_NAMES["c-naf-deep-dense"]:
+        bijection = CouplingDeepDenseSF(event_shape, **kwargs)
+    elif flow_name in FLOW_NAMES["c-naf-dense"]:
+        bijection = CouplingDenseSF(event_shape, **kwargs)
+    elif flow_name in FLOW_NAMES["proximal-resflow"]:
         bijection = ProximalResFlow(event_shape, **kwargs)
-    elif flow_name in ["rnode"]:
+    elif flow_name in FLOW_NAMES["rnode"]:
         bijection = RNODE(event_shape, **kwargs)
+    elif flow_name in FLOW_NAMES["planar"]:
+        bijection = PlanarFlow(event_shape, **kwargs)
+    elif flow_name in FLOW_NAMES["radial"]:
+        bijection = RadialFlow(event_shape, **kwargs)
+    elif flow_name in FLOW_NAMES["sylvester"]:
+        bijection = SylvesterFlow(event_shape, **kwargs)
     else:
         raise ValueError
 
