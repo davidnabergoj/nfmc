@@ -19,8 +19,14 @@ FLOW_NAMES: Dict[str, List[str]] = {
     'resflow': ['resflow', 'residual flow', 'residual-flow', 'res-flow'],
     'ddb': ['ddnf', 'ddb'],
     'c-naf-deep': ['c-naf-deep'],
-    'c-naf-deep-dense': ['c-naf-deep-dense'],
+    'ma-naf-deep': ['ma-naf-deep'],
+    'ia-naf-deep': ['ia-naf-deep'],
+    'c-naf-deep-dense': ['c-naf-deep-dense', 'c-naf-dense-deep'],
+    'ma-naf-deep-dense': ['ma-naf-deep-dense', 'ma-naf-dense-deep'],
+    'ia-naf-deep-dense': ['ia-naf-deep-dense', 'ia-naf-dense-deep'],
     'c-naf-dense': ['c-naf-dense'],
+    'ma-naf-dense': ['ma-naf-dense'],
+    'ia-naf-dense': ['ia-naf-dense'],
     'proximal-resflow': ["proximal-resflow", 'p-resflow', 'presflow', 'proximal resflow'],
     'rnode': ["rnode", 'r-node'],
     'planar': ['planar'],
@@ -44,7 +50,7 @@ def get_supported_normalizing_flows(synonyms: bool = True):
             supported.extend(value)
         else:
             supported.append(key)
-    return supported
+    return sorted(list(set(supported)))
 
 
 def create_flow_object(flow_name: str, event_shape, **kwargs):
@@ -62,8 +68,14 @@ def create_flow_object(flow_name: str, event_shape, **kwargs):
         MaskedAutoregressiveLRS,
         InverseAutoregressiveLRS,
         CouplingDeepSF,
+        InverseAutoregressiveDeepSF,
+        MaskedAutoregressiveDeepSF,
         CouplingDenseSF,
+        InverseAutoregressiveDenseSF,
+        MaskedAutoregressiveDenseSF,
         CouplingDeepDenseSF,
+        InverseAutoregressiveDeepDenseSF,
+        MaskedAutoregressiveDeepDenseSF,
         OTFlow,
         FFJORD,
         ResFlow,
@@ -113,6 +125,18 @@ def create_flow_object(flow_name: str, event_shape, **kwargs):
         bijection = CouplingDeepDenseSF(event_shape, **kwargs)
     elif flow_name in FLOW_NAMES["c-naf-dense"]:
         bijection = CouplingDenseSF(event_shape, **kwargs)
+    elif flow_name in FLOW_NAMES["ia-naf-deep"]:
+        bijection = InverseAutoregressiveDeepSF(event_shape, **kwargs)
+    elif flow_name in FLOW_NAMES["ia-naf-deep-dense"]:
+        bijection = InverseAutoregressiveDeepDenseSF(event_shape, **kwargs)
+    elif flow_name in FLOW_NAMES["ia-naf-dense"]:
+        bijection = InverseAutoregressiveDenseSF(event_shape, **kwargs)
+    elif flow_name in FLOW_NAMES["ma-naf-deep"]:
+        bijection = MaskedAutoregressiveDeepSF(event_shape, **kwargs)
+    elif flow_name in FLOW_NAMES["ma-naf-deep-dense"]:
+        bijection = MaskedAutoregressiveDeepDenseSF(event_shape, **kwargs)
+    elif flow_name in FLOW_NAMES["ma-naf-dense"]:
+        bijection = MaskedAutoregressiveDenseSF(event_shape, **kwargs)
     elif flow_name in FLOW_NAMES["proximal-resflow"]:
         bijection = ProximalResFlow(event_shape, **kwargs)
     elif flow_name in FLOW_NAMES["rnode"]:
