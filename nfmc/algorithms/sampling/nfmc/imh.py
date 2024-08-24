@@ -70,17 +70,18 @@ class AdaptiveIMH(Sampler):
         )
         return MCMCOutput(samples=self.kernel.flow.sample(x0.shape[0]).detach()[None])
 
-    def sample(self, x0: torch.Tensor, show_progress: bool = True) -> MCMCOutput:
+    def sample(self, x0: torch.Tensor, show_progress: bool = True, thinning: int = 1) -> MCMCOutput:
         self.kernel: IMHKernel
         self.params: IMHParameters
         statistics = MCMCStatistics(n_accepted_trajectories=0, n_divergences=0)
 
         t0 = time.time()
-        xs = torch.empty(size=(self.params.n_iterations, *x0.shape), dtype=x0.dtype, device=x0.device)
+        xs = torch.empty(size=(self.params.n_iterations // thinning, *x0.shape), dtype=x0.dtype, device=x0.device)
         n_chains, *event_shape = x0.shape
         x = deepcopy(x0)
         statistics.elapsed_time_seconds += time.time() - t0
 
+        data_index = 0
         for i in (pbar := tqdm(range(self.params.n_iterations), desc="Adaptive IMH", disable=not show_progress)):
             t0 = time.time()
             with torch.no_grad():
@@ -100,7 +101,10 @@ class AdaptiveIMH(Sampler):
                 except ValueError:
                     accepted_mask = torch.zeros(size=(n_chains,), dtype=torch.bool, device=x0.device)
                     statistics.n_divergences += 1
-            xs[i] = x
+
+            if i % thinning == 0:
+                xs[data_index] = x
+                data_index += 1
             statistics.n_accepted_trajectories += int(torch.sum(accepted_mask))
             statistics.n_attempted_trajectories += n_chains
 
@@ -112,16 +116,21 @@ class AdaptiveIMH(Sampler):
                 # we can program the exact bounded geometric as well. Then it's parameter p can be adapted with dual
                 # averaging.
                 if self.params.train_distribution == 'uniform':
-                    k = int(torch.randint(low=0, high=(i + 1), size=()))
+                    k = int(torch.randint(low=0, high=(data_index + 1), size=()))
                 elif self.params.train_distribution == 'bounded_geom_approx':
-                    k = int(torch.randint(low=max(0, (i + 1) - 100), high=(i + 1), size=()))
+                    k = int(torch.randint(low=max(0, (data_index + 1) - 100), high=(data_index + 1), size=()))
                 elif self.params.train_distribution == 'bounded_geom':
-                    k = sample_bounded_geom(p=0.025, max_val=(i + 1) - 1)
+                    k = sample_bounded_geom(p=0.025, max_val=(data_index + 1) - 1)
                 else:
                     raise ValueError
 
                 x_train = xs[k]
-                self.kernel.flow.fit(x_train, n_epochs=1)
+
+                flow_weights = deepcopy(self.kernel.flow.state_dict())
+                try:
+                    self.kernel.flow.fit(x_train, n_epochs=1)
+                except ValueError:
+                    self.kernel.flow.load_state_dict(flow_weights)
 
             statistics.elapsed_time_seconds += time.time() - t0
             pbar.set_postfix_str(f'{statistics} | adaptation probability: {alpha_prime:.2f}')
@@ -152,11 +161,12 @@ class FixedIMH(Sampler):
         )
         return MCMCOutput(samples=self.kernel.flow.sample(x0.shape[0]).detach()[None])
 
-    def sample(self, x0: torch.Tensor, show_progress: bool = True) -> MCMCOutput:
-        xs = torch.empty(size=(self.params.n_iterations, *x0.shape), dtype=x0.dtype, device=x0.device)
+    def sample(self, x0: torch.Tensor, show_progress: bool = True, thinning: int = 1) -> MCMCOutput:
+        xs = torch.empty(size=(self.params.n_iterations // thinning, *x0.shape), dtype=x0.dtype, device=x0.device)
         n_chains, *event_shape = x0.shape
         statistics = MCMCStatistics(n_accepted_trajectories=0, n_divergences=0)
         x = deepcopy(x0)
+        data_index = 0
         for i in (pbar := tqdm(range(self.params.n_iterations), desc="Fixed IMH", disable=not show_progress)):
             with torch.no_grad():
                 x_prime = self.kernel.flow.sample(n_chains, no_grad=True).to(xs)
@@ -174,7 +184,9 @@ class FixedIMH(Sampler):
                 except ValueError as e:
                     accepted_mask = torch.zeros(size=(n_chains,), dtype=torch.bool, device=x0.device)
                     statistics.n_divergences += 1
-            xs[i] = x
+            if i % thinning == 0:
+                xs[data_index] = x
+                data_index += 1
             statistics.n_accepted_trajectories += int(torch.sum(accepted_mask))
             statistics.n_attempted_trajectories += n_chains
 

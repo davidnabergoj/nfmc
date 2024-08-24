@@ -1,4 +1,5 @@
 import time
+from copy import deepcopy
 from dataclasses import dataclass
 from typing import Sized
 
@@ -75,11 +76,15 @@ class JumpNFMC(Sampler):
         self.params: JumpNFMCParameters
 
         # Fit flow to target via variational inference
-        self.kernel.flow.variational_fit(
-            lambda v: -self.target(v),
-            **self.params.warmup_fit_kwargs,
-            show_progress=show_progress
-        )
+        flow_params = deepcopy(self.kernel.flow.state_dict())
+        try:
+            self.kernel.flow.variational_fit(
+                lambda v: -self.target(v),
+                **self.params.warmup_fit_kwargs,
+                show_progress=show_progress
+            )
+        except ValueError:
+            self.kernel.flow.load_state_dict(flow_params)
         x0 = self.kernel.flow.sample(len(x0)).detach()
 
         warmup_output = self.inner_sampler.warmup(x0, show_progress=show_progress)
@@ -89,29 +94,36 @@ class JumpNFMC(Sampler):
             max_train_size=self.params.max_train_size,
             max_val_size=self.params.max_val_size
         )
-        self.kernel.flow.fit(
-            x_train=x_train,
-            x_val=x_val,
-            **{
-                **self.params.flow_fit_kwargs,
-                **dict(show_progress=show_progress)
-            }
-        )
+
+        flow_params = deepcopy(self.kernel.flow.state_dict())
+        try:
+            self.kernel.flow.fit(
+                x_train=x_train,
+                x_val=x_val,
+                **{
+                    **self.params.flow_fit_kwargs,
+                    **dict(show_progress=show_progress)
+                }
+            )
+        except ValueError:
+            self.kernel.flow.load_state_dict(flow_params)
+
         return MCMCOutput(samples=self.kernel.flow.sample(x0.shape[0]).detach()[None])
 
-    def sample(self, x0: torch.Tensor, show_progress: bool = True) -> MCMCOutput:
+    def sample(self, x0: torch.Tensor, show_progress: bool = True, thinning: int = 1) -> MCMCOutput:
         self.kernel: NFMCKernel
         self.params: JumpNFMCParameters
 
         n_chains, *event_shape = x0.shape
         xs = torch.zeros(
-            size=(self.params.n_iterations, self.inner_sampler.params.n_iterations + 1, *x0.shape),
+            size=(self.params.n_iterations // thinning, self.inner_sampler.params.n_iterations + 1, *x0.shape),
             device=x0.device,
             dtype=x0.dtype
         )  # (jumps, trajectories per jump, chains, *event)
         statistics = JumpNFMCStatistics()
 
         x = torch.clone(x0)
+        data_index = 0
         for i in (pbar := tqdm(range(self.params.n_iterations), desc='Jump MCMC', disable=not show_progress)):
             # Trajectories
             pbar.set_description_str(f'Jump MCMC (sampling)')
@@ -125,7 +137,8 @@ class JumpNFMC(Sampler):
             statistics.elapsed_time_seconds += mcmc_output.statistics.elapsed_time_seconds
 
             t0 = time.time()
-            xs[i, :-1] = mcmc_output.samples
+            if i % thinning == 0:
+                xs[data_index, :-1] = mcmc_output.samples
 
             # Fit flow
             if self.params.fit_nf and i >= self.params.n_jumps_before_training:
@@ -170,7 +183,10 @@ class JumpNFMC(Sampler):
             statistics.n_attempted_jumps += n_chains
             statistics.n_accepted_jumps += int(torch.sum(acceptance_mask))
             pbar.set_postfix_str(f'{statistics}')
-            xs[i, -1] = x
+
+            if i % thinning == 0:
+                xs[data_index, -1] = x
+                data_index += 1
         xs = xs.flatten(0, 1)
         return MCMCOutput(
             samples=xs,
