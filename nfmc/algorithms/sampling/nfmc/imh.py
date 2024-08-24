@@ -33,7 +33,8 @@ class IMHParameters(NFMCParameters):
                 'keep_best_weights': True,
                 'n_samples': 1,
                 'n_epochs': 500,
-                'lr': 0.05
+                'lr': 0.05,
+                'check_for_divergences': True
             }
 
 
@@ -70,9 +71,6 @@ class AdaptiveIMH(Sampler):
         return MCMCOutput(samples=self.kernel.flow.sample(x0.shape[0]).detach()[None])
 
     def sample(self, x0: torch.Tensor, show_progress: bool = True) -> MCMCOutput:
-        # FIXME sometimes IMH disables autograd for flows in place
-        # TODO make initial states be sampled from the flow
-
         self.kernel: IMHKernel
         self.params: IMHParameters
         statistics = MCMCStatistics(n_accepted_trajectories=0, n_divergences=0)
