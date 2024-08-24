@@ -2,22 +2,23 @@ from typing import Dict, List
 
 import torch
 
-FLOW_NAMES: Dict[str, List[str]] = {
+AFFINE_AUTOREGRESSIVE_FLOW_NAMES: Dict[str, List[str]] = {
     'realnvp': ["realnvp", 'real_nvp', 'rnvp'],
     'nice': ['nice'],
     'maf': ['maf'],
     'iaf': ['iaf'],
+}
+
+SPLINE_AUTOREGRESSIVE_FLOW_NAMES: Dict[str, List[str]] = {
     'c-rqnsf': ['c-rqnsf'],
     'ma-rqnsf': ['ma-rqnsf', 'maf-rqnsf'],
     'ia-rqnsf': ['ia-rqnsf', 'iaf-rqnsf'],
     'c-lrsnsf': ['c-lrsnsf', 'c-lrs'],
     'ma-lrsnsf': ['ma-lrsnsf', 'maf-lrsnsf', 'ma-lrs', 'maf-lrs'],
     'ia-lrsnsf': ['ia-lrsnsf', 'iaf-lrsnsf', 'ia-lrs', 'iaf-lrs'],
-    'ot-flow': ['ot-flow', 'otflow', 'ot flow'],
-    'ffjord': ['ffjord'],
-    'i-resnet': ['iresnet', 'invertible resnet', 'invertible-resnet', 'i-resnet'],
-    'resflow': ['resflow', 'residual flow', 'residual-flow', 'res-flow'],
-    'ddb': ['ddnf', 'ddb'],
+}
+
+NEURAL_AUTOREGRESSIVE_FLOW_NAMES: Dict[str, List[str]] = {
     'c-naf-deep': ['c-naf-deep'],
     'ma-naf-deep': ['ma-naf-deep'],
     'ia-naf-deep': ['ia-naf-deep'],
@@ -27,30 +28,73 @@ FLOW_NAMES: Dict[str, List[str]] = {
     'c-naf-dense': ['c-naf-dense'],
     'ma-naf-dense': ['ma-naf-dense'],
     'ia-naf-dense': ['ia-naf-dense'],
-    'proximal-resflow': ["proximal-resflow", 'p-resflow', 'presflow', 'proximal resflow'],
+}
+
+AUTOREGRESSIVE_FLOW_NAMES: Dict[str, List[str]] = {
+    **AFFINE_AUTOREGRESSIVE_FLOW_NAMES,
+    **SPLINE_AUTOREGRESSIVE_FLOW_NAMES,
+    **NEURAL_AUTOREGRESSIVE_FLOW_NAMES,
+}
+
+CONTINUOUS_FLOW_NAMES: Dict[str, List[str]] = {
+    'ot-flow': ['ot-flow', 'otflow', 'ot flow'],
+    'ffjord': ['ffjord'],
+    'ddb': ['ddnf', 'ddb'],
     'rnode': ["rnode", 'r-node'],
+}
+
+RESIDUAL_FLOW_NAMES: Dict[str, List[str]] = {
+    'i-resnet': ['iresnet', 'invertible resnet', 'invertible-resnet', 'i-resnet'],
+    'resflow': ['resflow', 'residual flow', 'residual-flow', 'res-flow'],
+    'proximal-resflow': ["proximal-resflow", 'p-resflow', 'presflow', 'proximal resflow'],
     'planar': ['planar'],
     'radial': ['radial'],
     'sylvester': ['sylvester'],
 }
 
+FLOW_NAMES: Dict[str, List[str]] = {
+    **AUTOREGRESSIVE_FLOW_NAMES,
+    **CONTINUOUS_FLOW_NAMES,
+    **RESIDUAL_FLOW_NAMES,
+}
+
+
+def flatten_name_dictionary(d: Dict[str, List[str]]) -> List[str]:
+    flat = []
+    flat.extend(list(d.keys()))
+    for value in d.values():
+        flat.extend(list(value))
+    return sorted(list(set(flat)))
+
 
 def is_flow_supported(flow_name: str):
-    flow_name = flow_name.lower()
-    for key, value in FLOW_NAMES.items():
-        if flow_name in value:
-            return True
-    return False
+    return flow_name in flatten_name_dictionary(FLOW_NAMES)
+
+
+def get_supported_autoregressive_flows(synonyms: bool = True):
+    if synonyms:
+        return flatten_name_dictionary(AUTOREGRESSIVE_FLOW_NAMES)
+    return sorted(list(AUTOREGRESSIVE_FLOW_NAMES.keys()))
+
+
+def get_supported_residual_flows(synonyms: bool = True):
+    if synonyms:
+        return flatten_name_dictionary(RESIDUAL_FLOW_NAMES)
+    return sorted(list(RESIDUAL_FLOW_NAMES.keys()))
+
+
+def get_supported_continuous_flows(synonyms: bool = True):
+    if synonyms:
+        return flatten_name_dictionary(CONTINUOUS_FLOW_NAMES)
+    return sorted(list(CONTINUOUS_FLOW_NAMES.keys()))
 
 
 def get_supported_normalizing_flows(synonyms: bool = True):
-    supported = []
-    for key, value in FLOW_NAMES.items():
-        if synonyms:
-            supported.extend(value)
-        else:
-            supported.append(key)
-    return sorted(list(set(supported)))
+    return sorted(list(set(
+        get_supported_autoregressive_flows(synonyms=synonyms) +
+        get_supported_residual_flows(synonyms=synonyms) +
+        get_supported_continuous_flows(synonyms=synonyms)
+    )))
 
 
 def create_flow_object(flow_name: str, event_shape, **kwargs):
