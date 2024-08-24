@@ -88,6 +88,19 @@ class MCMCStatistics:
             f"divergences: {self.n_divergences}"
         )
 
+    def __dict__(self):
+        return {
+            'n_accepted_trajectories': self.n_accepted_trajectories,
+            'n_attempted_trajectories': self.n_attempted_trajectories,
+            'n_divergences': self.n_divergences,
+            'n_target_gradient_calls': self.n_target_gradient_calls,
+            'n_target_calls': self.n_target_calls,
+            'elapsed_time_seconds': self.elapsed_time_seconds,
+            'grads_per_second': self.grads_per_second,
+            'acceptance_rate': self.acceptance_rate,
+            'calls_per_second': self.calls_per_second,
+        }
+
 
 @dataclass
 class MCMCOutput:
