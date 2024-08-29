@@ -58,6 +58,11 @@ class JumpNFMCStatistics(MCMCStatistics):
 
 
 class JumpNFMC(Sampler):
+    """
+
+    Requires flow with an efficient inverse method.
+    Requires flow with an efficient forward method if using adjusted jumps (default: True). This makes masked autoregressive flows unsuitable.
+    """
     def __init__(self,
                  event_shape: Sized,
                  target: callable,
@@ -153,7 +158,10 @@ class JumpNFMC(Sampler):
 
             # Jump
             pbar.set_description_str(f'Jump MCMC (jumping)')
-            x_prime = self.kernel.flow.sample(n_chains).detach()
+            x_prime, f_x_prime = self.kernel.flow.sample(n_chains, return_log_prob=True)
+            x_prime = x_prime.detach()
+            f_x_prime = f_x_prime.detach()
+
             x = mcmc_output.samples[-1]
             if self.params.adjusted_jumps:
                 try:
@@ -164,7 +172,6 @@ class JumpNFMC(Sampler):
                     statistics.n_target_calls += n_chains
 
                     f_x = self.kernel.flow.log_prob(x)
-                    f_x_prime = self.kernel.flow.log_prob(x_prime)
                     log_alpha = metropolis_acceptance_log_ratio(
                         log_prob_curr=-u_x,
                         log_prob_prime=-u_x_prime,
