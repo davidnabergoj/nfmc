@@ -64,6 +64,27 @@ class MCMCStatistics:
     running_first_moment: Union[torch.Tensor, float] = 0.0
     running_second_moment: Union[torch.Tensor, float] = 0.0
 
+    first_moment_update_index: int = 0
+    second_moment_update_index: int = 0
+
+    def update_first_moment(self, x: torch.Tensor):
+        # x.shape == `(n_chains, *event_shape)`
+        i = self.first_moment_update_index
+        self.running_first_moment = torch.add(
+            self.running_first_moment * (i / (i + 1)),
+            torch.mean(x, dim=0) / (i + 1)  # expectation over chain dimension
+        ).detach()
+        self.first_moment_update_index += 1
+
+    def update_second_moment(self, x: torch.Tensor):
+        # x.shape == `(n_chains, *event_shape)`
+        i = self.second_moment_update_index
+        self.running_second_moment = torch.add(
+            self.running_second_moment * (i / (i + 1)),
+            torch.mean(x ** 2, dim=0) / (i + 1)  # expectation over chain dimension
+        ).detach()
+        self.second_moment_update_index += 1
+
     @property
     def running_variance(self):
         return self.running_second_moment - self.running_first_moment ** 2
@@ -145,8 +166,10 @@ class Sampler:
         self.kernel = kernel
         self.params = params
 
-    def warmup(self, x0: torch.Tensor, show_progress: bool = True, thinning: int = 1, time_limit_seconds: int = None) -> MCMCOutput:
+    def warmup(self, x0: torch.Tensor, show_progress: bool = True, thinning: int = 1,
+               time_limit_seconds: int = None) -> MCMCOutput:
         raise NotImplementedError
 
-    def sample(self, x0: torch.Tensor, show_progress: bool = True, thinning: int = 1, time_limit_seconds: int = None) -> MCMCOutput:
+    def sample(self, x0: torch.Tensor, show_progress: bool = True, thinning: int = 1,
+               time_limit_seconds: int = None) -> MCMCOutput:
         raise NotImplementedError

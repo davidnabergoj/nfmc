@@ -187,18 +187,8 @@ class HMC(Sampler):
 
             statistics.n_accepted_trajectories += int(torch.sum(accepted_mask))
             statistics.n_attempted_trajectories += n_chains
-
-            # Update first moment estimate
-            statistics.running_first_moment = torch.add(
-                statistics.running_first_moment * (i / (i + 1)),
-                torch.sum(x, dim=0) / ((i + 1) * n_chains)  # sum over chain dimension
-            ).detach()
-
-            # Update second moment estimate
-            statistics.running_second_moment = torch.add(
-                statistics.running_second_moment * (i / (i + 1)),
-                torch.sum(x ** 2, dim=0) / ((i + 1) * n_chains)  # sum over chain dimension
-            ).detach()
+            statistics.update_first_moment(x)
+            statistics.update_second_moment(x)
 
             with torch.no_grad():
                 x = x.detach()
