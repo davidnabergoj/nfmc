@@ -91,7 +91,7 @@ class NeuTraHMC(Sampler):
 
         t0 = time.time()
         with torch.no_grad():
-            xs, _ = self.kernel.flow.bijection.batch_inverse(
+            xs, _ = self.kernel.flow.cpu().bijection.batch_inverse(
                 mcmc_output.samples,
                 batch_size=self.params.batch_inverse_size
             )

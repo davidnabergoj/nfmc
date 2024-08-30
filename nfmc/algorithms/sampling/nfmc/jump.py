@@ -182,17 +182,17 @@ class JumpNFMC(Sampler):
 
                     f_x = self.kernel.flow.log_prob(x)
                     log_alpha = metropolis_acceptance_log_ratio(
-                        log_prob_curr=-u_x,
-                        log_prob_prime=-u_x_prime,
-                        log_proposal_curr=f_x,
-                        log_proposal_prime=f_x_prime
+                        log_prob_curr=-u_x.to(x),
+                        log_prob_prime=-u_x_prime.to(x),
+                        log_proposal_curr=f_x.to(x),
+                        log_proposal_prime=f_x_prime.to(x)
                     )
                     acceptance_mask = torch.rand_like(log_alpha).log() < log_alpha
                 except ValueError:
                     acceptance_mask = torch.zeros(size=x.shape[:-len(event_shape)], dtype=torch.bool)
             else:
                 acceptance_mask = torch.ones(size=x.shape[:-len(event_shape)], dtype=torch.bool)
-            x[acceptance_mask] = x_prime[acceptance_mask]
+            x[acceptance_mask] = x_prime[acceptance_mask].to(x)
             t1 = time.time()
 
             statistics.elapsed_time_seconds += t1 - t0

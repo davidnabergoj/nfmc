@@ -49,7 +49,7 @@ def mass_matrix_multiply(x: torch.Tensor, inverse_mass_matrix_diagonal: torch.Te
     batch_shape = x.shape[:-len(event_shape)]
     event_size = int(torch.prod(torch.tensor(event_shape)))
     x_reshaped = x.view(*batch_shape, event_size)
-    x_reshaped_multiplied = torch.einsum('...i,i->...i', x_reshaped, inverse_mass_matrix_diagonal)
+    x_reshaped_multiplied = torch.einsum('...i,i->...i', x_reshaped, inverse_mass_matrix_diagonal.to(x_reshaped))
     x_multiplied = x_reshaped_multiplied.view_as(x)
     return x_multiplied
 
@@ -72,7 +72,7 @@ def hmc_step_b(x: torch.Tensor, momentum: torch.Tensor, step_size: float, potent
 
 def hmc_step_a(x: torch.Tensor, momentum: torch.Tensor, inv_mass_diag, step_size: float, event_shape):
     # position update
-    return x + step_size * mass_matrix_multiply(momentum, inv_mass_diag, event_shape)
+    return x + step_size * mass_matrix_multiply(momentum, inv_mass_diag.to(momentum), event_shape)
 
 
 def hmc_trajectory(x: torch.Tensor,
@@ -138,7 +138,7 @@ class HMC(Sampler):
         xs = torch.zeros(
             size=(self.params.n_iterations // thinning, n_chains, *event_shape),
             dtype=x0.dtype,
-            device=x0.device
+            device=torch.device("cpu")
         )
         da = DualAveraging(initial_step_size=self.kernel.step_size, params=self.params.da_params)
         x = torch.clone(x0).detach()
@@ -153,7 +153,7 @@ class HMC(Sampler):
                 break
 
             t0 = time.time()
-            p = mass_matrix_multiply(torch.randn_like(x), 1 / self.kernel.inv_mass_diag.sqrt(), event_shape)
+            p = mass_matrix_multiply(torch.randn_like(x), 1 / self.kernel.inv_mass_diag.sqrt().to(x), event_shape)
             try:
                 x_prime, p_prime = hmc_trajectory(x, p, event_shape, self.kernel, potential=self.target)
                 statistics.n_target_calls += 2 * self.kernel.n_leapfrog_steps * n_chains
