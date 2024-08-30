@@ -57,7 +57,7 @@ class NeuTraHMC(Sampler):
         adjusted_log_prob = log_prob + log_det_inverse
         return -adjusted_log_prob
 
-    def warmup(self, x0: torch.Tensor, show_progress: bool = True) -> MCMCOutput:
+    def warmup(self, x0: torch.Tensor, show_progress: bool = True, thinning: int = 1, time_limit_seconds: int = 3600 * 24) -> MCMCOutput:
         self.kernel: NeuTraKernel
         self.params: NeuTraParameters
 
@@ -72,7 +72,7 @@ class NeuTraHMC(Sampler):
         warmup_output = self.inner_sampler.warmup(x0, show_progress=show_progress)
         return warmup_output
 
-    def sample(self, x0: torch.Tensor, show_progress: bool = True, thinning: int = 1) -> MCMCOutput:
+    def sample(self, x0: torch.Tensor, show_progress: bool = True, thinning: int = 1, time_limit_seconds: int = 3600 * 24) -> MCMCOutput:
         self.kernel: NeuTraKernel
         self.params: NeuTraParameters
 
@@ -86,7 +86,7 @@ class NeuTraHMC(Sampler):
         z0 = self.kernel.flow.base_sample((n_chains,)).detach()
         t1 = time.time()
 
-        mcmc_output = self.inner_sampler.sample(z0, show_progress=show_progress, thinning=thinning)
+        mcmc_output = self.inner_sampler.sample(z0, show_progress=show_progress, thinning=thinning, time_limit_seconds=time_limit_seconds)
         mcmc_output.statistics.elapsed_time_seconds += t1 - t0
 
         t0 = time.time()

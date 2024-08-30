@@ -59,7 +59,8 @@ class AdaptiveIMH(Sampler):
             params = IMHParameters()
         super().__init__(event_shape, target, kernel, params)
 
-    def warmup(self, x0: torch.Tensor, show_progress: bool = True) -> MCMCOutput:
+    def warmup(self, x0: torch.Tensor, show_progress: bool = True, thinning: int = 1,
+               time_limit_seconds: int = 3600 * 24) -> MCMCOutput:
         self.kernel: IMHKernel
         self.params: IMHParameters
 
@@ -70,7 +71,8 @@ class AdaptiveIMH(Sampler):
         )
         return MCMCOutput(samples=self.kernel.flow.sample(x0.shape[0]).detach()[None])
 
-    def sample(self, x0: torch.Tensor, show_progress: bool = True, thinning: int = 1) -> MCMCOutput:
+    def sample(self, x0: torch.Tensor, show_progress: bool = True, thinning: int = 1,
+               time_limit_seconds: int = 3600 * 24) -> MCMCOutput:
         self.kernel: IMHKernel
         self.params: IMHParameters
         statistics = MCMCStatistics(n_accepted_trajectories=0, n_divergences=0)
@@ -82,7 +84,13 @@ class AdaptiveIMH(Sampler):
         statistics.elapsed_time_seconds += time.time() - t0
 
         data_index = 0
+
+        time_exceeded = False
         for i in (pbar := tqdm(range(self.params.n_iterations), desc="Adaptive IMH", disable=not show_progress)):
+            if statistics.elapsed_time_seconds >= time_limit_seconds:
+                time_exceeded = True
+                break
+
             t0 = time.time()
             with torch.no_grad():
                 x_prime = self.kernel.flow.sample(n_chains, no_grad=True).to(xs)
@@ -135,6 +143,8 @@ class AdaptiveIMH(Sampler):
             statistics.elapsed_time_seconds += time.time() - t0
             pbar.set_postfix_str(f'{statistics} | adaptation probability: {alpha_prime:.2f}')
 
+        if time_exceeded:
+            xs = xs[:data_index]
         return MCMCOutput(samples=xs, statistics=statistics)
 
 
@@ -150,7 +160,8 @@ class FixedIMH(Sampler):
             params = IMHParameters()
         super().__init__(event_shape, target, kernel, params)
 
-    def warmup(self, x0: torch.Tensor, show_progress: bool = True) -> MCMCOutput:
+    def warmup(self, x0: torch.Tensor, show_progress: bool = True, thinning: int = 1,
+               time_limit_seconds: int = 3600 * 24) -> MCMCOutput:
         self.kernel: IMHKernel
         self.params: IMHParameters
 
@@ -161,13 +172,21 @@ class FixedIMH(Sampler):
         )
         return MCMCOutput(samples=self.kernel.flow.sample(x0.shape[0]).detach()[None])
 
-    def sample(self, x0: torch.Tensor, show_progress: bool = True, thinning: int = 1) -> MCMCOutput:
+    def sample(self, x0: torch.Tensor, show_progress: bool = True, thinning: int = 1,
+               time_limit_seconds: int = 3600 * 24) -> MCMCOutput:
+        self.kernel: IMHKernel
         xs = torch.empty(size=(self.params.n_iterations // thinning, *x0.shape), dtype=x0.dtype, device=x0.device)
         n_chains, *event_shape = x0.shape
         statistics = MCMCStatistics(n_accepted_trajectories=0, n_divergences=0)
         x = deepcopy(x0)
         data_index = 0
+
+        time_exceeded = False
         for i in (pbar := tqdm(range(self.params.n_iterations), desc="Fixed IMH", disable=not show_progress)):
+            if statistics.elapsed_time_seconds >= time_limit_seconds:
+                time_exceeded = True
+                break
+            t0 = time.time()
             with torch.no_grad():
                 x_prime = self.kernel.flow.sample(n_chains, no_grad=True).to(xs)
                 try:
@@ -189,8 +208,11 @@ class FixedIMH(Sampler):
                 data_index += 1
             statistics.n_accepted_trajectories += int(torch.sum(accepted_mask))
             statistics.n_attempted_trajectories += n_chains
+            statistics.elapsed_time_seconds += time.time() - t0
 
             pbar.set_postfix_str(f'{statistics}')
+        if time_exceeded:
+            xs = xs[:data_index]
         return MCMCOutput(samples=xs, statistics=statistics)
 
 

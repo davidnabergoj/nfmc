@@ -63,6 +63,7 @@ class JumpNFMC(Sampler):
     Requires flow with an efficient inverse method.
     Requires flow with an efficient forward method if using adjusted jumps (default: True). This makes masked autoregressive flows unsuitable.
     """
+
     def __init__(self,
                  event_shape: Sized,
                  target: callable,
@@ -76,7 +77,8 @@ class JumpNFMC(Sampler):
         super().__init__(event_shape, target, kernel, params)
         self.inner_sampler = inner_sampler
 
-    def warmup(self, x0: torch.Tensor, show_progress: bool = True) -> MCMCOutput:
+    def warmup(self, x0: torch.Tensor, show_progress: bool = True, thinning: int = 1,
+               time_limit_seconds: int = 3600 * 24) -> MCMCOutput:
         self.kernel: NFMCKernel
         self.params: JumpNFMCParameters
 
@@ -92,7 +94,8 @@ class JumpNFMC(Sampler):
             self.kernel.flow.load_state_dict(flow_params)
         x0 = self.kernel.flow.sample(len(x0)).detach()
 
-        warmup_output = self.inner_sampler.warmup(x0, show_progress=show_progress)
+        warmup_output = self.inner_sampler.warmup(x0, show_progress=show_progress,
+                                                  time_limit_seconds=time_limit_seconds)
         x_train, x_val = train_val_split(
             warmup_output.samples,
             train_pct=self.params.train_pct,
@@ -115,7 +118,8 @@ class JumpNFMC(Sampler):
 
         return MCMCOutput(samples=self.kernel.flow.sample(x0.shape[0]).detach()[None])
 
-    def sample(self, x0: torch.Tensor, show_progress: bool = True, thinning: int = 1) -> MCMCOutput:
+    def sample(self, x0: torch.Tensor, show_progress: bool = True, thinning: int = 1,
+               time_limit_seconds: int = 3600 * 24) -> MCMCOutput:
         self.kernel: NFMCKernel
         self.params: JumpNFMCParameters
 
@@ -129,7 +133,12 @@ class JumpNFMC(Sampler):
 
         x = torch.clone(x0)
         data_index = 0
+
+        time_exceeded = False
         for i in (pbar := tqdm(range(self.params.n_iterations), desc='Jump MCMC', disable=not show_progress)):
+            if statistics.elapsed_time_seconds >= time_limit_seconds:
+                time_exceeded = True
+                break
             # Trajectories
             pbar.set_description_str(f'Jump MCMC (sampling)')
             mcmc_output = self.inner_sampler.sample(x0=x, show_progress=False)
@@ -194,6 +203,10 @@ class JumpNFMC(Sampler):
             if i % thinning == 0:
                 xs[data_index, -1] = x
                 data_index += 1
+
+        if time_exceeded:
+            xs = xs[:data_index]
+
         xs = xs.flatten(0, 1)
         return MCMCOutput(
             samples=xs,

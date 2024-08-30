@@ -106,7 +106,7 @@ class HMC(Sampler):
             params = HMCParameters()
         super().__init__(event_shape, target, kernel, params)
 
-    def warmup(self, x0: torch.Tensor, show_progress: bool = True, thinning: int = 1) -> MCMCOutput:
+    def warmup(self, x0: torch.Tensor, show_progress: bool = True, thinning: int = 1, time_limit_seconds: int = 3600 * 24) -> MCMCOutput:
         self.kernel: HMCKernel
         self.params: HMCParameters
 
@@ -114,7 +114,7 @@ class HMC(Sampler):
         warmup_copy.params.tune_inv_mass_diag = True
         warmup_copy.params.tune_step_size = True
         warmup_copy.params.n_iterations = self.params.n_warmup_iterations
-        warmup_output = warmup_copy.sample(x0, show_progress=show_progress, thinning=thinning)
+        warmup_output = warmup_copy.sample(x0, show_progress=show_progress, thinning=thinning, time_limit_seconds=time_limit_seconds)
 
         self.kernel = warmup_copy.kernel
         new_params = warmup_copy.params
@@ -125,7 +125,8 @@ class HMC(Sampler):
 
         return warmup_output
 
-    def sample(self, x0: torch.Tensor, show_progress: bool = True, thinning: int = 1) -> MCMCOutput:
+
+    def sample(self, x0: torch.Tensor, show_progress: bool = True, thinning: int = 1, time_limit_seconds: int = 3600 * 24) -> MCMCOutput:
         self.kernel: HMCKernel
         self.params: HMCParameters
 
@@ -143,8 +144,14 @@ class HMC(Sampler):
         x = torch.clone(x0).detach()
         statistics.elapsed_time_seconds += time.time() - t0
 
-        sample_index: int = 0
+        data_index: int = 0
+
+        time_exceeded = False
         for i in (pbar := tqdm(range(self.params.n_iterations), desc='HMC', disable=not show_progress)):
+            if statistics.elapsed_time_seconds > time_limit_seconds:
+                time_exceeded = True
+                break
+
             t0 = time.time()
             p = mass_matrix_multiply(torch.randn_like(x), 1 / self.kernel.inv_mass_diag.sqrt(), event_shape)
             try:
@@ -179,8 +186,8 @@ class HMC(Sampler):
                 x = x.detach()
 
                 if i % thinning == 0:
-                    xs[sample_index] = x
-                    sample_index += 1
+                    xs[data_index] = x
+                    data_index += 1
 
                 if n_chains > 1 and self.params.tune_inv_mass_diag:
                     # inv_mass_diag = torch.var(x.flatten(1, -1), dim=0)  # Mass matrix adaptation
@@ -197,6 +204,9 @@ class HMC(Sampler):
 
             statistics.elapsed_time_seconds += time.time() - t0
             pbar.set_postfix_str(f'{statistics} | {self.kernel} | {da}')
+
+        if time_exceeded:
+            xs = xs[:data_index]
 
         return MCMCOutput(samples=xs, statistics=statistics)
 

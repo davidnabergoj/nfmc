@@ -70,7 +70,8 @@ class Langevin(Sampler):
             params = LangevinParameters()
         super().__init__(event_shape, target, kernel, params)
 
-    def warmup(self, x0: torch.Tensor, show_progress: bool = True) -> MCMCOutput:
+    def warmup(self, x0: torch.Tensor, show_progress: bool = True, thinning: int = 1,
+               time_limit_seconds: int = 3600 * 24) -> MCMCOutput:
         self.kernel: LangevinKernel
         self.params: LangevinParameters
 
@@ -78,7 +79,7 @@ class Langevin(Sampler):
         warmup_copy.params.tune_inv_mass_diag = True
         warmup_copy.params.tune_step_size = True
         warmup_copy.params.n_iterations = self.params.n_warmup_iterations
-        warmup_output = warmup_copy.sample(x0, show_progress=show_progress)
+        warmup_output = warmup_copy.sample(x0, show_progress=show_progress, time_limit_seconds=time_limit_seconds)
 
         self.kernel = warmup_copy.kernel
         new_params = warmup_copy.params
@@ -89,7 +90,8 @@ class Langevin(Sampler):
 
         return warmup_output
 
-    def sample(self, x0: torch.Tensor, show_progress: bool = True) -> MCMCOutput:
+    def sample(self, x0: torch.Tensor, show_progress: bool = True, thinning: int = 1,
+               time_limit_seconds: int = 3600 * 24) -> MCMCOutput:
         self.params: LangevinParameters
         self.kernel: LangevinKernel
 
@@ -103,7 +105,12 @@ class Langevin(Sampler):
         x = torch.clone(x0).detach()
         statistics.elapsed_time_seconds += time.time() - t0
 
+        time_exceeded = False
         for i in (pbar := tqdm(range(self.params.n_iterations), desc='LMC', disable=not show_progress)):
+            if statistics.elapsed_time_seconds >= time_limit_seconds:
+                time_exceeded = True
+                break
+
             t0 = time.time()
             noise = torch.randn_like(x)
             try:
@@ -185,6 +192,8 @@ class Langevin(Sampler):
             statistics.elapsed_time_seconds += time.time() - t0
             pbar.set_postfix_str(f'{statistics} | {self.kernel} | {da}')
 
+        if time_exceeded:
+            xs = xs[:i]
         return MCMCOutput(samples=xs, statistics=statistics)
 
 

@@ -94,7 +94,7 @@ class TESS(Sampler):
         super().__init__(event_shape, target, kernel, params)
         self.negative_log_likelihood = negative_log_likelihood
 
-    def warmup(self, x0: torch.Tensor, show_progress: bool = True) -> MCMCOutput:
+    def warmup(self, x0: torch.Tensor, show_progress: bool = True, thinning: int = 1, time_limit_seconds: int = 3600 * 24) -> MCMCOutput:
         self.kernel: TESSKernel
         self.params: TESSParameters
 
@@ -106,6 +106,9 @@ class TESS(Sampler):
         warmup_statistics.elapsed_time_seconds += time.time() - t0
 
         for i in (pbar := tqdm(range(self.params.n_warmup_iterations), desc='[Warmup] TESS', disable=not show_progress)):
+            if warmup_statistics.elapsed_time_seconds >= time_limit_seconds:
+                break
+
             t0 = time.time()
             pbar.set_description_str('[Warmup] TESS sampling')
             x, u, accepted_mask = transport_elliptical_slice_sampling_step(
@@ -130,7 +133,7 @@ class TESS(Sampler):
 
         return MCMCOutput(samples=u[None], statistics=warmup_statistics)
 
-    def sample(self, x0: torch.Tensor, show_progress: bool = True) -> MCMCOutput:
+    def sample(self, x0: torch.Tensor, show_progress: bool = True, thinning: int = 1, time_limit_seconds: int = 3600 * 24) -> MCMCOutput:
         self.kernel: TESSKernel
         self.params: TESSParameters
 
@@ -142,7 +145,12 @@ class TESS(Sampler):
         xs = torch.zeros(size=(self.params.n_iterations, n_chains, *event_shape), dtype=x0.dtype, device=x0.device)
         sampling_statistics.elapsed_time_seconds += time.time() - t0
 
+        time_exceeded = False
         for i in (pbar := tqdm(range(self.params.n_iterations), desc='TESS sampling')):
+            if sampling_statistics.elapsed_time_seconds >= time_limit_seconds:
+                time_exceeded = True
+                break
+
             t0 = time.time()
             x, u, accepted_mask = transport_elliptical_slice_sampling_step(
                 u,
@@ -157,4 +165,7 @@ class TESS(Sampler):
             pbar.set_postfix_str(f'{sampling_statistics}')
             xs[i] = x.detach()
             sampling_statistics.elapsed_time_seconds += time.time() - t0
+
+        if time_exceeded:
+            xs = xs[:i]
         return MCMCOutput(samples=xs, statistics=sampling_statistics)
