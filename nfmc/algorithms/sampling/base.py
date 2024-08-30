@@ -1,5 +1,5 @@
 from dataclasses import dataclass
-from typing import Sized, Optional, Any
+from typing import Sized, Optional, Any, Union
 
 import torch
 
@@ -61,6 +61,12 @@ class MCMCStatistics:
     n_target_gradient_calls: Optional[int] = 0
     n_target_calls: Optional[int] = 0
     elapsed_time_seconds: Optional[float] = 0.0
+    running_first_moment: Union[torch.Tensor, float] = 0.0
+    running_second_moment: Union[torch.Tensor, float] = 0.0
+
+    @property
+    def running_variance(self):
+        return self.running_second_moment - self.running_first_moment ** 2
 
     @property
     def acceptance_rate(self):

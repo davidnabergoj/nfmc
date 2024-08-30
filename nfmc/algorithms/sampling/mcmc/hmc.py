@@ -38,6 +38,7 @@ class HMCParameters(MCMCParameters):
     adjustment: bool = True
     imd_adjustment: float = 1e-3
     da_params = DualAveragingParams()
+    estimate_moments_only: bool = False
 
 
 def mass_matrix_multiply(x: torch.Tensor, inverse_mass_matrix_diagonal: torch.Tensor, event_shape):
@@ -106,7 +107,8 @@ class HMC(Sampler):
             params = HMCParameters()
         super().__init__(event_shape, target, kernel, params)
 
-    def warmup(self, x0: torch.Tensor, show_progress: bool = True, thinning: int = 1, time_limit_seconds: int = 3600 * 24) -> MCMCOutput:
+    def warmup(self, x0: torch.Tensor, show_progress: bool = True, thinning: int = 1,
+               time_limit_seconds: int = 3600 * 24) -> MCMCOutput:
         self.kernel: HMCKernel
         self.params: HMCParameters
 
@@ -114,7 +116,10 @@ class HMC(Sampler):
         warmup_copy.params.tune_inv_mass_diag = True
         warmup_copy.params.tune_step_size = True
         warmup_copy.params.n_iterations = self.params.n_warmup_iterations
-        warmup_output = warmup_copy.sample(x0, show_progress=show_progress, thinning=thinning, time_limit_seconds=time_limit_seconds)
+        warmup_output = warmup_copy.sample(x0, show_progress=show_progress, thinning=thinning,
+                                           time_limit_seconds=time_limit_seconds)
+        if warmup_output.samples is None:
+            warmup_output.samples = x0[None]
 
         self.kernel = warmup_copy.kernel
         new_params = warmup_copy.params
@@ -125,21 +130,22 @@ class HMC(Sampler):
 
         return warmup_output
 
-
-    def sample(self, x0: torch.Tensor, show_progress: bool = True, thinning: int = 1, time_limit_seconds: int = 3600 * 24) -> MCMCOutput:
+    def sample(self, x0: torch.Tensor, show_progress: bool = True, thinning: int = 1,
+               time_limit_seconds: int = 3600 * 24) -> MCMCOutput:
         self.kernel: HMCKernel
         self.params: HMCParameters
 
         # Initialize
-        statistics = MCMCStatistics(n_accepted_trajectories=0, n_divergences=0)
+        statistics = MCMCStatistics()
 
         t0 = time.time()
         n_chains, *event_shape = x0.shape
-        xs = torch.zeros(
-            size=(self.params.n_iterations // thinning, n_chains, *event_shape),
-            dtype=x0.dtype,
-            device=torch.device("cpu")
-        )
+        if not self.params.estimate_moments_only:
+            xs = torch.zeros(
+                size=(self.params.n_iterations // thinning, n_chains, *event_shape),
+                dtype=x0.dtype,
+                device=torch.device("cpu")
+            )
         da = DualAveraging(initial_step_size=self.kernel.step_size, params=self.params.da_params)
         x = torch.clone(x0).detach()
         statistics.elapsed_time_seconds += time.time() - t0
@@ -182,10 +188,22 @@ class HMC(Sampler):
             statistics.n_accepted_trajectories += int(torch.sum(accepted_mask))
             statistics.n_attempted_trajectories += n_chains
 
+            # Update first moment estimate
+            statistics.running_first_moment = torch.add(
+                statistics.running_first_moment * (i / (i + 1)),
+                torch.sum(x, dim=0) / ((i + 1) * n_chains)  # sum over chain dimension
+            ).detach()
+
+            # Update second moment estimate
+            statistics.running_second_moment = torch.add(
+                statistics.running_second_moment * (i / (i + 1)),
+                torch.sum(x ** 2, dim=0) / ((i + 1) * n_chains)  # sum over chain dimension
+            ).detach()
+
             with torch.no_grad():
                 x = x.detach()
 
-                if i % thinning == 0:
+                if i % thinning == 0 and not self.params.estimate_moments_only:
                     xs[data_index] = x
                     data_index += 1
 
@@ -205,9 +223,11 @@ class HMC(Sampler):
             statistics.elapsed_time_seconds += time.time() - t0
             pbar.set_postfix_str(f'{statistics} | {self.kernel} | {da}')
 
-        if time_exceeded:
+        if time_exceeded and not self.params.estimate_moments_only:
             xs = xs[:data_index]
 
+        if self.params.estimate_moments_only:
+            xs = None
         return MCMCOutput(samples=xs, statistics=statistics)
 
 
