@@ -30,10 +30,22 @@ NEURAL_AUTOREGRESSIVE_FLOW_NAMES: Dict[str, List[str]] = {
     'ia-naf-dense': ['ia-naf-dense'],
 }
 
+MULTISCALE_FLOW_NAMES: Dict[str, List[str]] = {
+    'ms-realnvp': ['ms-realnvp', 'multiscale-realnvp'],
+    'ms-nice': ['ms-nice', 'multiscale-nice'],
+    'ms-rqnsf': ['ms-rqnsf', 'multiscale-rqnsf'],
+    'ms-lrsnsf': ['ms-lrsnsf', 'multiscale-lrsnsf'],
+    'ms-naf-deep': ['ms-naf-deep', 'multiscale-naf-deep'],
+    'ms-naf-dense': ['ms-naf-dense', 'multiscale-naf-dense'],
+    'ms-naf-deep-dense': ['ms-naf-deep-dense', 'multiscale-naf-deep-dense'],
+    'glow': ['affine-glow', 'glow'],
+}
+
 AUTOREGRESSIVE_FLOW_NAMES: Dict[str, List[str]] = {
     **AFFINE_AUTOREGRESSIVE_FLOW_NAMES,
     **SPLINE_AUTOREGRESSIVE_FLOW_NAMES,
     **NEURAL_AUTOREGRESSIVE_FLOW_NAMES,
+    **MULTISCALE_FLOW_NAMES,
 }
 
 CONTINUOUS_FLOW_NAMES: Dict[str, List[str]] = {
@@ -130,7 +142,15 @@ def create_flow_object(flow_name: str, event_shape, **kwargs):
         RNODE,
         PlanarFlow,
         RadialFlow,
-        SylvesterFlow
+        SylvesterFlow,
+        MultiscaleLRSNSF,
+        MultiscaleRQNSF,
+        MultiscaleNICE,
+        MultiscaleRealNVP,
+        MultiscaleDeepSigmoid,
+        MultiscaleDenseSigmoid,
+        MultiscaleDeepDenseSigmoid,
+        AffineGlow
     )
 
     if flow_name in FLOW_NAMES['realnvp']:
@@ -191,6 +211,22 @@ def create_flow_object(flow_name: str, event_shape, **kwargs):
         bijection = RadialFlow(event_shape, **kwargs)
     elif flow_name in FLOW_NAMES["sylvester"]:
         bijection = SylvesterFlow(event_shape, **kwargs)
+    elif flow_name in FLOW_NAMES['ms-realnvp']:
+        bijection = MultiscaleRealNVP(event_shape, **kwargs)
+    elif flow_name in FLOW_NAMES['ms-nice']:
+        bijection = MultiscaleNICE(event_shape, **kwargs)
+    elif flow_name in FLOW_NAMES['ms-rqnsf']:
+        bijection = MultiscaleRQNSF(event_shape, **kwargs)
+    elif flow_name in FLOW_NAMES['ms-lrsnsf']:
+        bijection = MultiscaleLRSNSF(event_shape, **kwargs)
+    elif flow_name in FLOW_NAMES['ms-naf-deep']:
+        bijection = MultiscaleDeepSigmoid(event_shape, **kwargs)
+    elif flow_name in FLOW_NAMES['ms-naf-deep-dense']:
+        bijection = MultiscaleDeepDenseSigmoid(event_shape, **kwargs)
+    elif flow_name in FLOW_NAMES['ms-naf-dense']:
+        bijection = MultiscaleDenseSigmoid(event_shape, **kwargs)
+    elif flow_name in FLOW_NAMES['glow']:
+        bijection = AffineGlow(event_shape, **kwargs)
     else:
         raise ValueError
 
