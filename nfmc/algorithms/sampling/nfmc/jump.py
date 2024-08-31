@@ -39,7 +39,6 @@ class JumpNFMCParameters(NFMCParameters):
 class JumpNFMCStatistics(MCMCStatistics):
     n_accepted_jumps: int = 0
     n_attempted_jumps: int = 0
-    n_divergences: int = 0
 
     @property
     def jump_acceptance_rate(self):
@@ -55,6 +54,12 @@ class JumpNFMCStatistics(MCMCStatistics):
             f"kgrads/s: {self.grads_per_second / 1000:.2f}, "
             f"divergences: {self.n_divergences}"
         )
+
+    def __dict__(self):
+        return {
+            **super().__dict__(),
+            **{'jump_acceptance_rate': self.jump_acceptance_rate}
+        }
 
 
 class JumpNFMC(Sampler):
