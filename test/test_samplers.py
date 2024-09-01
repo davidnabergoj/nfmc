@@ -44,7 +44,7 @@ def test_mcmc(sampler_class):
     n_iterations = 3
     n_chains = 4
     event_shape = (5,)
-    sampler = sampler_class(event_shape=event_shape, target=StandardGaussian(n_dim=event_shape[0]))
+    sampler = sampler_class(event_shape=event_shape, target=StandardGaussian(event_shape))
     sampler.params.n_iterations = n_iterations
     x0 = torch.randn(size=(n_chains, *event_shape))
     output = sampler.sample(x0=x0, show_progress=False)
@@ -59,7 +59,7 @@ def test_nuts():
     n_iterations = 3
     n_chains = 1
     event_shape = (5,)
-    sampler = NUTS(event_shape=event_shape, target=StandardGaussian(n_dim=event_shape[0]))
+    sampler = NUTS(event_shape=event_shape, target=StandardGaussian(event_shape))
     sampler.params.n_iterations = n_iterations
     x0 = torch.randn(size=(n_chains, *event_shape))
     output = sampler.sample(x0=x0, show_progress=False)
@@ -76,8 +76,8 @@ def test_ess():
     event_shape = (5,)
     sampler = ESS(
         event_shape=event_shape,
-        target=StandardGaussian(n_dim=event_shape[0]),
-        negative_log_likelihood=StandardGaussian(n_dim=event_shape[0])
+        target=StandardGaussian(event_shape),
+        negative_log_likelihood=StandardGaussian(event_shape)
     )
     sampler.params.n_iterations = n_iterations
     x0 = torch.randn(size=(n_chains, *event_shape))
@@ -95,8 +95,8 @@ def test_jump_ess():
     event_shape = (5,)
     sampler = JumpESS(
         event_shape=event_shape,
-        target=StandardGaussian(n_dim=event_shape[0]),
-        negative_log_likelihood=StandardGaussian(n_dim=event_shape[0])
+        target=StandardGaussian(event_shape),
+        negative_log_likelihood=StandardGaussian(event_shape)
     )
     sampler.params.n_iterations = n_iterations
     x0 = torch.randn(size=(n_chains, *event_shape))
@@ -116,8 +116,8 @@ def test_nfmc_with_nll(sampler_class):
     event_shape = (5,)
     sampler = sampler_class(
         event_shape=event_shape,
-        target=StandardGaussian(n_dim=event_shape[0]),
-        negative_log_likelihood=StandardGaussian(n_dim=event_shape[0])
+        target=StandardGaussian(event_shape),
+        negative_log_likelihood=StandardGaussian(event_shape)
     )
     sampler.params.n_iterations = n_iterations
     x0 = torch.randn(size=(n_chains, *event_shape))
@@ -145,7 +145,7 @@ def test_jump_nfmc(sampler_class):
     n_iterations = 3
     n_chains = 4
     event_shape = (5,)
-    sampler = sampler_class(event_shape=event_shape, target=StandardGaussian(n_dim=event_shape[0]))
+    sampler = sampler_class(event_shape=event_shape, target=StandardGaussian(event_shape))
     sampler.params.n_iterations = n_iterations
     x0 = torch.randn(size=(n_chains, *event_shape))
     output = sampler.sample(x0=x0, show_progress=False)
@@ -171,7 +171,7 @@ def test_other_nfmc(sampler_class):
     event_shape = (5,)
     sampler = sampler_class(
         event_shape=event_shape,
-        target=StandardGaussian(n_dim=event_shape[0]),
+        target=StandardGaussian(event_shape),
     )
     sampler.params.n_iterations = n_iterations
     x0 = torch.randn(size=(n_chains, *event_shape))
@@ -199,7 +199,7 @@ def test_sample_wrapper_no_jump(strategy: str):
     torch.manual_seed(0)
     n_iterations, n_chains, n_dim = 3, 4, 5
 
-    target = StandardGaussian(n_dim=n_dim)
+    target = StandardGaussian((n_dim,))
     output = sample(
         target,
         event_shape=target.event_shape,
@@ -217,12 +217,12 @@ def test_sample_wrapper_nll(strategy: str):
     torch.manual_seed(0)
     n_iterations, n_chains, n_dim = 3, 4, 5
 
-    target = StandardGaussian(n_dim=n_dim)
+    target = StandardGaussian((n_dim,))
     output = sample(
         target,
         event_shape=target.event_shape,
         strategy=strategy,
-        negative_log_likelihood=StandardGaussian(n_dim=n_dim),
+        negative_log_likelihood=StandardGaussian((n_dim,)),
         n_chains=n_chains,
         n_iterations=n_iterations,
     )
@@ -237,7 +237,7 @@ def test_sample_wrapper_jump(strategy: str):
     n_iterations, n_chains, n_dim = 3, 4, 5
     n_trajectories_per_jump = 7
 
-    target = StandardGaussian(n_dim=n_dim)
+    target = StandardGaussian((n_dim,))
     output = sample(
         target,
         event_shape=target.event_shape,
@@ -256,14 +256,14 @@ def test_sample_wrapper_jump_ess():
     n_iterations, n_chains, n_dim = 3, 4, 5
     n_trajectories_per_jump = 7
 
-    target = StandardGaussian(n_dim=n_dim)
+    target = StandardGaussian((n_dim,))
     output = sample(
         target,
         event_shape=target.event_shape,
         strategy='jump_ess',
         n_chains=n_chains,
         n_iterations=n_iterations,
-        negative_log_likelihood=StandardGaussian(n_dim=n_dim),
+        negative_log_likelihood=StandardGaussian((n_dim,)),
         inner_param_kwargs={'n_iterations': n_trajectories_per_jump}
     )
     assert isinstance(output, MCMCOutput)

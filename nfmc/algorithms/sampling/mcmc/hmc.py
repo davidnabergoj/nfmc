@@ -38,7 +38,6 @@ class HMCParameters(MCMCParameters):
     adjustment: bool = True
     imd_adjustment: float = 1e-3
     da_params = DualAveragingParams()
-    estimate_moments_only: bool = False
 
 
 def mass_matrix_multiply(x: torch.Tensor, inverse_mass_matrix_diagonal: torch.Tensor, event_shape):

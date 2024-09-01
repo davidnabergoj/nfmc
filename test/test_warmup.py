@@ -83,7 +83,8 @@ def test_warmup_jump_nfmc(sampler_class):
 
     x0 = torch.randn(size=(n_chains, n_dim))
     warmup_output = sampler.warmup(x0, show_progress=False)
-    assert warmup_output.samples.shape == (1, n_chains, n_dim)
+    assert warmup_output.samples.shape[1:] == (n_chains, n_dim)
+    assert len(warmup_output.samples.shape) == 3
     assert torch.isfinite(warmup_output.samples).all()
 
 

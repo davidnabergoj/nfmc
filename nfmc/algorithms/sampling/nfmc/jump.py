@@ -87,8 +87,11 @@ class JumpNFMC(Sampler):
         self.kernel: NFMCKernel
         self.params: JumpNFMCParameters
 
-        warmup_output = self.inner_sampler.warmup(x0, show_progress=show_progress,
-                                                  time_limit_seconds=time_limit_seconds)
+        warmup_output = self.inner_sampler.warmup(
+            x0,
+            show_progress=show_progress,
+            time_limit_seconds=time_limit_seconds
+        )
         x_train, x_val = train_val_split(
             warmup_output.samples,
             train_pct=self.params.train_pct,
@@ -144,6 +147,10 @@ class JumpNFMC(Sampler):
             statistics.n_target_gradient_calls += mcmc_output.statistics.n_target_gradient_calls
             statistics.elapsed_time_seconds += mcmc_output.statistics.elapsed_time_seconds
 
+            for j in range(len(mcmc_output.samples)):
+                statistics.update_first_moment(mcmc_output.samples[j])
+                statistics.update_second_moment(mcmc_output.samples[j])
+
             t0 = time.time()
             if i % thinning == 0:
                 xs[data_index, :-1] = mcmc_output.samples
@@ -192,6 +199,8 @@ class JumpNFMC(Sampler):
             statistics.elapsed_time_seconds += t1 - t0
             statistics.n_attempted_jumps += n_chains
             statistics.n_accepted_jumps += int(torch.sum(acceptance_mask))
+            statistics.update_first_moment(x)
+            statistics.update_second_moment(x)
             pbar.set_postfix_str(f'{statistics}')
 
             if i % thinning == 0:

@@ -109,6 +109,8 @@ class AdaptiveIMH(Sampler):
                     accepted_mask = torch.zeros(size=(n_chains,), dtype=torch.bool, device=x0.device)
                     statistics.n_divergences += 1
 
+            statistics.update_first_moment(x)
+            statistics.update_second_moment(x)
             statistics.n_target_calls += 2 * n_chains
 
             if i % thinning == 0:
@@ -125,11 +127,11 @@ class AdaptiveIMH(Sampler):
                 # we can program the exact bounded geometric as well. Then it's parameter p can be adapted with dual
                 # averaging.
                 if self.params.train_distribution == 'uniform':
-                    k = int(torch.randint(low=0, high=(data_index + 1), size=()))
+                    k = int(torch.randint(low=0, high=data_index, size=()))
                 elif self.params.train_distribution == 'bounded_geom_approx':
-                    k = int(torch.randint(low=max(0, (data_index + 1) - 100), high=(data_index + 1), size=()))
+                    k = int(torch.randint(low=max(0, data_index - 100), high=data_index, size=()))
                 elif self.params.train_distribution == 'bounded_geom':
-                    k = sample_bounded_geom(p=0.025, max_val=(data_index + 1) - 1)
+                    k = sample_bounded_geom(p=0.025, max_val=data_index - 1)
                 else:
                     raise ValueError
 
@@ -207,6 +209,9 @@ class FixedIMH(Sampler):
             if i % thinning == 0:
                 xs[data_index] = x
                 data_index += 1
+
+            statistics.update_first_moment(x)
+            statistics.update_second_moment(x)
             statistics.n_accepted_trajectories += int(torch.sum(accepted_mask))
             statistics.n_attempted_trajectories += n_chains
             statistics.elapsed_time_seconds += time.time() - t0

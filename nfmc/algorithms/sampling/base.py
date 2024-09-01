@@ -30,6 +30,7 @@ class NFMCKernel(MCMCKernel):
 class MCMCParameters:
     n_iterations: int = 100
     n_warmup_iterations: int = 100
+    estimate_moments_only: bool = False
 
     def __post_init__(self):
         pass
@@ -66,13 +67,14 @@ class MCMCStatistics:
 
     first_moment_update_index: int = 0
     second_moment_update_index: int = 0
+    moment_transform: callable = lambda v: v
 
     def update_first_moment(self, x: torch.Tensor):
         # x.shape == `(n_chains, *event_shape)`
         i = self.first_moment_update_index
         self.running_first_moment = torch.add(
             self.running_first_moment * (i / (i + 1)),
-            torch.mean(x, dim=0) / (i + 1)  # expectation over chain dimension
+            torch.mean(self.moment_transform(x), dim=0) / (i + 1)  # expectation over chain dimension
         ).detach()
         self.first_moment_update_index += 1
 
@@ -81,7 +83,7 @@ class MCMCStatistics:
         i = self.second_moment_update_index
         self.running_second_moment = torch.add(
             self.running_second_moment * (i / (i + 1)),
-            torch.mean(x ** 2, dim=0) / (i + 1)  # expectation over chain dimension
+            torch.mean(self.moment_transform(x) ** 2, dim=0) / (i + 1)  # expectation over chain dimension
         ).detach()
         self.second_moment_update_index += 1
 
