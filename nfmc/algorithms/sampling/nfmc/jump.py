@@ -87,18 +87,6 @@ class JumpNFMC(Sampler):
         self.kernel: NFMCKernel
         self.params: JumpNFMCParameters
 
-        # Fit flow to target via variational inference
-        flow_params = deepcopy(self.kernel.flow.state_dict())
-        try:
-            self.kernel.flow.variational_fit(
-                lambda v: -self.target(v),
-                **self.params.warmup_fit_kwargs,
-                show_progress=show_progress
-            )
-        except ValueError:
-            self.kernel.flow.load_state_dict(flow_params)
-        x0 = self.kernel.flow.sample(len(x0)).detach()
-
         warmup_output = self.inner_sampler.warmup(x0, show_progress=show_progress,
                                                   time_limit_seconds=time_limit_seconds)
         x_train, x_val = train_val_split(
@@ -121,7 +109,8 @@ class JumpNFMC(Sampler):
         except ValueError:
             self.kernel.flow.load_state_dict(flow_params)
 
-        return MCMCOutput(samples=self.kernel.flow.sample(x0.shape[0]).detach()[None])
+        # Prefer initialization to MCMC samples because unadjusted flow sampling can generate outliers
+        return warmup_output
 
     def sample(self, x0: torch.Tensor, show_progress: bool = True, thinning: int = 1,
                time_limit_seconds: int = 3600 * 24) -> MCMCOutput:
