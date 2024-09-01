@@ -162,8 +162,6 @@ class HMC(Sampler):
             p = mass_matrix_multiply(torch.randn_like(x), 1 / self.kernel.inv_mass_diag.sqrt().to(x), event_shape)
             try:
                 x_prime, p_prime = hmc_trajectory(x, p, event_shape, self.kernel, potential=self.target)
-                statistics.n_target_calls += 2 * self.kernel.n_leapfrog_steps * n_chains
-                statistics.n_target_gradient_calls += 2 * self.kernel.n_leapfrog_steps * n_chains
                 with torch.no_grad():
                     if self.params.adjustment:
                         hamiltonian_start = self.target(x) + 0.5 * sum_except_batch(
@@ -174,7 +172,6 @@ class HMC(Sampler):
                             mass_matrix_multiply(p_prime ** 2, self.kernel.inv_mass_diag, event_shape),
                             event_shape
                         )
-                        statistics.n_target_calls += 2 * n_chains
                         log_prob_accept = -hamiltonian_end - (-hamiltonian_start)
                         log_u = torch.rand_like(log_prob_accept).log()  # n_chains
                         accepted_mask = (log_u < log_prob_accept)  # n_chains
@@ -184,6 +181,11 @@ class HMC(Sampler):
             except ValueError:
                 accepted_mask = torch.zeros(size=(n_chains,), dtype=torch.bool)
                 statistics.n_divergences += 1
+
+            statistics.n_target_calls += 2 * self.kernel.n_leapfrog_steps * n_chains
+            statistics.n_target_gradient_calls += 2 * self.kernel.n_leapfrog_steps * n_chains
+            if self.params.adjustment:
+                statistics.n_target_calls += 2 * n_chains
 
             statistics.n_accepted_trajectories += int(torch.sum(accepted_mask))
             statistics.n_attempted_trajectories += n_chains

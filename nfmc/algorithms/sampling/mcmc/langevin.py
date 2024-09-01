@@ -117,9 +117,7 @@ class Langevin(Sampler):
                 # Compute potential and gradient at current state
                 x.requires_grad_(True)
                 u_x = self.target(x)
-                statistics.n_target_calls += n_chains
                 grad_u_x, = torch.autograd.grad(u_x.sum(), x)
-                statistics.n_target_gradient_calls += n_chains
                 x.requires_grad_(False)  # Clear gradients
                 x = x.detach()
                 x.grad = None  # Clear gradients
@@ -133,9 +131,7 @@ class Langevin(Sampler):
                     # Compute potential and gradient at proposed state
                     x_prime.requires_grad_(True)
                     u_x_prime = self.target(x_prime)
-                    statistics.n_target_calls += n_chains
                     grad_u_x_prime, = torch.autograd.grad(u_x_prime.sum(), x_prime)
-                    statistics.n_target_gradient_calls += n_chains
                     x_prime.requires_grad_(False)  # Clear gradients
                     x_prime = x_prime.detach()
                     x_prime.grad = None  # Clear gradients
@@ -167,6 +163,12 @@ class Langevin(Sampler):
             except ValueError:
                 accepted_mask = torch.zeros(n_chains, dtype=torch.bool)
                 statistics.n_divergences += 1
+
+            statistics.n_target_calls += n_chains
+            statistics.n_target_gradient_calls += n_chains
+            if self.params.adjustment:
+                statistics.n_target_calls += n_chains
+                statistics.n_target_gradient_calls += n_chains
 
             statistics.n_accepted_trajectories += int(torch.sum(accepted_mask))
             statistics.n_attempted_trajectories += n_chains

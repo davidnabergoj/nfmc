@@ -96,7 +96,6 @@ class MH(Sampler):
 
                 if self.params.adjustment:
                     log_ratio = metropolis_acceptance_log_ratio(-self.target(x), -self.target(x_prime), 0, 0)
-                    statistics.n_target_calls += 2 * n_chains
                     accepted_mask = torch.as_tensor(torch.log(torch.rand(n_chains)) < log_ratio)
                 else:
                     accepted_mask = torch.ones(n_chains, dtype=torch.bool)
@@ -104,6 +103,9 @@ class MH(Sampler):
             except ValueError:
                 accepted_mask = torch.zeros(n_chains, dtype=torch.bool)
                 statistics.n_divergences += 1
+
+            if self.params.adjustment:
+                statistics.n_target_calls += 2 * n_chains
 
             statistics.n_accepted_trajectories += int(torch.sum(accepted_mask))
             statistics.n_attempted_trajectories += n_chains

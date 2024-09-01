@@ -101,7 +101,6 @@ class AdaptiveIMH(Sampler):
                         log_proposal_curr=self.kernel.flow.log_prob(x).to(xs),
                         log_proposal_prime=self.kernel.flow.log_prob(x_prime).to(xs)
                     )
-                    statistics.n_target_calls += 2 * n_chains
                     log_u = torch.rand(n_chains).log().to(log_alpha)
                     accepted_mask = torch.less(log_u, log_alpha)
                     x[accepted_mask] = x_prime[accepted_mask]
@@ -109,6 +108,8 @@ class AdaptiveIMH(Sampler):
                 except ValueError:
                     accepted_mask = torch.zeros(size=(n_chains,), dtype=torch.bool, device=x0.device)
                     statistics.n_divergences += 1
+
+            statistics.n_target_calls += 2 * n_chains
 
             if i % thinning == 0:
                 xs[data_index] = x
