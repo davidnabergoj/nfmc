@@ -1,7 +1,7 @@
 import time
 from copy import deepcopy
 from dataclasses import dataclass
-from typing import Tuple, Union, Dict, Any, Optional
+from typing import Tuple, Union, Dict, Any
 
 import torch
 from tqdm import tqdm

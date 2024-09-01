@@ -125,12 +125,13 @@ class MCMCStatistics:
     n_target_calls: Optional[int] = 0
     elapsed_time_seconds: Optional[float] = 0.0
 
+    data_transform: callable = lambda v: v  # transform data using this function when computing statistics
     expectations: MCMCExpectationDict = None
 
     def __post_init__(self):
         self.expectations = MCMCExpectationDict({
-            'first_moment': MCMCExpectation(self.event_shape, f=lambda v: v),
-            'second_moment': MCMCExpectation(self.event_shape, f=lambda v: v ** 2),
+            'first_moment': MCMCExpectation(self.event_shape, f=lambda v: self.data_transform(v)),
+            'second_moment': MCMCExpectation(self.event_shape, f=lambda v: self.data_transform(v) ** 2),
         })
 
     @property
