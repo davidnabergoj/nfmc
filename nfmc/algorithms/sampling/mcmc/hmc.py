@@ -179,7 +179,7 @@ class HMC(Sampler):
                         accepted_mask = torch.ones(size=(n_chains,), dtype=torch.bool)
                     x[accepted_mask] = x_prime[accepted_mask]
             except ValueError:
-                accepted_mask = torch.zeros(size=(n_chains,), dtype=torch.bool)
+                accepted_mask = torch.zeros(size=(n_chains,), dtype=torch.bool)  # TODO reject only the appropriate chains
                 statistics.n_divergences += 1
 
             statistics.n_target_calls += 2 * self.kernel.n_leapfrog_steps * n_chains
