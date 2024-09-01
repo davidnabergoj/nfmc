@@ -71,23 +71,26 @@ class MH(Sampler):
 
         return warmup_output
 
-    def sample(self, x0: torch.Tensor, show_progress: bool = True, thinning: int = 1, time_limit_seconds: int = 3600 * 24) -> MCMCOutput:
+    def sample(self,
+               x0: torch.Tensor,
+               show_progress: bool = True,
+               thinning: int = 1,
+               time_limit_seconds: int = 3600 * 24) -> MCMCOutput:
         self.params: MHParameters
         self.kernel: MHKernel
-        statistics = MCMCStatistics(n_accepted_trajectories=0, n_divergences=0)
+
+        out = MCMCOutput(event_shape=x0.shape[1:])
+        out.running_samples.thinning = thinning
 
         # Initialize
         t0 = time.time()
-        n_chains, *event_shape = x0.shape
-        xs = torch.zeros(size=(self.params.n_iterations, n_chains, *event_shape), dtype=x0.dtype, device=x0.device)
+        n_chains = x0.shape[0]
         da = DualAveraging(initial_step_size=self.kernel.step_size, params=self.params.da_params)
         x = torch.clone(x0).detach()
-        statistics.elapsed_time_seconds += time.time() - t0
+        out.statistics.elapsed_time_seconds += time.time() - t0
 
-        time_exceeded = False
         for i in (pbar := tqdm(range(self.params.n_iterations), desc='MH', disable=not show_progress)):
-            if statistics.elapsed_time_seconds >= time_limit_seconds:
-                time_exceeded = True
+            if out.statistics.elapsed_time_seconds >= time_limit_seconds:
                 break
             t0 = time.time()
             try:
@@ -102,17 +105,17 @@ class MH(Sampler):
                 x[accepted_mask] = x_prime[accepted_mask]
             except ValueError:
                 accepted_mask = torch.zeros(n_chains, dtype=torch.bool)
-                statistics.n_divergences += 1
+                out.statistics.n_divergences += 1
 
             if self.params.adjustment:
-                statistics.n_target_calls += 2 * n_chains
+                out.statistics.n_target_calls += 2 * n_chains
 
-            statistics.n_accepted_trajectories += int(torch.sum(accepted_mask))
-            statistics.n_attempted_trajectories += n_chains
+            out.statistics.n_accepted_trajectories += int(torch.sum(accepted_mask))
+            out.statistics.n_attempted_trajectories += n_chains
 
             with torch.no_grad():
                 x = x.detach()
-                xs[i] = x
+                out.running_samples.add(x)
 
                 # Update the inverse mass diagonal
                 if n_chains > 1 and self.params.tune_inv_mass_diag:
@@ -128,12 +131,11 @@ class MH(Sampler):
                 #     da.step(error)
                 #     self.kernel.step_size = da.value  # Step size adaptation
 
-            statistics.elapsed_time_seconds += time.time() - t0
-            pbar.set_postfix_str(f'{statistics} | {self.kernel} | {da}')
+            out.statistics.elapsed_time_seconds += time.time() - t0
+            pbar.set_postfix_str(f'{out.statistics} | {self.kernel} | {da}')
 
-        if time_exceeded:
-            xs = xs[:i]
-        return MCMCOutput(samples=xs, statistics=statistics)
+        out.kernel = self.kernel
+        return out
 
 
 class RandomWalk(MH):

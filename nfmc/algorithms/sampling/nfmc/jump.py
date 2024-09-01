@@ -1,7 +1,7 @@
 import time
 from copy import deepcopy
 from dataclasses import dataclass
-from typing import Sized
+from typing import Sized, Tuple, Union
 
 import torch
 
@@ -62,6 +62,12 @@ class JumpNFMCStatistics(MCMCStatistics):
         }
 
 
+@dataclass
+class JumpNFMCOutput(MCMCOutput):
+    def __init__(self, event_shape: Union[Tuple[int, ...], torch.Size], *args, **kwargs):
+        super().__init__(event_shape, *args, **{**kwargs, **dict(statistics=JumpNFMCStatistics(event_shape))})
+
+
 class JumpNFMC(Sampler):
     """
 
@@ -115,51 +121,46 @@ class JumpNFMC(Sampler):
         # Prefer initialization to MCMC samples because unadjusted flow sampling can generate outliers
         return warmup_output
 
-    def sample(self, x0: torch.Tensor, show_progress: bool = True, thinning: int = 1,
+    def sample(self,
+               x0: torch.Tensor,
+               show_progress: bool = True,
+               thinning: int = 1,
                time_limit_seconds: int = 3600 * 24) -> MCMCOutput:
         self.kernel: NFMCKernel
         self.params: JumpNFMCParameters
 
-        n_chains, *event_shape = x0.shape
-        xs = torch.zeros(
-            size=(self.params.n_iterations // thinning, self.inner_sampler.params.n_iterations + 1, *x0.shape),
-            device=x0.device,
-            dtype=x0.dtype
-        )  # (jumps, trajectories per jump, chains, *event)
-        statistics = JumpNFMCStatistics()
+        n_chains = x0.shape[0]
+
+        out = JumpNFMCOutput(event_shape=x0.shape[1:])
+        out.running_samples.thinning = thinning
 
         x = torch.clone(x0)
-        data_index = 0
 
-        time_exceeded = False
         for i in (pbar := tqdm(range(self.params.n_iterations), desc='Jump MCMC', disable=not show_progress)):
-            if statistics.elapsed_time_seconds >= time_limit_seconds:
-                time_exceeded = True
+            if out.statistics.elapsed_time_seconds >= time_limit_seconds:
                 break
             # Trajectories
             pbar.set_description_str(f'Jump MCMC (sampling)')
             mcmc_output = self.inner_sampler.sample(x0=x, show_progress=False)
-            statistics.n_accepted_trajectories += mcmc_output.statistics.n_accepted_trajectories
-            statistics.n_attempted_trajectories += mcmc_output.statistics.n_attempted_trajectories
-            statistics.n_divergences += mcmc_output.statistics.n_divergences
+            out.statistics.n_accepted_trajectories += mcmc_output.statistics.n_accepted_trajectories
+            out.statistics.n_attempted_trajectories += mcmc_output.statistics.n_attempted_trajectories
+            out.statistics.n_divergences += mcmc_output.statistics.n_divergences
 
-            statistics.n_target_calls += mcmc_output.statistics.n_target_calls
-            statistics.n_target_gradient_calls += mcmc_output.statistics.n_target_gradient_calls
-            statistics.elapsed_time_seconds += mcmc_output.statistics.elapsed_time_seconds
+            out.statistics.n_target_calls += mcmc_output.statistics.n_target_calls
+            out.statistics.n_target_gradient_calls += mcmc_output.statistics.n_target_gradient_calls
+            out.statistics.elapsed_time_seconds += mcmc_output.statistics.elapsed_time_seconds
 
-            for j in range(len(mcmc_output.samples)):
-                statistics.update_first_moment(mcmc_output.samples[j])
-                statistics.update_second_moment(mcmc_output.samples[j])
+            out.statistics.update_first_moment(mcmc_output.samples)
+            out.statistics.update_second_moment(mcmc_output.samples)
 
             t0 = time.time()
-            if i % thinning == 0:
-                xs[data_index, :-1] = mcmc_output.samples
+            out.running_samples.add(mcmc_output.samples)
 
             # Fit flow
             if self.params.fit_nf and i >= self.params.n_jumps_before_training:
                 pbar.set_description_str(f'Jump MCMC (training)')
                 x_train, x_val = train_val_split(
-                    xs,
+                    mcmc_output.samples,
                     train_pct=self.params.train_pct,
                     max_train_size=self.params.max_train_size,
                     max_val_size=self.params.max_val_size
@@ -172,21 +173,21 @@ class JumpNFMC(Sampler):
             x_prime = x_prime.detach()
             f_x_prime = f_x_prime.detach()
 
-            x = mcmc_output.samples[-1]
+            x = mcmc_output.running_samples[-1]
             if self.params.adjusted_jumps:
                 try:
                     u_x = self.target(x)
-                    statistics.n_target_calls += n_chains
+                    out.statistics.n_target_calls += n_chains
 
                     u_x_prime = self.target(x_prime)
-                    statistics.n_target_calls += n_chains
+                    out.statistics.n_target_calls += n_chains
 
                     f_x = self.kernel.flow.log_prob(x)
                     log_alpha = metropolis_acceptance_log_ratio(
-                        log_prob_curr=-u_x.to(x),
-                        log_prob_prime=-u_x_prime.to(x),
-                        log_proposal_curr=f_x.to(x),
-                        log_proposal_prime=f_x_prime.to(x)
+                        log_prob_curr=-u_x.cpu(),
+                        log_prob_prime=-u_x_prime.cpu(),
+                        log_proposal_curr=f_x.cpu(),
+                        log_proposal_prime=f_x_prime.cpu()
                     )
                     acceptance_mask = torch.rand_like(log_alpha).log() < log_alpha
                 except ValueError:
@@ -196,26 +197,17 @@ class JumpNFMC(Sampler):
             x[acceptance_mask] = x_prime[acceptance_mask].to(x)
             t1 = time.time()
 
-            statistics.elapsed_time_seconds += t1 - t0
-            statistics.n_attempted_jumps += n_chains
-            statistics.n_accepted_jumps += int(torch.sum(acceptance_mask))
-            statistics.update_first_moment(x)
-            statistics.update_second_moment(x)
-            pbar.set_postfix_str(f'{statistics}')
+            out.statistics.elapsed_time_seconds += t1 - t0
+            out.statistics.n_attempted_jumps += n_chains
+            out.statistics.n_accepted_jumps += int(torch.sum(acceptance_mask))
+            out.statistics.update_first_moment(x)
+            out.statistics.update_second_moment(x)
+            pbar.set_postfix_str(f'{out.statistics}')
 
-            if i % thinning == 0:
-                xs[data_index, -1] = x
-                data_index += 1
+            out.running_samples.add(x)
 
-        if time_exceeded:
-            xs = xs[:data_index]
-
-        xs = xs.flatten(0, 1)
-        return MCMCOutput(
-            samples=xs,
-            statistics=statistics,
-            kernel=self.kernel
-        )
+        out.kernel = self.kernel
+        return out
 
 
 class JumpHMC(JumpNFMC):

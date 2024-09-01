@@ -3,7 +3,7 @@ import time
 from copy import deepcopy
 from typing import Sized, Optional
 from tqdm import tqdm
-from nfmc.algorithms.sampling.base import Sampler, MCMCKernel, MCMCParameters, MCMCOutput, MCMCStatistics
+from nfmc.algorithms.sampling.base import Sampler, MCMCKernel, MCMCParameters, MCMCOutput, MCMCStatistics, MCMCSamples
 from dataclasses import dataclass
 import torch
 
@@ -115,8 +115,12 @@ class HMC(Sampler):
         warmup_copy.params.tune_inv_mass_diag = True
         warmup_copy.params.tune_step_size = True
         warmup_copy.params.n_iterations = self.params.n_warmup_iterations
-        warmup_output = warmup_copy.sample(x0, show_progress=show_progress, thinning=thinning,
-                                           time_limit_seconds=time_limit_seconds)
+        warmup_output = warmup_copy.sample(
+            x0,
+            show_progress=show_progress,
+            thinning=thinning,
+            time_limit_seconds=time_limit_seconds
+        )
         if warmup_output.samples is None:
             warmup_output.samples = x0[None]
 
@@ -129,32 +133,26 @@ class HMC(Sampler):
 
         return warmup_output
 
-    def sample(self, x0: torch.Tensor, show_progress: bool = True, thinning: int = 1,
+    def sample(self,
+               x0: torch.Tensor,
+               show_progress: bool = True,
+               thinning: int = 1,
                time_limit_seconds: int = 3600 * 24) -> MCMCOutput:
         self.kernel: HMCKernel
         self.params: HMCParameters
 
-        # Initialize
-        statistics = MCMCStatistics()
+        n_chains, *event_shape = x0.shape
+        event_shape = tuple(event_shape)
+        out = MCMCOutput(event_shape)
+        out.running_samples.thinning = thinning
 
         t0 = time.time()
-        n_chains, *event_shape = x0.shape
-        if not self.params.estimate_moments_only:
-            xs = torch.zeros(
-                size=(self.params.n_iterations // thinning, n_chains, *event_shape),
-                dtype=x0.dtype,
-                device=torch.device("cpu")
-            )
         da = DualAveraging(initial_step_size=self.kernel.step_size, params=self.params.da_params)
         x = torch.clone(x0).detach()
-        statistics.elapsed_time_seconds += time.time() - t0
+        out.statistics.elapsed_time_seconds += time.time() - t0
 
-        data_index: int = 0
-
-        time_exceeded = False
         for i in (pbar := tqdm(range(self.params.n_iterations), desc='HMC', disable=not show_progress)):
-            if statistics.elapsed_time_seconds > time_limit_seconds:
-                time_exceeded = True
+            if out.statistics.elapsed_time_seconds > time_limit_seconds:
                 break
 
             t0 = time.time()
@@ -178,25 +176,24 @@ class HMC(Sampler):
                         accepted_mask = torch.ones(size=(n_chains,), dtype=torch.bool)
                     x[accepted_mask] = x_prime[accepted_mask]
             except ValueError:
-                accepted_mask = torch.zeros(size=(n_chains,), dtype=torch.bool)  # TODO reject only the appropriate chains
-                statistics.n_divergences += 1
+                accepted_mask = torch.zeros(size=(n_chains,),
+                                            dtype=torch.bool)  # TODO reject only the appropriate chains
+                out.statistics.n_divergences += 1
 
-            statistics.n_target_calls += 2 * self.kernel.n_leapfrog_steps * n_chains
-            statistics.n_target_gradient_calls += 2 * self.kernel.n_leapfrog_steps * n_chains
+            out.statistics.n_target_calls += 2 * self.kernel.n_leapfrog_steps * n_chains
+            out.statistics.n_target_gradient_calls += 2 * self.kernel.n_leapfrog_steps * n_chains
             if self.params.adjustment:
-                statistics.n_target_calls += 2 * n_chains
+                out.statistics.n_target_calls += 2 * n_chains
 
-            statistics.n_accepted_trajectories += int(torch.sum(accepted_mask))
-            statistics.n_attempted_trajectories += n_chains
-            statistics.update_first_moment(x)
-            statistics.update_second_moment(x)
+            out.statistics.n_accepted_trajectories += int(torch.sum(accepted_mask))
+            out.statistics.n_attempted_trajectories += n_chains
+            out.statistics.update_first_moment(x)
+            out.statistics.update_second_moment(x)
 
             with torch.no_grad():
                 x = x.detach()
 
-                if i % thinning == 0 and not self.params.estimate_moments_only:
-                    xs[data_index] = x
-                    data_index += 1
+                out.running_samples.add(x)
 
                 if n_chains > 1 and self.params.tune_inv_mass_diag:
                     # inv_mass_diag = torch.var(x.flatten(1, -1), dim=0)  # Mass matrix adaptation
@@ -211,15 +208,10 @@ class HMC(Sampler):
                     da.step(error)
                     self.kernel.step_size = da.value  # Step size adaptation
 
-            statistics.elapsed_time_seconds += time.time() - t0
-            pbar.set_postfix_str(f'{statistics} | {self.kernel} | {da}')
+            out.statistics.elapsed_time_seconds += time.time() - t0
+            pbar.set_postfix_str(f'{out.statistics} | {self.kernel} | {da}')
 
-        if time_exceeded and not self.params.estimate_moments_only:
-            xs = xs[:data_index]
-
-        if self.params.estimate_moments_only:
-            xs = None
-        return MCMCOutput(samples=xs, statistics=statistics)
+        return out
 
 
 class UHMC(HMC):

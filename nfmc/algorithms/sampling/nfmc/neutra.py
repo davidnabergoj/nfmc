@@ -84,11 +84,12 @@ class NeuTraHMC(Sampler):
         self.kernel: NeuTraKernel
         self.params: NeuTraParameters
 
-        n_chains, *event_shape = x0.shape
+        n_chains = x0.shape[0]
         self.inner_sampler.params.n_iterations = self.params.n_iterations
         self.inner_sampler.params.tune_step_size = False
         self.inner_sampler.params.tune_inv_mass_diag = False
-        self.inner_sampler.params.estimate_moments_only = self.params.estimate_moments_only
+        self.inner_sampler.params.store_samples = self.params.store_samples
+        self.inner_sampler.params.estimate_running_moments = self.params.estimate_running_moments
         self.inner_sampler.params.moment_transform = lambda v: self.kernel.flow.inverse(v)[0].detach()
 
         # Run HMC with the adjusted target
@@ -104,17 +105,17 @@ class NeuTraHMC(Sampler):
         )
         mcmc_output.statistics.elapsed_time_seconds += t1 - t0
 
-        t0 = time.time()
-        with torch.no_grad():
-            xs, _ = self.kernel.flow.cpu().bijection.batch_inverse(
-                mcmc_output.samples,
-                batch_size=self.params.batch_inverse_size
-            )
-            xs = xs.detach()
-        mcmc_output.statistics.elapsed_time_seconds += time.time() - t0
+        if self.params.store_samples:
+            t0 = time.time()
+            with torch.no_grad():
+                xs, _ = self.kernel.flow.cpu().bijection.batch_inverse(
+                    mcmc_output.samples,
+                    batch_size=self.params.batch_inverse_size
+                )
+                xs = xs.detach()
+            mcmc_output.statistics.elapsed_time_seconds += time.time() - t0
+            mcmc_output.running_samples.reset()
+            mcmc_output.running_samples.add(xs)
 
-        return MCMCOutput(
-            samples=xs,
-            statistics=mcmc_output.statistics,
-            kernel=self.kernel
-        )
+        mcmc_output.kernel = self.kernel
+        return mcmc_output

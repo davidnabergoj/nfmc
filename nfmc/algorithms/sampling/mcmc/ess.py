@@ -90,16 +90,18 @@ class ESS(Sampler):
         super().__init__(event_shape, target, kernel, params)
         self.negative_log_likelihood = negative_log_likelihood
 
-    def sample(self, x0: torch.Tensor, show_progress: bool = True) -> MCMCOutput:
+    def sample(self, x0: torch.Tensor, show_progress: bool = True, thinning: int = 1) -> MCMCOutput:
         self.kernel: ESSKernel
         self.params: ESSParameters
-        statistics = MCMCStatistics(n_accepted_trajectories=0, n_divergences=0)
+
+        out = MCMCOutput(event_shape=x0.shape[1:])
+        out.running_samples.thinning = thinning
 
         t0 = time.time()
         n_chains, *event_shape = x0.shape
+        event_shape = tuple(event_shape)
         x = multivariate_normal_sample((n_chains,), event_shape, self.kernel.cov)
-        xs = torch.zeros(size=(self.params.n_iterations, n_chains, *event_shape), dtype=x.dtype, device=x.device)
-        statistics.elapsed_time_seconds += time.time() - t0
+        out.statistics.elapsed_time_seconds += time.time() - t0
 
         for i in (pbar := tqdm(range(self.params.n_iterations), desc="ESS", disable=not show_progress)):
             t0 = time.time()
@@ -110,12 +112,14 @@ class ESS(Sampler):
                 cov=self.kernel.cov,
                 max_iterations=self.params.max_ess_step_iterations
             )
-            statistics.n_target_calls += (self.params.max_ess_step_iterations + 1) * n_chains
-            xs[i] = x.detach()
+            out.statistics.n_target_calls += (self.params.max_ess_step_iterations + 1) * n_chains
+            out.running_samples.add(x)
             t1 = time.time()
 
-            statistics.elapsed_time_seconds = t1 - t0
-            statistics.n_accepted_trajectories += int(torch.sum(accepted_mask))
-            statistics.n_attempted_trajectories += n_chains
-            pbar.set_postfix_str(f'{statistics}')
-        return MCMCOutput(samples=xs, statistics=statistics)
+            out.statistics.elapsed_time_seconds = t1 - t0
+            out.statistics.n_accepted_trajectories += int(torch.sum(accepted_mask))
+            out.statistics.n_attempted_trajectories += n_chains
+            pbar.set_postfix_str(f'{out.statistics}')
+
+        out.kernel = self.kernel
+        return out

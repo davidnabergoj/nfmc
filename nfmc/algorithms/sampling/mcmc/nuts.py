@@ -50,18 +50,14 @@ class NUTS(Sampler):
         )
         mcmc.run()
 
-        # TODO better statistics
-        statistics = MCMCStatistics(
-            n_accepted_trajectories=n_chains * self.params.n_iterations,
-            n_attempted_trajectories=n_chains * self.params.n_iterations
+        out = MCMCOutput(event_shape=x0.shape[1:])
+        out.running_samples.add(
+            torch.concat([mcmc.get_samples()[f'd{i}'][:, :, None] for i in range(self.kernel.event_size)], dim=2)
         )
 
-        return MCMCOutput(
-            samples=torch.concat([
-                mcmc.get_samples()[f'd{i}'][:, :, None]
-                for i in range(self.kernel.event_size)
-            ],
-                dim=2
-            ),
-            statistics=statistics
-        )
+        # TODO better statistics
+        out.statistics.n_accepted_trajectories = n_chains * self.params.n_iterations
+        out.statistics.n_attempted_trajectories = n_chains * self.params.n_iterations
+
+        out.kernel = self.kernel
+        return out

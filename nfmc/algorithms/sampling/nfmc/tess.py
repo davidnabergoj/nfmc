@@ -94,19 +94,21 @@ class TESS(Sampler):
         super().__init__(event_shape, target, kernel, params)
         self.negative_log_likelihood = negative_log_likelihood
 
-    def warmup(self, x0: torch.Tensor, show_progress: bool = True, thinning: int = 1, time_limit_seconds: int = 3600 * 24) -> MCMCOutput:
+    def warmup(self, x0: torch.Tensor, show_progress: bool = True, thinning: int = 1,
+               time_limit_seconds: int = 3600 * 24) -> MCMCOutput:
         self.kernel: TESSKernel
         self.params: TESSParameters
 
-        warmup_statistics = MCMCStatistics()
+        out = MCMCOutput(event_shape=x0.shape[1:])
 
         t0 = time.time()
         n_chains, *event_shape = x0.shape
         u = multivariate_normal_sample((n_chains,), self.kernel.flow.bijection.event_shape, self.kernel.cov)
-        warmup_statistics.elapsed_time_seconds += time.time() - t0
+        out.statistics.elapsed_time_seconds += time.time() - t0
 
-        for i in (pbar := tqdm(range(self.params.n_warmup_iterations), desc='[Warmup] TESS', disable=not show_progress)):
-            if warmup_statistics.elapsed_time_seconds >= time_limit_seconds:
+        pbar = tqdm(range(self.params.n_warmup_iterations), desc='[Warmup] TESS', disable=not show_progress)
+        for i in pbar:
+            if out.statistics.elapsed_time_seconds >= time_limit_seconds:
                 break
 
             t0 = time.time()
@@ -117,11 +119,12 @@ class TESS(Sampler):
                 self.negative_log_likelihood,
                 cov=self.kernel.cov
             )
-            warmup_statistics.n_target_calls += (self.params.max_ess_step_iterations + 1) * n_chains
+            out.running_samples.add(u)
+            out.statistics.n_target_calls += (self.params.max_ess_step_iterations + 1) * n_chains
 
-            warmup_statistics.n_accepted_trajectories += int(torch.sum(accepted_mask))
-            warmup_statistics.n_attempted_trajectories += n_chains
-            pbar.set_postfix_str(f'{warmup_statistics}')
+            out.statistics.n_accepted_trajectories += int(torch.sum(accepted_mask))
+            out.statistics.n_attempted_trajectories += n_chains
+            pbar.set_postfix_str(f'{out.statistics}')
 
             x_train = x.detach().clone()
             x_train = x_train[torch.randperm(len(x_train))]
@@ -129,26 +132,26 @@ class TESS(Sampler):
             x_train, x_val = x_train[:n_train], x_train[n_train:]
             pbar.set_description_str('[Warmup] TESS training')
             self.kernel.flow.fit(x_train, x_val=x_val, **self.params.flow_fit_kwargs)
-            warmup_statistics.elapsed_time_seconds += time.time() - t0
+            out.statistics.elapsed_time_seconds += time.time() - t0
 
-        return MCMCOutput(samples=u[None], statistics=warmup_statistics)
+        out.kernel = self.kernel
+        return out
 
-    def sample(self, x0: torch.Tensor, show_progress: bool = True, thinning: int = 1, time_limit_seconds: int = 3600 * 24) -> MCMCOutput:
+    def sample(self, x0: torch.Tensor, show_progress: bool = True, thinning: int = 1,
+               time_limit_seconds: int = 3600 * 24) -> MCMCOutput:
         self.kernel: TESSKernel
         self.params: TESSParameters
 
-        sampling_statistics = MCMCStatistics()
+        out = MCMCOutput(event_shape=x0.shape[1:])
+        out.thinning = thinning
 
         t0 = time.time()
         n_chains, *event_shape = x0.shape
         u = x0
-        xs = torch.zeros(size=(self.params.n_iterations, n_chains, *event_shape), dtype=x0.dtype, device=x0.device)
-        sampling_statistics.elapsed_time_seconds += time.time() - t0
+        out.statistics.elapsed_time_seconds += time.time() - t0
 
-        time_exceeded = False
         for i in (pbar := tqdm(range(self.params.n_iterations), desc='TESS sampling')):
-            if sampling_statistics.elapsed_time_seconds >= time_limit_seconds:
-                time_exceeded = True
+            if out.statistics.elapsed_time_seconds >= time_limit_seconds:
                 break
 
             t0 = time.time()
@@ -158,14 +161,13 @@ class TESS(Sampler):
                 self.negative_log_likelihood,
                 cov=self.kernel.cov
             )
-            sampling_statistics.n_target_calls += (self.params.max_ess_step_iterations + 1) * n_chains
+            out.statistics.n_target_calls += (self.params.max_ess_step_iterations + 1) * n_chains
 
-            sampling_statistics.n_accepted_trajectories += int(torch.sum(accepted_mask))
-            sampling_statistics.n_attempted_trajectories += n_chains
-            pbar.set_postfix_str(f'{sampling_statistics}')
-            xs[i] = x.detach()
-            sampling_statistics.elapsed_time_seconds += time.time() - t0
+            out.statistics.n_accepted_trajectories += int(torch.sum(accepted_mask))
+            out.statistics.n_attempted_trajectories += n_chains
+            pbar.set_postfix_str(f'{out.statistics}')
+            out.running_samples.add(x)
+            out.statistics.elapsed_time_seconds += time.time() - t0
 
-        if time_exceeded:
-            xs = xs[:i]
-        return MCMCOutput(samples=xs, statistics=sampling_statistics)
+        out.kernel = self.kernel
+        return out
