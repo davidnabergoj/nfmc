@@ -17,6 +17,7 @@ class IMHKernel(NFMCKernel):
 
 @dataclass
 class IMHParameters(NFMCParameters):
+    adaptation: bool = True
     train_distribution: str = 'uniform'
     adaptation_dropoff: float = 0.9999
     warmup_fit_kwargs: dict = None
@@ -57,6 +58,10 @@ class AdaptiveIMH(Sampler):
             params = IMHParameters()
         super().__init__(event_shape, target, kernel, params)
 
+    @property
+    def name(self):
+        return "Adaptive IMH"
+
     def warmup(self,
                x0: torch.Tensor,
                show_progress: bool = True,
@@ -83,7 +88,7 @@ class AdaptiveIMH(Sampler):
         self.kernel: IMHKernel
         self.params: IMHParameters
 
-        out = MCMCOutput(event_shape=x0.shape[1:], store_samples=True)
+        out = MCMCOutput(event_shape=x0.shape[1:], store_samples=self.params.adaptation or self.params.store_samples)
         out.running_samples.thinning = thinning
 
         t0 = time.time()
@@ -91,7 +96,7 @@ class AdaptiveIMH(Sampler):
         x = deepcopy(x0)
         out.statistics.elapsed_time_seconds += time.time() - t0
 
-        for i in (pbar := tqdm(range(self.params.n_iterations), desc="Adaptive IMH", disable=not show_progress)):
+        for i in (pbar := tqdm(range(self.params.n_iterations), desc=self.name, disable=not show_progress)):
             if out.statistics.elapsed_time_seconds >= time_limit_seconds:
                 break
 
@@ -120,102 +125,51 @@ class AdaptiveIMH(Sampler):
             out.statistics.n_accepted_trajectories += int(torch.sum(accepted_mask))
             out.statistics.n_attempted_trajectories += n_chains
 
-            u_prime = torch.rand(size=())
-            alpha_prime = self.params.adaptation_dropoff ** i
-            if u_prime < alpha_prime:
-                # only use recent states to adapt
-                # this is an approximation of a bounded "geometric distribution" that picks the training data
-                # we can program the exact bounded geometric as well. Then it's parameter p can be adapted with dual
-                # averaging.
-                n_samples = out.running_samples.n_samples
-                if self.params.train_distribution == 'uniform':
-                    k = int(torch.randint(low=0, high=n_samples, size=()))
-                elif self.params.train_distribution == 'bounded_geom_approx':
-                    k = int(torch.randint(low=max(0, n_samples - 100), high=n_samples, size=()))
-                elif self.params.train_distribution == 'bounded_geom':
-                    k = sample_bounded_geom(p=0.025, max_val=n_samples - 1)
-                else:
-                    raise ValueError
+            if self.params.adaptation:
+                u_prime = torch.rand(size=())
+                alpha_prime = self.params.adaptation_dropoff ** i
+                if u_prime < alpha_prime:
+                    # only use recent states to adapt
+                    # this is an approximation of a bounded "geometric distribution" that picks the training data
+                    # we can program the exact bounded geometric as well. Then its parameter p can be adapted with dual
+                    # averaging.
+                    n_samples = out.running_samples.n_samples
+                    if self.params.train_distribution == 'uniform':
+                        k = int(torch.randint(low=0, high=n_samples, size=()))
+                    elif self.params.train_distribution == 'bounded_geom_approx':
+                        k = int(torch.randint(low=max(0, n_samples - 100), high=n_samples, size=()))
+                    elif self.params.train_distribution == 'bounded_geom':
+                        k = sample_bounded_geom(p=0.025, max_val=n_samples - 1)
+                    else:
+                        raise ValueError
 
-                x_train = out.running_samples[k]
+                    x_train = out.running_samples[k]
 
-                flow_weights = deepcopy(self.kernel.flow.state_dict())
-                try:
-                    self.kernel.flow.fit(x_train, n_epochs=1)
-                except ValueError:
-                    self.kernel.flow.load_state_dict(flow_weights)
+                    flow_weights = deepcopy(self.kernel.flow.state_dict())
+                    try:
+                        self.kernel.flow.fit(x_train, n_epochs=1)
+                    except ValueError:
+                        self.kernel.flow.load_state_dict(flow_weights)
 
             out.statistics.elapsed_time_seconds += time.time() - t0
-            pbar.set_postfix_str(f'{out.statistics} | adaptation probability: {alpha_prime:.2f}')
+            pbar.set_postfix_str(f'{out.statistics}')
 
         out.kernel = self.kernel
         return out
 
 
-class FixedIMH(Sampler):
+class FixedIMH(AdaptiveIMH):
     def __init__(self,
-                 event_shape: Union[Tuple[int,...], torch.Size],
+                 event_shape: Union[Tuple[int, ...], torch.Size],
                  target: callable,
                  kernel: Optional[IMHKernel] = None,
                  params: Optional[IMHParameters] = None):
         if kernel is None:
             kernel = IMHKernel(event_shape)
         if params is None:
-            params = IMHParameters()
+            params = IMHParameters(adaptation=False)
         super().__init__(event_shape, target, kernel, params)
 
-    def warmup(self, x0: torch.Tensor, show_progress: bool = True, thinning: int = 1,
-               time_limit_seconds: int = 3600 * 24) -> MCMCOutput:
-        self.kernel: IMHKernel
-        self.params: IMHParameters
-
-        self.kernel.flow.variational_fit(
-            lambda v: -self.target(v),
-            **self.params.warmup_fit_kwargs,
-            show_progress=show_progress
-        )
-        out = MCMCOutput(event_shape=x0.shape[1:], store_samples=True)
-        out.running_samples.add(self.kernel.flow.sample(x0.shape[0]).detach())
-        return out
-
-    def sample(self,
-               x0: torch.Tensor,
-               show_progress: bool = True,
-               thinning: int = 1,
-               time_limit_seconds: int = 3600 * 24) -> MCMCOutput:
-        self.kernel: IMHKernel
-        n_chains = x0.shape[0]
-        x = deepcopy(x0)
-        out = MCMCOutput(event_shape=x0.shape[1:], store_samples=self.params.store_samples)
-        out.running_samples.thinning = thinning
-
-        for i in (pbar := tqdm(range(self.params.n_iterations), desc="Fixed IMH", disable=not show_progress)):
-            if out.statistics.elapsed_time_seconds >= time_limit_seconds:
-                break
-            t0 = time.time()
-            with torch.no_grad():
-                x_prime = self.kernel.flow.sample(n_chains, no_grad=True)
-                try:
-                    log_alpha = metropolis_acceptance_log_ratio(
-                        log_prob_curr=-self.target(x).cpu(),
-                        log_prob_prime=-self.target(x_prime).cpu(),
-                        log_proposal_curr=self.kernel.flow.log_prob(x).cpu(),
-                        log_proposal_prime=self.kernel.flow.log_prob(x_prime).cpu()
-                    )
-                    log_u = torch.rand(n_chains).log().to(log_alpha)
-                    accepted_mask = torch.less(log_u, log_alpha)
-                    x[accepted_mask] = x_prime[accepted_mask]
-                    x = x.detach()
-                except ValueError as e:
-                    accepted_mask = torch.zeros(size=(n_chains,), dtype=torch.bool, device=x0.device)
-                    out.statistics.n_divergences += 1
-            out.running_samples.add(x)
-            out.statistics.expectations.update(x)
-            out.statistics.n_accepted_trajectories += int(torch.sum(accepted_mask))
-            out.statistics.n_attempted_trajectories += n_chains
-            out.statistics.elapsed_time_seconds += time.time() - t0
-
-            pbar.set_postfix_str(f'{out.statistics}')
-
-        out.kernel = self.kernel
-        return out
+    @property
+    def name(self):
+        return "Fixed IMH"

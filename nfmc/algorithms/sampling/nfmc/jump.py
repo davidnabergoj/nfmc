@@ -78,7 +78,7 @@ class JumpNFMC(Sampler):
     """
 
     def __init__(self,
-                 event_shape: Sized,
+                 event_shape: Union[Tuple[int, ...], torch.Size],
                  target: callable,
                  inner_sampler: Sampler,
                  kernel: NFMCKernel = None,
@@ -88,6 +88,7 @@ class JumpNFMC(Sampler):
         if params is None:
             params = JumpNFMCParameters()
         super().__init__(event_shape, target, kernel, params)
+        inner_sampler.params.store_samples = True  # always store the short inner sampler runs
         self.inner_sampler = inner_sampler
 
     def warmup(self, x0: torch.Tensor, show_progress: bool = True, thinning: int = 1,
@@ -95,11 +96,13 @@ class JumpNFMC(Sampler):
         self.kernel: NFMCKernel
         self.params: JumpNFMCParameters
 
+        self.inner_sampler.params.store_samples = True
         warmup_output = self.inner_sampler.warmup(
             x0,
             show_progress=show_progress,
             time_limit_seconds=time_limit_seconds
         )
+
         x_train, x_val = train_val_split(
             warmup_output.samples,
             train_pct=self.params.train_pct,
@@ -137,7 +140,7 @@ class JumpNFMC(Sampler):
         n_chains, *event_shape = x0.shape
         event_shape = tuple(event_shape)
 
-        out = JumpNFMCOutput(event_shape=x0.shape[1:])
+        out = JumpNFMCOutput(event_shape=x0.shape[1:], store_samples=self.params.store_samples)
         out.running_samples.thinning = thinning
 
         x = torch.clone(x0)
@@ -146,7 +149,7 @@ class JumpNFMC(Sampler):
             if out.statistics.elapsed_time_seconds >= time_limit_seconds:
                 break
             # Trajectories
-            pbar.set_description_str(f'Jump MCMC (sampling)')
+            pbar.set_description_str(f'Jump MCMC')
             mcmc_output = self.inner_sampler.sample(x0=x, show_progress=False)
             out.statistics.n_accepted_trajectories += mcmc_output.statistics.n_accepted_trajectories
             out.statistics.n_attempted_trajectories += mcmc_output.statistics.n_attempted_trajectories
@@ -173,7 +176,7 @@ class JumpNFMC(Sampler):
                 self.kernel.flow.fit(x_train=x_train, x_val=x_val, **self.params.flow_fit_kwargs)
 
             # Jump
-            pbar.set_description_str(f'Jump MCMC (jumping)')
+            pbar.set_description_str(f'Jump MCMC')
             x_prime, f_x_prime = self.kernel.flow.sample(n_chains, return_log_prob=True)
             x_prime = x_prime.detach()
             f_x_prime = f_x_prime.detach()

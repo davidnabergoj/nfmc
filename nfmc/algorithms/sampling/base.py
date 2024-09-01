@@ -295,6 +295,10 @@ class Sampler:
         self.kernel = kernel
         self.params = params
 
+    @property
+    def name(self):
+        return "Generic sampler"
+
     def warmup(self, x0: torch.Tensor, show_progress: bool = True, thinning: int = 1,
                time_limit_seconds: int = None) -> MCMCOutput:
         raise NotImplementedError
