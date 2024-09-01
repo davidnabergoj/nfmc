@@ -93,16 +93,16 @@ class Langevin(MetropolisSampler):
 
                 # Perform metropolis adjustment (MALA)
                 log_ratio = metropolis_acceptance_log_ratio(
-                    log_prob_curr=-u_x,
-                    log_prob_prime=-u_x_prime,
-                    log_proposal_curr=-proposal_potential(
+                    log_prob_target_curr=-u_x,
+                    log_prob_target_prime=-u_x_prime,
+                    log_prob_proposal_curr=-proposal_potential(
                         x,
                         x_prime,
                         grad_u_x_prime,
                         1 / self.kernel.inv_mass_diag ** 2,
                         self.kernel.step_size
                     ),
-                    log_proposal_prime=-proposal_potential(
+                    log_prob_proposal_prime=-proposal_potential(
                         x_prime,
                         x,
                         grad_u_x,

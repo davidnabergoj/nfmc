@@ -105,10 +105,10 @@ class AdaptiveIMH(Sampler):
                 x_prime = self.kernel.flow.sample(n_chains, no_grad=True)
                 try:
                     log_alpha = metropolis_acceptance_log_ratio(
-                        log_prob_curr=-self.target(x).cpu(),
-                        log_prob_prime=-self.target(x_prime).cpu(),
-                        log_proposal_curr=self.kernel.flow.log_prob(x).cpu(),
-                        log_proposal_prime=self.kernel.flow.log_prob(x_prime).cpu()
+                        log_prob_target_curr=-self.target(x).cpu(),
+                        log_prob_target_prime=-self.target(x_prime).cpu(),
+                        log_prob_proposal_curr=self.kernel.flow.log_prob(x).cpu(),
+                        log_prob_proposal_prime=self.kernel.flow.log_prob(x_prime).cpu()
                     )
                     log_u = torch.rand(n_chains).log().to(log_alpha)
                     accepted_mask = torch.less(log_u, log_alpha)

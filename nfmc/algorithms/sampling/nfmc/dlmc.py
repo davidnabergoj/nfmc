@@ -78,10 +78,10 @@ class DLMC(Sampler):
 
             x_tilde = self.kernel.flow.sample(n_chains, no_grad=True)
             log_alpha = metropolis_acceptance_log_ratio(
-                log_prob_curr=-self.target(x).cpu(),
-                log_prob_prime=-self.target(x_tilde).cpu(),
-                log_proposal_curr=flow_log_prob(x).cpu(),
-                log_proposal_prime=flow_log_prob(x_tilde).cpu()
+                log_prob_target_curr=-self.target(x).cpu(),
+                log_prob_target_prime=-self.target(x_tilde).cpu(),
+                log_prob_proposal_curr=flow_log_prob(x).cpu(),
+                log_prob_proposal_prime=flow_log_prob(x_tilde).cpu()
             )
             out.statistics.n_target_calls += 2 * n_chains
             log_u = torch.rand(n_chains).log().to(log_alpha)

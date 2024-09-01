@@ -192,22 +192,23 @@ class JumpNFMC(Sampler):
 
                     f_x = self.kernel.flow.log_prob(x)
                     log_alpha = metropolis_acceptance_log_ratio(
-                        log_prob_curr=-u_x.cpu(),
-                        log_prob_prime=-u_x_prime.cpu(),
-                        log_proposal_curr=f_x.cpu(),
-                        log_proposal_prime=f_x_prime.cpu()
+                        log_prob_target_curr=-u_x.cpu(),
+                        log_prob_target_prime=-u_x_prime.cpu(),
+                        log_prob_proposal_curr=f_x.cpu(),
+                        log_prob_proposal_prime=f_x_prime.cpu()
                     )
-                    acceptance_mask = torch.rand_like(log_alpha).log() < log_alpha
+                    mask = torch.rand_like(log_alpha).log() < log_alpha
                 except ValueError:
-                    acceptance_mask = torch.zeros(size=x.shape[:-len(event_shape)], dtype=torch.bool)
+                    mask = torch.zeros(size=x.shape[:-len(event_shape)], dtype=torch.bool)
             else:
-                acceptance_mask = torch.ones(size=x.shape[:-len(event_shape)], dtype=torch.bool)
-            x[acceptance_mask] = x_prime[acceptance_mask].to(x)
+                mask = torch.ones(size=x.shape[:-len(event_shape)], dtype=torch.bool)
+
+            x[mask] = x_prime[mask].to(x)
             t1 = time.time()
 
             out.statistics.elapsed_time_seconds += t1 - t0
             out.statistics.n_attempted_jumps += n_chains
-            out.statistics.n_accepted_jumps += int(torch.sum(acceptance_mask))
+            out.statistics.n_accepted_jumps += int(torch.sum(mask))
             out.statistics.expectations.update(x)
             pbar.set_postfix_str(f'{out.statistics}')
 
