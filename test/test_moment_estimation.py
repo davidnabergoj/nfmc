@@ -10,7 +10,6 @@ def test_basic(sampler_class):
     torch.manual_seed(0)
     target = DiagonalGaussian1()
     sampler = sampler_class(target.event_shape, target)
-    sampler.params.estimate_running_moments = True
     sampler.params.n_iterations = 3
     if isinstance(sampler, JumpHMC):
         sampler.inner_sampler.params.n_iterations = 3
