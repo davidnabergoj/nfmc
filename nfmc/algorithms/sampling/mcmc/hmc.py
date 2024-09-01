@@ -121,8 +121,6 @@ class HMC(Sampler):
             thinning=thinning,
             time_limit_seconds=time_limit_seconds
         )
-        if warmup_output.samples is None:
-            warmup_output.samples = x0[None]
 
         self.kernel = warmup_copy.kernel
         new_params = warmup_copy.params
