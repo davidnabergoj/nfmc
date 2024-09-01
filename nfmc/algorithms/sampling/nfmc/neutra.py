@@ -1,13 +1,11 @@
-import time
 from dataclasses import dataclass
-from typing import Sized, Union, Tuple, Type
+from typing import Union, Tuple, Type
 
 import torch
-from prometheus_client.samples import Sample
 
-from nfmc.algorithms.sampling.base import Sampler, NFMCKernel, NFMCParameters, MCMCOutput, MCMCStatistics
+from nfmc.algorithms.sampling.base import Sampler, NFMCKernel, NFMCParameters, MCMCOutput
 from nfmc.algorithms.sampling.mcmc import HMC
-from nfmc.algorithms.sampling.mcmc.base import MCMCSampler, MetropolisKernel, MetropolisParameters, MetropolisSampler
+from nfmc.algorithms.sampling.mcmc.base import MetropolisKernel, MetropolisParameters, MetropolisSampler
 from nfmc.algorithms.sampling.mcmc.hmc import HMCKernel, HMCParameters
 
 
