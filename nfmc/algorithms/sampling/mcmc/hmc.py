@@ -93,7 +93,7 @@ class HMC(MetropolisSampler):
     def name(self):
         return "HMC"
 
-    def propose(self, x: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor, int, int, int, Dict[str, Any]]:
+    def propose(self, x: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor, int, int, int]:
         n_chains = x.shape[0]
 
         try:
@@ -123,7 +123,7 @@ class HMC(MetropolisSampler):
         n_grads = 2 * self.kernel.n_leapfrog_steps * n_chains
         if self.params.adjustment:
             n_calls += 2 * n_chains
-        return x_prime.detach(), mask, n_calls, n_grads, n_divergences, dict()
+        return x_prime.detach(), mask, n_calls, n_grads, n_divergences
 
 
 class UHMC(HMC):

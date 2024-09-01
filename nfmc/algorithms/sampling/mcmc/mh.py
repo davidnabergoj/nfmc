@@ -38,7 +38,7 @@ class MH(MetropolisSampler):
             params = MHParameters()
         super().__init__(event_shape, target, kernel, params)
 
-    def propose(self, x: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor, int, int, int, Dict[str, Any]]:
+    def propose(self, x: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor, int, int, int]:
         n_chains = x.shape[0]
 
         try:
@@ -61,7 +61,7 @@ class MH(MetropolisSampler):
         if self.params.adjustment:
             n_calls = 2 * n_chains
 
-        return x_prime.detach(), mask, n_calls, n_grads, n_divergences, dict()
+        return x_prime.detach(), mask, n_calls, n_grads, n_divergences
 
 
 class RandomWalk(MH):

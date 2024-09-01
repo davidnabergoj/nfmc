@@ -22,12 +22,12 @@ class MCMCSampler(Sampler):
     def name(self):
         return "Generic MCMC"
 
-    def propose(self, x: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor, int, int, int, Dict[str, Any]]:
+    def propose(self, x: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor, int, int, int]:
         """
 
         :param torch.Tensor x: current state with shape `(n_chains, *event_shape)`.
         :return: proposed state with shape `(n_chains, *event_shape)`, acceptance mask with shape `(n_chains)`, number
-         of evaluated target calls and target gradients, number of divergences, auxiliary data dictionary.
+         of evaluated target calls and target gradients, number of divergences.
         """
         raise NotImplementedError
 
@@ -77,7 +77,7 @@ class MCMCSampler(Sampler):
                 break
 
             t0 = time.time()
-            x_prime, mask, n_calls, n_grads, n_divs, aux = self.propose(x)
+            x_prime, mask, n_calls, n_grads, n_divs = self.propose(x)
             x = x.detach()
             x_prime = x_prime.detach()
             x[mask] = x_prime[mask]

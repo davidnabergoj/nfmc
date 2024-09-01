@@ -95,7 +95,7 @@ class ESS(MCMCSampler):
     def name(self):
         return "ESS"
 
-    def propose(self, x: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor, int, int, int, Dict[str, Any]]:
+    def propose(self, x: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor, int, int, int]:
         n_chains = x.shape[0]
 
         try:
@@ -115,7 +115,7 @@ class ESS(MCMCSampler):
 
         n_calls = (self.params.max_ess_step_iterations + 1) * n_chains
         n_grads = 0
-        return x_prime, mask, n_calls, n_grads, n_divergences, dict()
+        return x_prime, mask, n_calls, n_grads, n_divergences
 
     def update_kernel(self, data: Dict[str, Any]):
         pass
