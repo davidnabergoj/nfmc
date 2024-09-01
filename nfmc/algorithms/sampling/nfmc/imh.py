@@ -115,12 +115,10 @@ class AdaptiveIMH(Sampler):
                     accepted_mask = torch.zeros(size=(n_chains,), dtype=torch.bool, device=x0.device)
                     out.statistics.n_divergences += 1
 
-            out.statistics.update_first_moment(x)
-            out.statistics.update_second_moment(x)
+            out.statistics.expectations.update(x)
             out.statistics.n_target_calls += 2 * n_chains
 
-            if i % thinning == 0:
-                out.running_samples.add(x)
+            out.running_samples.add(x)
             out.statistics.n_accepted_trajectories += int(torch.sum(accepted_mask))
             out.statistics.n_attempted_trajectories += n_chains
 
@@ -191,6 +189,7 @@ class FixedIMH(Sampler):
         n_chains = x0.shape[0]
         x = deepcopy(x0)
         out = MCMCOutput(event_shape=x0.shape[1:])
+        out.running_samples.thinning = thinning
 
         for i in (pbar := tqdm(range(self.params.n_iterations), desc="Fixed IMH", disable=not show_progress)):
             if out.statistics.elapsed_time_seconds >= time_limit_seconds:
@@ -212,11 +211,8 @@ class FixedIMH(Sampler):
                 except ValueError as e:
                     accepted_mask = torch.zeros(size=(n_chains,), dtype=torch.bool, device=x0.device)
                     out.statistics.n_divergences += 1
-            if i % thinning == 0:
-                out.running_samples.add(x)
-
-            out.statistics.update_first_moment(x)
-            out.statistics.update_second_moment(x)
+            out.running_samples.add(x)
+            out.statistics.expectations.update(x)
             out.statistics.n_accepted_trajectories += int(torch.sum(accepted_mask))
             out.statistics.n_attempted_trajectories += n_chains
             out.statistics.elapsed_time_seconds += time.time() - t0

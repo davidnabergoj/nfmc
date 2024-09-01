@@ -116,6 +116,8 @@ class NeuTraHMC(Sampler):
             mcmc_output.statistics.elapsed_time_seconds += time.time() - t0
             mcmc_output.running_samples.reset()
             mcmc_output.running_samples.add(xs)
+            mcmc_output.statistics.expectations.reset()
+            mcmc_output.statistics.expectations.update(xs)
 
         mcmc_output.kernel = self.kernel
         return mcmc_output

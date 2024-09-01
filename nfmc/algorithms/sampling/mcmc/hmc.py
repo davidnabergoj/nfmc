@@ -187,8 +187,7 @@ class HMC(Sampler):
 
             out.statistics.n_accepted_trajectories += int(torch.sum(accepted_mask))
             out.statistics.n_attempted_trajectories += n_chains
-            out.statistics.update_first_moment(x)
-            out.statistics.update_second_moment(x)
+            out.statistics.expectations.update(x)
 
             with torch.no_grad():
                 x = x.detach()

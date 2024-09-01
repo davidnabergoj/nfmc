@@ -1,5 +1,5 @@
 from dataclasses import dataclass
-from typing import Sized, Optional, Any, Union, Tuple, List
+from typing import Sized, Optional, Any, Union, Tuple, List, Dict
 
 import torch
 
@@ -89,20 +89,31 @@ class MCMCExpectation:
         )
         self.n_seen += n_new
 
+    def reset(self):
+        self.n_seen = 0
+        self.running_value = 0.0
+
     def as_tensor(self):
         return self.running_value
 
 
-@dataclass
-class FirstMoment(MCMCExpectation):
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **{**kwargs, **dict(f=lambda v: v)})
+class MCMCExpectationDict:
+    def __init__(self, expectations: Dict[str, MCMCExpectation]):
+        self.expectations = expectations
 
+    def update(self, x: torch.Tensor):
+        for k in self.expectations.keys():
+            self.expectations[k].update(x)
 
-@dataclass
-class SecondMoment(MCMCExpectation):
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **{**kwargs, **dict(f=lambda v: v ** 2)})
+    def reset(self):
+        for k in self.expectations.keys():
+            self.expectations[k].reset()
+
+    def as_tensor(self):
+        return {k: v.as_tensor() for k, v in self.expectations.items()}
+
+    def __getitem__(self, key):
+        return self.expectations[key]
 
 
 @dataclass
@@ -115,26 +126,21 @@ class MCMCStatistics:
     n_target_calls: Optional[int] = 0
     elapsed_time_seconds: Optional[float] = 0.0
 
-    _rfm: FirstMoment = None
-    _rsm: SecondMoment = None
+    expectations: MCMCExpectationDict = None
 
     def __post_init__(self):
-        self._rfm = FirstMoment(self.event_shape)
-        self._rsm = SecondMoment(self.event_shape)
-
-    def update_first_moment(self, x: torch.Tensor):
-        self._rfm.update(x)
-
-    def update_second_moment(self, x: torch.Tensor):
-        self._rsm.update(x)
+        self.expectations = MCMCExpectationDict({
+            'first_moment': MCMCExpectation(self.event_shape, f=lambda v: v),
+            'second_moment': MCMCExpectation(self.event_shape, f=lambda v: v ** 2),
+        })
 
     @property
     def running_first_moment(self):
-        return self._rfm.as_tensor()
+        return self.expectations['first_moment'].as_tensor()
 
     @property
     def running_second_moment(self):
-        return self._rsm.as_tensor()
+        return self.expectations['second_moment'].as_tensor()
 
     @property
     def running_variance(self):

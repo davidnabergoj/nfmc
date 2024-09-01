@@ -1,7 +1,7 @@
 import time
 from copy import deepcopy
 from dataclasses import dataclass
-from typing import Sized, Tuple, Union
+from typing import Sized, Tuple, Union, Optional
 
 import torch
 
@@ -64,6 +64,8 @@ class JumpNFMCStatistics(MCMCStatistics):
 
 @dataclass
 class JumpNFMCOutput(MCMCOutput):
+    statistics: Optional[JumpNFMCStatistics] = None
+
     def __init__(self, event_shape: Union[Tuple[int, ...], torch.Size], *args, **kwargs):
         super().__init__(event_shape, *args, **{**kwargs, **dict(statistics=JumpNFMCStatistics(event_shape))})
 
@@ -129,7 +131,8 @@ class JumpNFMC(Sampler):
         self.kernel: NFMCKernel
         self.params: JumpNFMCParameters
 
-        n_chains = x0.shape[0]
+        n_chains, *event_shape = x0.shape
+        event_shape = tuple(event_shape)
 
         out = JumpNFMCOutput(event_shape=x0.shape[1:])
         out.running_samples.thinning = thinning
@@ -150,8 +153,7 @@ class JumpNFMC(Sampler):
             out.statistics.n_target_gradient_calls += mcmc_output.statistics.n_target_gradient_calls
             out.statistics.elapsed_time_seconds += mcmc_output.statistics.elapsed_time_seconds
 
-            out.statistics.update_first_moment(mcmc_output.samples)
-            out.statistics.update_second_moment(mcmc_output.samples)
+            out.statistics.expectations.update(mcmc_output.samples)
 
             t0 = time.time()
             out.running_samples.add(mcmc_output.samples)
@@ -200,8 +202,7 @@ class JumpNFMC(Sampler):
             out.statistics.elapsed_time_seconds += t1 - t0
             out.statistics.n_attempted_jumps += n_chains
             out.statistics.n_accepted_jumps += int(torch.sum(acceptance_mask))
-            out.statistics.update_first_moment(x)
-            out.statistics.update_second_moment(x)
+            out.statistics.expectations.update(x)
             pbar.set_postfix_str(f'{out.statistics}')
 
             out.running_samples.add(x)
