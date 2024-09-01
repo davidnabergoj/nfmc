@@ -195,7 +195,10 @@ def test_other_nfmc(sampler_class):
     "imh",
     "neutra_hmc"
 ])
-def test_sample_wrapper_no_jump(strategy: str):
+@pytest.mark.parametrize('device', ['cuda', 'cpu'])
+def test_sample_wrapper_no_jump(strategy: str, device: str):
+    if not torch.cuda.is_available() and device == "cuda":
+        pytest.skip("CUDA not available")
     torch.manual_seed(0)
     n_iterations, n_chains, n_dim = 3, 4, 5
 
@@ -206,6 +209,7 @@ def test_sample_wrapper_no_jump(strategy: str):
         strategy=strategy,
         n_chains=n_chains,
         n_iterations=n_iterations,
+        device=torch.device(device),
     )
     assert isinstance(output, MCMCOutput)
     assert output.samples.shape == (n_iterations, n_chains, n_dim)
@@ -213,7 +217,10 @@ def test_sample_wrapper_no_jump(strategy: str):
 
 
 @pytest.mark.parametrize('strategy', ['dlmc', 'tess', "ess"])
-def test_sample_wrapper_nll(strategy: str):
+@pytest.mark.parametrize('device', ['cuda', 'cpu'])
+def test_sample_wrapper_nll(strategy: str, device: str):
+    if not torch.cuda.is_available() and device == "cuda":
+        pytest.skip("CUDA not available")
     torch.manual_seed(0)
     n_iterations, n_chains, n_dim = 3, 4, 5
 
@@ -225,6 +232,7 @@ def test_sample_wrapper_nll(strategy: str):
         negative_log_likelihood=StandardGaussian((n_dim,)),
         n_chains=n_chains,
         n_iterations=n_iterations,
+        device=torch.device(device)
     )
     assert isinstance(output, MCMCOutput)
     assert output.samples.shape == (n_iterations, n_chains, n_dim)
@@ -232,7 +240,10 @@ def test_sample_wrapper_nll(strategy: str):
 
 
 @pytest.mark.parametrize('strategy', ["jump_mala", "jump_ula", "jump_hmc", "jump_uhmc", "jump_mh"])
-def test_sample_wrapper_jump(strategy: str):
+@pytest.mark.parametrize('device', ['cuda', 'cpu'])
+def test_sample_wrapper_jump(strategy: str, device: str):
+    if not torch.cuda.is_available() and device == "cuda":
+        pytest.skip("CUDA not available")
     torch.manual_seed(0)
     n_iterations, n_chains, n_dim = 3, 4, 5
     n_trajectories_per_jump = 7
@@ -244,14 +255,18 @@ def test_sample_wrapper_jump(strategy: str):
         strategy=strategy,
         n_chains=n_chains,
         n_iterations=n_iterations,
-        inner_param_kwargs={'n_iterations': n_trajectories_per_jump}
+        inner_param_kwargs={'n_iterations': n_trajectories_per_jump},
+        device=torch.device(device)
     )
     assert isinstance(output, MCMCOutput)
     assert output.samples.shape == (n_iterations * (n_trajectories_per_jump + 1), n_chains, n_dim)
     assert torch.isfinite(output.samples).all()
 
 
-def test_sample_wrapper_jump_ess():
+@pytest.mark.parametrize('device', ['cuda', 'cpu'])
+def test_sample_wrapper_jump_ess(device: str):
+    if not torch.cuda.is_available() and device == "cuda":
+        pytest.skip("CUDA not available")
     torch.manual_seed(0)
     n_iterations, n_chains, n_dim = 3, 4, 5
     n_trajectories_per_jump = 7
@@ -264,7 +279,8 @@ def test_sample_wrapper_jump_ess():
         n_chains=n_chains,
         n_iterations=n_iterations,
         negative_log_likelihood=StandardGaussian((n_dim,)),
-        inner_param_kwargs={'n_iterations': n_trajectories_per_jump}
+        inner_param_kwargs={'n_iterations': n_trajectories_per_jump},
+        device=torch.device(device)
     )
     assert isinstance(output, MCMCOutput)
     assert output.samples.shape == (n_iterations * (n_trajectories_per_jump + 1), n_chains, n_dim)

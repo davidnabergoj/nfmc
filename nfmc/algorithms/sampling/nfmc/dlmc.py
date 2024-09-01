@@ -38,6 +38,9 @@ class DLMC(Sampler):
         self.params: DLMCParameters
         n_chains = x0.shape[0]
 
+        def flow_log_prob(inputs):
+            return self.kernel.flow.log_prob(inputs.to(self.kernel.flow.get_device())).cpu()
+
         out = MCMCOutput(event_shape=x0.shape[1:], store_samples=self.params.store_samples)
         out.thinning = thinning
 
@@ -68,22 +71,22 @@ class DLMC(Sampler):
                 out.statistics.n_target_calls += n_chains
                 out.statistics.n_target_gradient_calls += n_chains
             else:
-                grad = compute_grad(lambda v: self.target(v) + self.kernel.flow.log_prob(v), x)
+                grad = compute_grad(lambda v: self.target(v).cpu() + flow_log_prob(v), x)
                 x = x - self.kernel.step_size * grad
                 out.statistics.n_target_calls += n_chains
                 out.statistics.n_target_gradient_calls += n_chains
 
             x_tilde = self.kernel.flow.sample(n_chains, no_grad=True)
             log_alpha = metropolis_acceptance_log_ratio(
-                log_prob_curr=-self.target(x),
-                log_prob_prime=-self.target(x_tilde),
-                log_proposal_curr=self.kernel.flow.log_prob(x),
-                log_proposal_prime=self.kernel.flow.log_prob(x_tilde)
+                log_prob_curr=-self.target(x).cpu(),
+                log_prob_prime=-self.target(x_tilde).cpu(),
+                log_proposal_curr=flow_log_prob(x).cpu(),
+                log_proposal_prime=flow_log_prob(x_tilde).cpu()
             )
             out.statistics.n_target_calls += 2 * n_chains
             log_u = torch.rand(n_chains).log().to(log_alpha)
             accepted_mask = torch.less(log_u, log_alpha)
-            x[accepted_mask] = x_tilde[accepted_mask]
+            x[accepted_mask] = x_tilde[accepted_mask].to(x)
             x = x.detach()
             out.running_samples.add(x)
 

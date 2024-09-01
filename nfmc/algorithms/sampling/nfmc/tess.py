@@ -23,11 +23,17 @@ def transport_elliptical_slice_sampling_step(
 ):
     n_chains, *event_shape = u.shape
     batch_shape = get_batch_shape(u, event_shape)
-    log_phi = flow.base_log_prob
 
-    def log_pi_hat(u_):
-        x, log_det = flow.bijection.inverse(u_)
-        return -potential(x) - log_det
+    def log_phi(inputs):
+        return flow.base_log_prob(inputs.to(flow.get_device())).cpu()
+
+    def log_pi_hat(inputs):
+        x, log_det = flow.bijection.inverse(inputs.to(flow.get_device()))
+        out = -potential(x) - log_det
+        return out.cpu()
+
+    def bijection_inverse(inputs):
+        return flow.bijection.inverse(inputs.to(flow.get_device()))[0].cpu()
 
     # 1. Choose ellipse
     v = multivariate_normal_sample(batch_shape, event_shape, cov)
@@ -44,11 +50,11 @@ def transport_elliptical_slice_sampling_step(
 
     accepted_mask = torch.zeros(size=batch_shape, dtype=torch.bool)
     u_proposed = torch.clone(u)
-    x_proposed, _ = flow.bijection.inverse(u_proposed)
+    x_proposed = bijection_inverse(u_proposed)
     for i in range(max_iterations):
         u_prime = u * torch.cos(theta) + v * torch.sin(theta)
         v_prime = v * torch.cos(theta) - u * torch.sin(theta)
-        x_prime, _ = flow.bijection.inverse(u_prime)
+        x_prime = bijection_inverse(u_prime)
         accepted_mask_update = ((log_pi_hat(u_prime) + log_phi(v_prime)) > log_s)
 
         # We update the outputs the first time this criterion is satisfied
