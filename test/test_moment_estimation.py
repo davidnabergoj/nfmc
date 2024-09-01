@@ -22,6 +22,3 @@ def test_basic(sampler_class):
 
     assert output.statistics.running_first_moment.isfinite().all()
     assert output.statistics.running_second_moment.isfinite().all()
-
-    print(output.statistics.running_first_moment)
-    print(output.statistics.running_second_moment)
