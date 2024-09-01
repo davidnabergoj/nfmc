@@ -73,7 +73,7 @@ class AdaptiveIMH(Sampler):
             show_progress=show_progress
         )
 
-        out = MCMCOutput(event_shape=x0.shape[1:])
+        out = MCMCOutput(event_shape=x0.shape[1:], store_samples=self.params.store_samples)
         out.running_samples.add(self.kernel.flow.sample(x0.shape[0]).detach())
         return out
 
@@ -85,7 +85,7 @@ class AdaptiveIMH(Sampler):
         self.kernel: IMHKernel
         self.params: IMHParameters
 
-        out = MCMCOutput(event_shape=x0.shape[1:])
+        out = MCMCOutput(event_shape=x0.shape[1:], store_samples=self.params.store_samples)
         out.running_samples.thinning = thinning
 
         t0 = time.time()
@@ -176,7 +176,7 @@ class FixedIMH(Sampler):
             **self.params.warmup_fit_kwargs,
             show_progress=show_progress
         )
-        out = MCMCOutput(event_shape=x0.shape[1:])
+        out = MCMCOutput(event_shape=x0.shape[1:], store_samples=self.params.store_samples)
         out.running_samples.add(self.kernel.flow.sample(x0.shape[0]).detach())
         return out
 
@@ -188,7 +188,7 @@ class FixedIMH(Sampler):
         self.kernel: IMHKernel
         n_chains = x0.shape[0]
         x = deepcopy(x0)
-        out = MCMCOutput(event_shape=x0.shape[1:])
+        out = MCMCOutput(event_shape=x0.shape[1:], store_samples=self.params.store_samples)
         out.running_samples.thinning = thinning
 
         for i in (pbar := tqdm(range(self.params.n_iterations), desc="Fixed IMH", disable=not show_progress)):

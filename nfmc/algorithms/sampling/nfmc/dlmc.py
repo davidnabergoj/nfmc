@@ -38,7 +38,7 @@ class DLMC(Sampler):
         self.params: DLMCParameters
         n_chains = x0.shape[0]
 
-        out = MCMCOutput(event_shape=x0.shape[1:])
+        out = MCMCOutput(event_shape=x0.shape[1:], store_samples=self.params.store_samples)
         out.thinning = thinning
 
         # Initial update

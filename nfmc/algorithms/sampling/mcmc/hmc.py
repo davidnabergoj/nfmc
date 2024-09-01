@@ -143,7 +143,7 @@ class HMC(Sampler):
 
         n_chains, *event_shape = x0.shape
         event_shape = tuple(event_shape)
-        out = MCMCOutput(event_shape)
+        out = MCMCOutput(event_shape, store_samples=self.params.store_samples)
         out.running_samples.thinning = thinning
 
         t0 = time.time()

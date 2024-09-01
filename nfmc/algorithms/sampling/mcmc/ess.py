@@ -94,7 +94,7 @@ class ESS(Sampler):
         self.kernel: ESSKernel
         self.params: ESSParameters
 
-        out = MCMCOutput(event_shape=x0.shape[1:])
+        out = MCMCOutput(event_shape=x0.shape[1:], store_samples=self.params.store_samples)
         out.running_samples.thinning = thinning
 
         t0 = time.time()

@@ -79,7 +79,7 @@ class MH(Sampler):
         self.params: MHParameters
         self.kernel: MHKernel
 
-        out = MCMCOutput(event_shape=x0.shape[1:])
+        out = MCMCOutput(event_shape=x0.shape[1:], store_samples=self.params.store_samples)
         out.running_samples.thinning = thinning
 
         # Initialize

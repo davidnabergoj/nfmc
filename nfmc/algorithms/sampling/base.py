@@ -32,7 +32,6 @@ class MCMCParameters:
     n_warmup_iterations: int = 100
 
     store_samples: bool = True
-    estimate_running_moments: bool = False
 
     def __post_init__(self):
         pass
@@ -246,10 +245,11 @@ class MCMCOutput:
     running_samples: MCMCSamples = None  # (n_iterations, n_chains, *event_shape)
     statistics: Optional[MCMCStatistics] = None
     kernel: Optional[MCMCKernel] = None
+    store_samples: bool = True
 
     def __post_init__(self):
         if self.running_samples is None:
-            self.running_samples = MCMCSamples(self.event_shape)
+            self.running_samples = MCMCSamples(self.event_shape, store_samples=self.store_samples)
         if self.statistics is None:
             self.statistics = MCMCStatistics(self.event_shape)
 

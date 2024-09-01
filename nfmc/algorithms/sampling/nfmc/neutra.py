@@ -89,7 +89,6 @@ class NeuTraHMC(Sampler):
         self.inner_sampler.params.tune_step_size = False
         self.inner_sampler.params.tune_inv_mass_diag = False
         self.inner_sampler.params.store_samples = self.params.store_samples
-        self.inner_sampler.params.estimate_running_moments = self.params.estimate_running_moments
         self.inner_sampler.params.moment_transform = lambda v: self.kernel.flow.inverse(v)[0].detach()
 
         # Run HMC with the adjusted target

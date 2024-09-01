@@ -99,7 +99,7 @@ class TESS(Sampler):
         self.kernel: TESSKernel
         self.params: TESSParameters
 
-        out = MCMCOutput(event_shape=x0.shape[1:])
+        out = MCMCOutput(event_shape=x0.shape[1:], store_samples=self.params.store_samples)
 
         t0 = time.time()
         n_chains, *event_shape = x0.shape
@@ -142,7 +142,7 @@ class TESS(Sampler):
         self.kernel: TESSKernel
         self.params: TESSParameters
 
-        out = MCMCOutput(event_shape=x0.shape[1:])
+        out = MCMCOutput(event_shape=x0.shape[1:], store_samples=self.params.store_samples)
         out.thinning = thinning
 
         t0 = time.time()

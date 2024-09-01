@@ -50,7 +50,7 @@ class NUTS(Sampler):
         )
         mcmc.run()
 
-        out = MCMCOutput(event_shape=x0.shape[1:])
+        out = MCMCOutput(event_shape=x0.shape[1:], store_samples=self.params.store_samples)
         out.running_samples.add(
             torch.concat([mcmc.get_samples()[f'd{i}'][:, :, None] for i in range(self.kernel.event_size)], dim=2)
         )
