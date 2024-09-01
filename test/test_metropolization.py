@@ -14,18 +14,18 @@ def test_log_ratio():
 
     # Move from x0 to x1
     forward = metropolis_acceptance_log_ratio(
-        log_prob_curr=-target(x0),
-        log_prob_prime=-target(x1),
-        log_proposal_curr=-proposal(x0),
-        log_proposal_prime=-proposal(x1)
+        log_prob_target_curr=-target(x0),
+        log_prob_target_prime=-target(x1),
+        log_prob_proposal_curr=-proposal(x0),
+        log_prob_proposal_prime=-proposal(x1)
     )
 
     # Move from x1 to x0
     inverse = metropolis_acceptance_log_ratio(
-        log_prob_curr=-proposal(x0),
-        log_prob_prime=-proposal(x1),
-        log_proposal_curr=-target(x0),
-        log_proposal_prime=-target(x1)
+        log_prob_target_curr=-proposal(x0),
+        log_prob_target_prime=-proposal(x1),
+        log_prob_proposal_curr=-target(x0),
+        log_prob_proposal_prime=-target(x1)
     )
 
     assert forward > inverse
