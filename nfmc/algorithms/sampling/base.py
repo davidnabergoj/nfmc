@@ -85,7 +85,7 @@ class MCMCExpectation:
 
         self.running_value = torch.add(
             self.n_seen / (self.n_seen + n_new) * self.running_value,
-            n_new / (self.n_seen + n_new) * torch.mean(self.f(x), dim=(0, 1))
+            n_new / (self.n_seen + n_new) * torch.mean(self.f(x.detach()).detach(), dim=(0, 1))
         )
         self.n_seen += n_new
 
