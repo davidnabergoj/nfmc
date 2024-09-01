@@ -131,6 +131,9 @@ class JumpNFMC(Sampler):
         self.kernel: NFMCKernel
         self.params: JumpNFMCParameters
 
+        if not self.inner_sampler.params.store_samples:
+            raise ValueError("Inner sampler in jump HMC must store samples")
+
         n_chains, *event_shape = x0.shape
         event_shape = tuple(event_shape)
 

@@ -1,29 +1,16 @@
 import math
-import time
-from copy import deepcopy
-from typing import Sized, Optional
-from tqdm import tqdm
-from nfmc.algorithms.sampling.base import Sampler, MCMCKernel, MCMCParameters, MCMCOutput, MCMCStatistics, MCMCSamples
+from typing import Optional, Tuple, Union
 from dataclasses import dataclass
 import torch
 
-from nfmc.algorithms.sampling.tuning import DualAveragingParams, DualAveraging
+from nfmc.algorithms.sampling.mcmc.base import MetropolisParameters, MetropolisKernel, MetropolisSampler
 from torchflows.utils import sum_except_batch
 
 
 @dataclass
-class HMCKernel(MCMCKernel):
+class HMCKernel(MetropolisKernel):
     event_size: int
-    inv_mass_diag: torch.Tensor = None
-    step_size: float = 0.01
     n_leapfrog_steps: int = 20
-
-    def __post_init__(self):
-        if self.inv_mass_diag is None:
-            self.inv_mass_diag = torch.ones(self.event_size)
-        else:
-            if self.inv_mass_diag.shape != (self.event_size,):
-                raise ValueError
 
     def __repr__(self):
         return (f'log step: {math.log(self.step_size):.2f}, '
@@ -32,12 +19,8 @@ class HMCKernel(MCMCKernel):
 
 
 @dataclass
-class HMCParameters(MCMCParameters):
-    tune_inv_mass_diag: bool = False
-    tune_step_size: bool = False
-    adjustment: bool = True
-    imd_adjustment: float = 1e-3
-    da_params = DualAveragingParams()
+class HMCParameters(MetropolisParameters):
+    pass
 
 
 def mass_matrix_multiply(x: torch.Tensor, inverse_mass_matrix_diagonal: torch.Tensor, event_shape):
@@ -94,9 +77,9 @@ def hmc_trajectory(x: torch.Tensor,
     return x, momentum
 
 
-class HMC(Sampler):
+class HMC(MetropolisSampler):
     def __init__(self,
-                 event_shape: Sized,
+                 event_shape: Union[torch.Size, Tuple[int, ...]],
                  target: callable,
                  kernel: Optional[HMCKernel] = None,
                  params: Optional[HMCParameters] = None):
@@ -106,109 +89,41 @@ class HMC(Sampler):
             params = HMCParameters()
         super().__init__(event_shape, target, kernel, params)
 
-    def warmup(self, x0: torch.Tensor, show_progress: bool = True, thinning: int = 1,
-               time_limit_seconds: int = 3600 * 24) -> MCMCOutput:
-        self.kernel: HMCKernel
-        self.params: HMCParameters
+    @property
+    def name(self):
+        return "HMC"
 
-        warmup_copy = deepcopy(self)
-        warmup_copy.params.tune_inv_mass_diag = True
-        warmup_copy.params.tune_step_size = True
-        warmup_copy.params.n_iterations = self.params.n_warmup_iterations
-        warmup_output = warmup_copy.sample(
-            x0,
-            show_progress=show_progress,
-            thinning=thinning,
-            time_limit_seconds=time_limit_seconds
-        )
+    def propose(self, x: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor, int, int, int]:
+        n_chains = x.shape[0]
 
-        self.kernel = warmup_copy.kernel
-        new_params = warmup_copy.params
-        new_params.n_iterations = self.params.n_iterations
-        new_params.tune_step_size = self.params.tune_step_size
-        new_params.tune_inv_mass_diag = self.params.tune_inv_mass_diag
-        self.params = new_params
-
-        return warmup_output
-
-    def sample(self,
-               x0: torch.Tensor,
-               show_progress: bool = True,
-               thinning: int = 1,
-               time_limit_seconds: int = 3600 * 24) -> MCMCOutput:
-        self.kernel: HMCKernel
-        self.params: HMCParameters
-
-        n_chains, *event_shape = x0.shape
-        event_shape = tuple(event_shape)
-        out = MCMCOutput(event_shape, store_samples=self.params.store_samples)
-        out.running_samples.thinning = thinning
-
-        t0 = time.time()
-        da = DualAveraging(initial_step_size=self.kernel.step_size, params=self.params.da_params)
-        x = torch.clone(x0).detach()
-        out.statistics.elapsed_time_seconds += time.time() - t0
-
-        for i in (pbar := tqdm(range(self.params.n_iterations), desc='HMC', disable=not show_progress)):
-            if out.statistics.elapsed_time_seconds > time_limit_seconds:
-                break
-
-            t0 = time.time()
-            p = mass_matrix_multiply(torch.randn_like(x), 1 / self.kernel.inv_mass_diag.sqrt().to(x), event_shape)
-            try:
-                x_prime, p_prime = hmc_trajectory(x, p, event_shape, self.kernel, potential=self.target)
-                with torch.no_grad():
-                    if self.params.adjustment:
-                        hamiltonian_start = self.target(x) + 0.5 * sum_except_batch(
-                            mass_matrix_multiply(p ** 2, self.kernel.inv_mass_diag, event_shape),
-                            event_shape
-                        )
-                        hamiltonian_end = self.target(x_prime) + 0.5 * sum_except_batch(
-                            mass_matrix_multiply(p_prime ** 2, self.kernel.inv_mass_diag, event_shape),
-                            event_shape
-                        )
-                        log_prob_accept = -hamiltonian_end - (-hamiltonian_start)
-                        log_u = torch.rand_like(log_prob_accept).log()  # n_chains
-                        accepted_mask = (log_u < log_prob_accept)  # n_chains
-                    else:
-                        accepted_mask = torch.ones(size=(n_chains,), dtype=torch.bool)
-                    x[accepted_mask] = x_prime[accepted_mask]
-            except ValueError:
-                accepted_mask = torch.zeros(size=(n_chains,),
-                                            dtype=torch.bool)  # TODO reject only the appropriate chains
-                out.statistics.n_divergences += 1
-
-            out.statistics.n_target_calls += 2 * self.kernel.n_leapfrog_steps * n_chains
-            out.statistics.n_target_gradient_calls += 2 * self.kernel.n_leapfrog_steps * n_chains
+        try:
+            p = mass_matrix_multiply(torch.randn_like(x), 1 / self.kernel.inv_mass_diag.sqrt().to(x), self.event_shape)
+            x_prime, p_prime = hmc_trajectory(x, p, self.event_shape, self.kernel, potential=self.target)
             if self.params.adjustment:
-                out.statistics.n_target_calls += 2 * n_chains
+                hamiltonian_start = self.target(x) + 0.5 * sum_except_batch(
+                    mass_matrix_multiply(p ** 2, self.kernel.inv_mass_diag, self.event_shape),
+                    self.event_shape
+                )
+                hamiltonian_end = self.target(x_prime) + 0.5 * sum_except_batch(
+                    mass_matrix_multiply(p_prime ** 2, self.kernel.inv_mass_diag, self.event_shape),
+                    self.event_shape
+                )
+                log_prob_accept = -hamiltonian_end - (-hamiltonian_start)
+                log_u = torch.rand_like(log_prob_accept).log()  # n_chains
+                mask = (log_u < log_prob_accept)  # n_chains
+            else:
+                mask = torch.ones(size=(n_chains,), dtype=torch.bool)
+            n_divergences = 0
+        except ValueError:
+            x_prime = x
+            mask = torch.zeros(size=(n_chains,), dtype=torch.bool)
+            n_divergences = 1
 
-            out.statistics.n_accepted_trajectories += int(torch.sum(accepted_mask))
-            out.statistics.n_attempted_trajectories += n_chains
-            out.statistics.expectations.update(x)
-
-            with torch.no_grad():
-                x = x.detach()
-
-                out.running_samples.add(x)
-
-                if n_chains > 1 and self.params.tune_inv_mass_diag:
-                    # inv_mass_diag = torch.var(x.flatten(1, -1), dim=0)  # Mass matrix adaptation
-                    self.kernel.inv_mass_diag = (
-                            self.params.imd_adjustment * torch.var(x.flatten(1, -1), dim=0) +
-                            (1 - self.params.imd_adjustment) * self.kernel.inv_mass_diag
-                    )
-                if self.params.tune_step_size and self.params.adjustment:
-                    # Step size tuning is only possible with adjustment right now
-                    acc_rate = torch.mean(accepted_mask.float())
-                    error = self.params.da_params.target_acceptance_rate - acc_rate
-                    da.step(error)
-                    self.kernel.step_size = da.value  # Step size adaptation
-
-            out.statistics.elapsed_time_seconds += time.time() - t0
-            pbar.set_postfix_str(f'{out.statistics} | {self.kernel} | {da}')
-
-        return out
+        n_calls = 2 * self.kernel.n_leapfrog_steps * n_chains
+        n_grads = 2 * self.kernel.n_leapfrog_steps * n_chains
+        if self.params.adjustment:
+            n_calls += 2 * n_chains
+        return x_prime.detach(), mask, n_calls, n_grads, n_divergences
 
 
 class UHMC(HMC):

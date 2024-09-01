@@ -1,11 +1,12 @@
 import time
 from dataclasses import dataclass
-from typing import Sized
+from typing import Sized, Union, Tuple, Dict, Any
 
 import torch
 from tqdm import tqdm
 
-from nfmc.algorithms.sampling.base import Sampler, MCMCKernel, MCMCParameters, MCMCStatistics, MCMCOutput
+from nfmc.algorithms.sampling.base import Sampler, MCMCKernel, MCMCParameters, MCMCStatistics, MCMCOutput, MCMCSamples
+from nfmc.algorithms.sampling.mcmc.base import MCMCSampler
 from nfmc.util import multivariate_normal_sample
 from torchflows.utils import get_batch_shape
 
@@ -76,9 +77,9 @@ class ESSParameters(MCMCParameters):
     max_ess_step_iterations: int = 5
 
 
-class ESS(Sampler):
+class ESS(MCMCSampler):
     def __init__(self,
-                 event_shape: Sized,
+                 event_shape: Union[Tuple[int, ...], torch.Size],
                  target: callable,
                  negative_log_likelihood: callable,
                  kernel: ESSKernel = None,
@@ -90,36 +91,36 @@ class ESS(Sampler):
         super().__init__(event_shape, target, kernel, params)
         self.negative_log_likelihood = negative_log_likelihood
 
-    def sample(self, x0: torch.Tensor, show_progress: bool = True, thinning: int = 1) -> MCMCOutput:
-        self.kernel: ESSKernel
-        self.params: ESSParameters
+    @property
+    def name(self):
+        return "ESS"
 
-        out = MCMCOutput(event_shape=x0.shape[1:], store_samples=self.params.store_samples)
-        out.running_samples.thinning = thinning
+    def propose(self, x: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor, int, int, int]:
+        n_chains = x.shape[0]
 
-        t0 = time.time()
-        n_chains, *event_shape = x0.shape
-        event_shape = tuple(event_shape)
-        x = multivariate_normal_sample((n_chains,), event_shape, self.kernel.cov)
-        out.statistics.elapsed_time_seconds += time.time() - t0
-
-        for i in (pbar := tqdm(range(self.params.n_iterations), desc="ESS", disable=not show_progress)):
-            t0 = time.time()
-            x, accepted_mask = elliptical_slice_sampling_step(
+        try:
+            x_prime, mask = elliptical_slice_sampling_step(
                 x,
                 self.negative_log_likelihood,
-                event_shape=event_shape,
+                event_shape=self.event_shape,
                 cov=self.kernel.cov,
                 max_iterations=self.params.max_ess_step_iterations
             )
-            out.statistics.n_target_calls += (self.params.max_ess_step_iterations + 1) * n_chains
-            out.running_samples.add(x)
-            t1 = time.time()
+            mask = torch.ones_like(mask)  # All are accepted (technical hack)
+            n_divergences = 0
+        except ValueError:
+            x_prime = x
+            mask = torch.zeros(size=(n_chains,), dtype=torch.bool)
+            n_divergences = 1
 
-            out.statistics.elapsed_time_seconds = t1 - t0
-            out.statistics.n_accepted_trajectories += int(torch.sum(accepted_mask))
-            out.statistics.n_attempted_trajectories += n_chains
-            pbar.set_postfix_str(f'{out.statistics}')
+        n_calls = (self.params.max_ess_step_iterations + 1) * n_chains
+        n_grads = 0
+        return x_prime, mask, n_calls, n_grads, n_divergences
 
-        out.kernel = self.kernel
-        return out
+    def update_kernel(self, data: Dict[str, Any]):
+        pass
+
+    def sample(self, x0: torch.Tensor, **kwargs) -> MCMCOutput:
+        n_chains = x0.shape[0]
+        x0 = multivariate_normal_sample((n_chains,), self.event_shape, self.kernel.cov)
+        return super().sample(x0=x0, **kwargs)
