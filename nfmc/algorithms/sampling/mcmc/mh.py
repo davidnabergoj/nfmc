@@ -23,7 +23,8 @@ class MHKernel(MetropolisKernel):
 
 @dataclass
 class MHParameters(MetropolisParameters):
-    pass
+    def __post_init__(self):
+        self.tune_inv_mass_diag = False
 
 
 class MH(MetropolisSampler):

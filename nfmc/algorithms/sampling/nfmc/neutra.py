@@ -48,7 +48,6 @@ class NeuTra(Sampler):
             params = NeuTraParameters()
         super().__init__(event_shape, target, kernel, params)
         inner_params.n_iterations = self.params.n_iterations
-        inner_params.data_transform = lambda v: self.kernel.flow.bijection.inverse(v)[0].detach()
         self.inner_sampler = inner_sampler_class(
             event_shape,
             self.adjusted_target,
@@ -70,8 +69,7 @@ class NeuTra(Sampler):
     def warmup(self,
                x0: torch.Tensor,
                show_progress: bool = True,
-               thinning: int = 1,
-               time_limit_seconds: int = 3600 * 24) -> MCMCOutput:
+               **kwargs) -> MCMCOutput:
         self.kernel: NeuTraKernel
         self.params: NeuTraParameters
 
@@ -83,7 +81,8 @@ class NeuTra(Sampler):
         )
 
         # Tune MCMC
-        return self.inner_sampler.warmup(x0, show_progress=show_progress)
+        self.inner_sampler.params.tuning_mode()
+        return self.inner_sampler.warmup(x0, show_progress=show_progress, **kwargs)
 
     def sample(self, x0: torch.Tensor, **kwargs) -> MCMCOutput:
         self.kernel: NeuTraKernel
@@ -91,12 +90,16 @@ class NeuTra(Sampler):
 
         n_chains = x0.shape[0]
         self.inner_sampler.params.n_iterations = self.params.n_iterations
-        self.inner_sampler.params.tuning = False
+        self.inner_sampler.params.sampling_mode()
         self.inner_sampler.params.store_samples = self.params.store_samples
         z0 = self.kernel.flow.base_sample((n_chains,)).detach()
 
         # Run MCMC with the adjusted target, returns output related to the original space (not the latent space)
-        return self.inner_sampler.sample(z0, **kwargs)
+        return self.inner_sampler.sample(
+            z0,
+            data_transform=lambda v: self.kernel.flow.bijection.inverse(v)[0].detach(),
+            **kwargs
+        )
 
 
 class NeuTraHMC(NeuTra):

@@ -30,11 +30,17 @@ class NFMCKernel(MCMCKernel):
 class MCMCParameters:
     n_iterations: int = 100
     n_warmup_iterations: int = 100
-    tuning: bool = False  # are we currently tuning?
+    tuning: bool = False
     store_samples: bool = True
 
     def __post_init__(self):
         pass
+
+    def tuning_mode(self):
+        self.tuning = True
+
+    def sampling_mode(self):
+        self.tuning = False
 
 
 @dataclass

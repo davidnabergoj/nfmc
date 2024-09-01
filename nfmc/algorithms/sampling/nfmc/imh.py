@@ -1,15 +1,13 @@
 import time
-from collections import defaultdict
 from copy import deepcopy
 from dataclasses import dataclass
-from typing import Sized, Optional
+from typing import Optional, Tuple, Union
 
 from tqdm import tqdm
 import torch
 
-from nfmc.algorithms.sampling.base import Sampler, NFMCKernel, NFMCParameters, MCMCStatistics, MCMCOutput, MCMCSamples
+from nfmc.algorithms.sampling.base import Sampler, NFMCKernel, NFMCParameters, MCMCOutput
 from nfmc.util import metropolis_acceptance_log_ratio
-from torchflows.flows import Flow
 
 
 @dataclass
@@ -49,7 +47,7 @@ def sample_bounded_geom(p, max_val):
 
 class AdaptiveIMH(Sampler):
     def __init__(self,
-                 event_shape: Sized,
+                 event_shape: Union[Tuple[int, ...], torch.Size],
                  target: callable,
                  kernel: Optional[IMHKernel] = None,
                  params: Optional[IMHParameters] = None):
@@ -73,7 +71,7 @@ class AdaptiveIMH(Sampler):
             show_progress=show_progress
         )
 
-        out = MCMCOutput(event_shape=x0.shape[1:], store_samples=self.params.store_samples)
+        out = MCMCOutput(event_shape=x0.shape[1:], store_samples=True)
         out.running_samples.add(self.kernel.flow.sample(x0.shape[0]).detach())
         return out
 
@@ -89,7 +87,7 @@ class AdaptiveIMH(Sampler):
         out.running_samples.thinning = thinning
 
         t0 = time.time()
-        n_chains  = x0.shape[0]
+        n_chains = x0.shape[0]
         x = deepcopy(x0)
         out.statistics.elapsed_time_seconds += time.time() - t0
 
@@ -156,7 +154,7 @@ class AdaptiveIMH(Sampler):
 
 class FixedIMH(Sampler):
     def __init__(self,
-                 event_shape: Sized,
+                 event_shape: Union[Tuple[int,...], torch.Size],
                  target: callable,
                  kernel: Optional[IMHKernel] = None,
                  params: Optional[IMHParameters] = None):
@@ -176,7 +174,7 @@ class FixedIMH(Sampler):
             **self.params.warmup_fit_kwargs,
             show_progress=show_progress
         )
-        out = MCMCOutput(event_shape=x0.shape[1:], store_samples=self.params.store_samples)
+        out = MCMCOutput(event_shape=x0.shape[1:], store_samples=True)
         out.running_samples.add(self.kernel.flow.sample(x0.shape[0]).detach())
         return out
 

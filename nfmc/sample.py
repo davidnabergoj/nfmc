@@ -261,6 +261,7 @@ def sample(target: callable,
     if x0 is None:
         x0 = torch.randn(size=(n_chains, *event_shape))
     if warmup:
+        # we always store samples during warmup
         warmup_output = sampler.warmup(x0, **kwargs)
         x0 = warmup_output.samples.flatten(0, 1)
         x0 = x0[torch.randperm(len(x0))][:n_chains]

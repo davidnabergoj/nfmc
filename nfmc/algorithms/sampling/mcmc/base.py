@@ -34,27 +34,18 @@ class MCMCSampler(Sampler):
     def update_kernel(self, data: Dict[str, Any]):
         raise NotImplementedError
 
-    def warmup(self,
-               x0: torch.Tensor,
-               show_progress: bool = True,
-               thinning: int = 1,
-               time_limit_seconds: int = 3600 * 24) -> MCMCOutput:
+    def warmup(self, x0: torch.Tensor, **kwargs) -> MCMCOutput:
         warmup_copy = deepcopy(self)
-        warmup_copy.params.tuning = True
+        warmup_copy.params.tuning_mode()
         warmup_copy.params.n_iterations = self.params.n_warmup_iterations
-        warmup_output = warmup_copy.sample(
-            x0,
-            show_progress=show_progress,
-            thinning=thinning,
-            time_limit_seconds=time_limit_seconds
-        )
+        warmup_copy.params.store_samples = True  # always store samples during warmup
+        warmup_output = warmup_copy.sample(x0, **kwargs)
 
         self.kernel = warmup_copy.kernel
         new_params = warmup_copy.params
         new_params.n_iterations = self.params.n_iterations
-        new_params.tuning = self.params.tuning
         self.params = new_params
-
+        self.params.sampling_mode()
         return warmup_output
 
     def sample(self,
@@ -62,10 +53,12 @@ class MCMCSampler(Sampler):
                show_progress: bool = True,
                thinning: int = 1,
                time_limit_seconds: int = 3600 * 24,
+               data_transform: callable = lambda v: v,
                **kwargs) -> MCMCOutput:
         n_chains, *event_shape = x0.shape
         event_shape = tuple(event_shape)
         out = MCMCOutput(event_shape, store_samples=self.params.store_samples)
+        out.statistics.data_transform = data_transform
         out.running_samples.thinning = thinning
         x = torch.clone(x0).detach()
 
@@ -127,8 +120,8 @@ class MetropolisKernel(MCMCKernel):
 
 @dataclass
 class MetropolisParameters(MCMCParameters):
-    tune_inv_mass_diag: bool = False
-    tune_step_size: bool = False
+    tune_inv_mass_diag: bool = True
+    tune_step_size: bool = True
     adjustment: bool = True
     imd_adjustment: float = 1e-3
 
