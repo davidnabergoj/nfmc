@@ -65,7 +65,7 @@ class Langevin(MetropolisSampler):
     def name(self):
         return 'LMC'
 
-    def propose(self, x: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor, int, int, int]:
+    def propose(self, x: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor, int, int, int, Dict[str, Any]]:
         n_chains = x.shape[0]
         noise = torch.randn_like(x)
         try:
@@ -126,7 +126,7 @@ class Langevin(MetropolisSampler):
             n_calls += n_chains
             n_grads += n_chains
 
-        return x_prime.detach(), mask, n_calls, n_grads, n_divergences
+        return x_prime.detach(), mask, n_calls, n_grads, n_divergences, dict()
 
 
 class MALA(Langevin):

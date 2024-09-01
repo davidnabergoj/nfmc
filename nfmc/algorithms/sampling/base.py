@@ -1,5 +1,5 @@
 from dataclasses import dataclass
-from typing import Sized, Optional, Any, Union, Tuple, List, Dict
+from typing import Optional, Any, Union, Tuple, List, Dict
 
 import torch
 
@@ -17,7 +17,7 @@ class MCMCKernel:
 
 @dataclass
 class NFMCKernel(MCMCKernel):
-    event_shape: Sized
+    event_shape: Union[Tuple[int, ...], torch.Size]
     flow: Flow = None
 
     def __post_init__(self):
@@ -279,7 +279,7 @@ class Sampler:
     """
 
     def __init__(self,
-                 event_shape: Sized,
+                 event_shape: Union[torch.Size, Tuple[int, ...]],
                  target: callable,
                  kernel: MCMCKernel,
                  params: MCMCParameters):
