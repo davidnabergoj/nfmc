@@ -2,6 +2,9 @@ from typing import Dict, List
 
 import torch
 
+from torchflows.bijections.finite.multiscale.architectures import ShiftGlow, RQSGlow, LRSGlow, DeepSigmoidGlow, \
+    DeepDenseSigmoidGlow, DenseSigmoidGlow
+
 AFFINE_AUTOREGRESSIVE_FLOW_NAMES: Dict[str, List[str]] = {
     'realnvp': ["realnvp", 'real_nvp', 'rnvp'],
     'nice': ['nice'],
@@ -38,7 +41,13 @@ MULTISCALE_FLOW_NAMES: Dict[str, List[str]] = {
     'ms-naf-deep': ['ms-naf-deep', 'multiscale-naf-deep'],
     'ms-naf-dense': ['ms-naf-dense', 'multiscale-naf-dense'],
     'ms-naf-deep-dense': ['ms-naf-deep-dense', 'multiscale-naf-deep-dense'],
-    'glow': ['affine-glow', 'glow'],
+    'glow-affine': ['affine-glow', 'glow-affine', 'glow'],
+    'glow-shift': ['shift-glow', 'glow-shift'],
+    'glow-rqs': ['rqs-glow', 'glow-rqs'],
+    'glow-lrs': ['lrs-glow', 'glow-lrs'],
+    'glow-naf-dense': ['naf-dense-glow', 'glow-naf-dense'],
+    'glow-naf-deep': ['naf-deep-glow', 'glow-naf-deep'],
+    'glow-naf-deep-dense': ['naf-deep-dense-glow', 'glow-naf-deep-dense'],
 }
 
 AUTOREGRESSIVE_FLOW_NAMES: Dict[str, List[str]] = {
@@ -225,8 +234,20 @@ def create_flow_object(flow_name: str, event_shape, **kwargs):
         bijection = MultiscaleDeepDenseSigmoid(event_shape, **kwargs)
     elif flow_name in FLOW_NAMES['ms-naf-dense']:
         bijection = MultiscaleDenseSigmoid(event_shape, **kwargs)
-    elif flow_name in FLOW_NAMES['glow']:
+    elif flow_name in FLOW_NAMES['glow-affine']:
         bijection = AffineGlow(event_shape, **kwargs)
+    elif flow_name in FLOW_NAMES['glow-shift']:
+        bijection = ShiftGlow(event_shape, **kwargs)
+    elif flow_name in FLOW_NAMES['glow-rqs']:
+        bijection = RQSGlow(event_shape, **kwargs)
+    elif flow_name in FLOW_NAMES['glow-lrs']:
+        bijection = LRSGlow(event_shape, **kwargs)
+    elif flow_name in FLOW_NAMES['glow-naf-deep']:
+        bijection = DeepSigmoidGlow(event_shape, **kwargs)
+    elif flow_name in FLOW_NAMES['glow-naf-dense']:
+        bijection = DenseSigmoidGlow(event_shape, **kwargs)
+    elif flow_name in FLOW_NAMES['glow-naf-deep-dense']:
+        bijection = DeepDenseSigmoidGlow(event_shape, **kwargs)
     else:
         raise ValueError
 
