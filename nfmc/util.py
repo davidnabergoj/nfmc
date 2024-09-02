@@ -2,8 +2,6 @@ from typing import Dict, List
 
 import torch
 
-from torchflows.bijections.finite.multiscale.architectures import ShiftGlow, RQSGlow, LRSGlow, DeepSigmoidGlow, \
-    DeepDenseSigmoidGlow, DenseSigmoidGlow
 
 AFFINE_AUTOREGRESSIVE_FLOW_NAMES: Dict[str, List[str]] = {
     'realnvp': ["realnvp", 'real_nvp', 'rnvp'],
@@ -159,7 +157,13 @@ def create_flow_object(flow_name: str, event_shape, **kwargs):
         MultiscaleDeepSigmoid,
         MultiscaleDenseSigmoid,
         MultiscaleDeepDenseSigmoid,
-        AffineGlow
+        AffineGlow,
+        ShiftGlow,
+        RQSGlow,
+        LRSGlow,
+        DeepSigmoidGlow,
+        DeepDenseSigmoidGlow,
+        DenseSigmoidGlow
     )
 
     if flow_name in FLOW_NAMES['realnvp']:
