@@ -2,7 +2,6 @@ from typing import Dict, List
 
 import torch
 
-
 AFFINE_AUTOREGRESSIVE_FLOW_NAMES: Dict[str, List[str]] = {
     'realnvp': ["realnvp", 'real_nvp', 'rnvp'],
     'nice': ['nice'],
@@ -58,13 +57,18 @@ AUTOREGRESSIVE_FLOW_NAMES: Dict[str, List[str]] = {
 CONTINUOUS_FLOW_NAMES: Dict[str, List[str]] = {
     'ot-flow': ['ot-flow', 'otflow', 'ot flow'],
     'ffjord': ['ffjord'],
+    'conv-ffjord': ['conv-ffjord'],
     'ddb': ['ddnf', 'ddb'],
+    'conv-ddb': ['conv-ddnf', 'conv-ddb'],
     'rnode': ["rnode", 'r-node'],
+    'conv-rnode': ["conv-rnode", 'conv-r-node'],
 }
 
 RESIDUAL_FLOW_NAMES: Dict[str, List[str]] = {
     'i-resnet': ['iresnet', 'invertible resnet', 'invertible-resnet', 'i-resnet'],
+    'conv-i-resnet': ['conv-iresnet', 'convolutional invertible resnet', 'conv-invertible-resnet', 'conv-i-resnet'],
     'resflow': ['resflow', 'residual flow', 'residual-flow', 'res-flow'],
+    'conv-resflow': ['conv-resflow', 'convolutional residual flow', 'conv-residual-flow', 'conv-res-flow'],
     'proximal-resflow': ["proximal-resflow", 'p-resflow', 'presflow', 'proximal resflow'],
     'planar': ['planar'],
     'radial': ['radial'],
@@ -163,7 +167,12 @@ def create_flow_object(flow_name: str, event_shape, **kwargs):
         LRSGlow,
         DeepSigmoidGlow,
         DeepDenseSigmoidGlow,
-        DenseSigmoidGlow
+        DenseSigmoidGlow,
+        ConvolutionalRNODE,
+        ConvolutionalFFJORD,
+        ConvolutionalDeepDiffeomorphicBijection,
+        ConvolutionalResFlow,
+        ConvolutionalInvertibleResNet
     )
 
     if flow_name in FLOW_NAMES['realnvp']:
@@ -252,6 +261,16 @@ def create_flow_object(flow_name: str, event_shape, **kwargs):
         bijection = DenseSigmoidGlow(event_shape, **kwargs)
     elif flow_name in FLOW_NAMES['glow-naf-deep-dense']:
         bijection = DeepDenseSigmoidGlow(event_shape, **kwargs)
+    elif flow_name in FLOW_NAMES['conv-i-resnet']:
+        bijection = ConvolutionalInvertibleResNet(event_shape, **kwargs)
+    elif flow_name in FLOW_NAMES['conv-resflow']:
+        bijection = ConvolutionalResFlow(event_shape, **kwargs)
+    elif flow_name in FLOW_NAMES['conv-ffjord']:
+        bijection = ConvolutionalFFJORD(event_shape, **kwargs)
+    elif flow_name in FLOW_NAMES['conv-rnode']:
+        bijection = ConvolutionalRNODE(event_shape, **kwargs)
+    elif flow_name in FLOW_NAMES['conv-ddb']:
+        bijection = ConvolutionalDeepDiffeomorphicBijection(event_shape, **kwargs)
     else:
         raise ValueError
 
