@@ -103,12 +103,14 @@ class MCMCExpectation:
 
 
 class MCMCExpectationDict:
-    def __init__(self, expectations: Dict[str, MCMCExpectation]):
+    def __init__(self, expectations: Dict[str, MCMCExpectation], data_transform: callable):
         self.expectations = expectations
+        self.data_transform = data_transform
 
     def update(self, x: torch.Tensor):
+        x_transformed = self.data_transform(x)
         for k in self.expectations.keys():
-            self.expectations[k].update(x)
+            self.expectations[k].update(x_transformed)
 
     def reset(self):
         for k in self.expectations.keys():
@@ -135,10 +137,13 @@ class MCMCStatistics:
     expectations: MCMCExpectationDict = None
 
     def __post_init__(self):
-        self.expectations = MCMCExpectationDict({
-            'first_moment': MCMCExpectation(self.event_shape, f=lambda v: self.data_transform(v)),
-            'second_moment': MCMCExpectation(self.event_shape, f=lambda v: self.data_transform(v) ** 2),
-        })
+        self.expectations = MCMCExpectationDict(
+            {
+                'first_moment': MCMCExpectation(self.event_shape, f=lambda v: v),
+                'second_moment': MCMCExpectation(self.event_shape, f=lambda v: v ** 2),
+            },
+            data_transform=self.data_transform
+        )
 
     @property
     def running_first_moment(self):
