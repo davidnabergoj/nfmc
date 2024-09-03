@@ -67,20 +67,34 @@ class NeuTra(Sampler):
     def warmup(self,
                x0: torch.Tensor,
                show_progress: bool = True,
+               time_limit_seconds: int = 3600 * 24,
                **kwargs) -> MCMCOutput:
         self.kernel: NeuTraKernel
         self.params: NeuTraParameters
 
+        flow_fit_time_limit = int(0.3 * time_limit_seconds)
+        inner_sampler_warmup_time_limit = time_limit_seconds - flow_fit_time_limit
+
         # Fit flow to target via variational inference
         self.kernel.flow.variational_fit(
             lambda v: -self.target(v),
-            **self.params.warmup_fit_kwargs,
+            **{
+                **dict(time_limit_seconds=flow_fit_time_limit),
+                **self.params.warmup_fit_kwargs,
+            },
             show_progress=show_progress
         )
 
         # Tune MCMC
         self.inner_sampler.params.tuning_mode()
-        return self.inner_sampler.warmup(x0, show_progress=show_progress, **kwargs)
+        return self.inner_sampler.warmup(
+            x0,
+            show_progress=show_progress,
+            **{
+                **kwargs,
+                **dict(time_limit_seconds=inner_sampler_warmup_time_limit)
+            }
+        )
 
     def sample(self, x0: torch.Tensor, **kwargs) -> MCMCOutput:
         self.kernel: NeuTraKernel

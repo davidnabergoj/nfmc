@@ -239,6 +239,7 @@ def sample(target: callable,
            flow_kwargs: Optional[dict] = None,
            device: torch.device = torch.device("cpu"),
            sample_kwargs: dict = None,
+           time_limit_seconds: int = 3600 * 24,
            **kwargs) -> MCMCOutput:
     if flow is not None and not isinstance(flow, str):
         event_shape = flow.event_shape
@@ -260,12 +261,29 @@ def sample(target: callable,
     )
     if x0 is None:
         x0 = torch.randn(size=(n_chains, *event_shape))
+
+    if warmup:
+        time_limit_warmup = int(0.3 * time_limit_seconds)
+        time_limit_sampling = time_limit_seconds - time_limit_warmup
+    else:
+        time_limit_sampling = time_limit_seconds
+
     if warmup:
         # we always store samples during warmup
-        warmup_output = sampler.warmup(x0, **kwargs)
+        warmup_output = sampler.warmup(
+            x0,
+            time_limit_seconds=time_limit_warmup,
+            **kwargs
+        )
         x0 = warmup_output.samples.flatten(0, 1)
         x0 = x0[torch.randperm(len(x0))][:n_chains]
-
     if sample_kwargs is None:
         sample_kwargs = dict()
-    return sampler.sample(x0, **{**kwargs, **sample_kwargs})
+    return sampler.sample(
+        x0,
+        time_limit_seconds=time_limit_sampling,
+        **{
+            **kwargs,
+            **sample_kwargs
+        }
+    )

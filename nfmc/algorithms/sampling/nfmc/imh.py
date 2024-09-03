@@ -73,7 +73,8 @@ class AdaptiveIMH(Sampler):
         self.kernel.flow.variational_fit(
             lambda v: -self.target(v),
             **self.params.warmup_fit_kwargs,
-            show_progress=show_progress
+            show_progress=show_progress,
+            time_limit_seconds=time_limit_seconds
         )
 
         out = MCMCOutput(event_shape=x0.shape[1:], store_samples=True)

@@ -96,11 +96,15 @@ class JumpNFMC(Sampler):
         self.kernel: NFMCKernel
         self.params: JumpNFMCParameters
 
+        inner_sampler_warmup_time_limit = int(0.3 * time_limit_seconds)
+        flow_training_time_limit = time_limit_seconds - inner_sampler_warmup_time_limit
+
+
         self.inner_sampler.params.store_samples = True
         warmup_output = self.inner_sampler.warmup(
             x0,
             show_progress=show_progress,
-            time_limit_seconds=time_limit_seconds
+            time_limit_seconds=inner_sampler_warmup_time_limit
         )
 
         x_train, x_val = train_val_split(
@@ -117,7 +121,10 @@ class JumpNFMC(Sampler):
                 x_val=x_val,
                 **{
                     **self.params.flow_fit_kwargs,
-                    **dict(show_progress=show_progress)
+                    **dict(
+                        show_progress=show_progress,
+                        time_limit_seconds=flow_training_time_limit
+                    )
                 }
             )
         except ValueError:
