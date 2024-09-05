@@ -55,9 +55,10 @@ class NeuTra(Sampler):
 
     def adjusted_target(self, _z, return_data: bool = False):
         self.kernel: NFMCKernel
-        _x, log_det_inverse = self.kernel.flow.bijection.inverse(_z)
+        _x, log_det_inverse = self.kernel.flow.bijection.inverse(_z.to(self.kernel.flow.get_device()))
+        _x = _x.cpu()
         log_prob = -self.target(_x)
-        adjusted_log_prob = log_prob + log_det_inverse
+        adjusted_log_prob = log_prob + log_det_inverse.to(log_prob)
         adjusted_potential = -adjusted_log_prob
         if return_data:
             return adjusted_potential, _x
