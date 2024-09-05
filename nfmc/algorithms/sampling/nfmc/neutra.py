@@ -97,15 +97,13 @@ class NeuTra(Sampler):
             }
         )
 
-    def sample(self, x0: torch.Tensor, **kwargs) -> MCMCOutput:
+    def sample(self, z0: torch.Tensor, **kwargs) -> MCMCOutput:
         self.kernel: NeuTraKernel
         self.params: NeuTraParameters
 
-        n_chains = x0.shape[0]
         self.inner_sampler.params.n_iterations = self.params.n_iterations
         self.inner_sampler.params.sampling_mode()
         self.inner_sampler.params.store_samples = self.params.store_samples
-        z0 = self.kernel.flow.base_sample((n_chains,)).detach()
 
         # Run MCMC with the adjusted target, returns output related to the original space (not the latent space)
         return self.inner_sampler.sample(
