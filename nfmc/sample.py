@@ -239,7 +239,7 @@ def sample(target: callable,
            flow_kwargs: Optional[dict] = None,
            device: torch.device = torch.device("cpu"),
            sample_kwargs: dict = None,
-           time_limit_seconds: int = 3600 * 24,
+           time_limit_seconds: int = 3600 * 24,  # TODO allow n_iterations to be None if time_limit_seconds is given
            **kwargs) -> MCMCOutput:
     if flow is not None and not isinstance(flow, str):
         event_shape = flow.event_shape
