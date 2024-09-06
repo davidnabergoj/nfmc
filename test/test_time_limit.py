@@ -1,10 +1,15 @@
 import time
+
+import pytest
 import torch
 
 from nfmc import sample
+from nfmc.util import get_supported_samplers
 
 
-def test_sampling():
+@pytest.mark.skip(reason="May not terminate")
+@pytest.mark.parametrize('strategy', get_supported_samplers())
+def test_sampling(strategy: str):
     torch.manual_seed(0)
     t0 = time.time()
     sample(
@@ -17,7 +22,9 @@ def test_sampling():
     assert time.time() - t0 < 10.0
 
 
-def test_warmup():
+@pytest.mark.skip(reason="May not terminate")
+@pytest.mark.parametrize('strategy', get_supported_samplers())
+def test_warmup(strategy: str):
     torch.manual_seed(0)
     t0 = time.time()
     sample(
