@@ -69,12 +69,12 @@ class NeuTra(Sampler):
     def warmup(self,
                x0: torch.Tensor,
                show_progress: bool = True,
-               time_limit_seconds: int = None) -> MCMCOutput:
+               time_limit_seconds: Union[float, int] = None) -> MCMCOutput:
         self.kernel: NeuTraKernel
         self.params: NeuTraParameters
 
         if time_limit_seconds is not None:
-            flow_fit_time_limit = int(0.3 * time_limit_seconds)
+            flow_fit_time_limit = 0.3 * time_limit_seconds
         else:
             flow_fit_time_limit = None
 
@@ -106,7 +106,7 @@ class NeuTra(Sampler):
     def sample(self,
                x0: torch.Tensor,
                show_progress: bool = True,
-               time_limit_seconds: int = None) -> MCMCOutput:
+               time_limit_seconds: Union[float, int] = None) -> MCMCOutput:
         self.kernel: NeuTraKernel
         self.params: NeuTraParameters
 

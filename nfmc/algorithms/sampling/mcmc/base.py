@@ -39,7 +39,7 @@ class MCMCSampler(Sampler):
     def warmup(self,
                x0: torch.Tensor,
                show_progress: bool = True,
-               time_limit_seconds: int = None) -> MCMCOutput:
+               time_limit_seconds: Union[float, int] = None) -> MCMCOutput:
         warmup_copy = deepcopy(self)
         warmup_copy.params.tuning_mode()
         warmup_copy.params.n_iterations = self.params.n_warmup_iterations
@@ -56,7 +56,7 @@ class MCMCSampler(Sampler):
     def sample(self,
                x0: torch.Tensor,
                show_progress: bool = True,
-               time_limit_seconds: int = None) -> MCMCOutput:
+               time_limit_seconds: Union[float, int] = None) -> MCMCOutput:
         n_chains, *event_shape = x0.shape
         event_shape = tuple(event_shape)
         out = MCMCOutput(event_shape, store_samples=self.params.store_samples)

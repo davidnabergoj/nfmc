@@ -36,7 +36,7 @@ class DLMC(Sampler):
     def sample(self,
                x0: torch.Tensor,
                show_progress: bool = True,
-               time_limit_seconds: int = None) -> MCMCOutput:
+               time_limit_seconds: Union[float, int] = None) -> MCMCOutput:
         self.kernel: DLMCKernel
         self.params: DLMCParameters
         n_chains = x0.shape[0]

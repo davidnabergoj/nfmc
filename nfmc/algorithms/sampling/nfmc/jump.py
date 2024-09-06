@@ -94,12 +94,12 @@ class JumpNFMC(Sampler):
     def warmup(self,
                x0: torch.Tensor,
                show_progress: bool = True,
-               time_limit_seconds: int = None) -> MCMCOutput:
+               time_limit_seconds: Union[float, int] = None) -> MCMCOutput:
         self.kernel: NFMCKernel
         self.params: JumpNFMCParameters
 
         if time_limit_seconds is not None:
-            inner_sampler_warmup_time_limit = int(0.7 * time_limit_seconds)
+            inner_sampler_warmup_time_limit = 0.7 * time_limit_seconds
         else:
             inner_sampler_warmup_time_limit = None
 
@@ -146,7 +146,7 @@ class JumpNFMC(Sampler):
     def sample(self,
                x0: torch.Tensor,
                show_progress: bool = True,
-               time_limit_seconds: int = None) -> MCMCOutput:
+               time_limit_seconds: Union[float, int] = None) -> MCMCOutput:
         self.kernel: NFMCKernel
         self.params: JumpNFMCParameters
 

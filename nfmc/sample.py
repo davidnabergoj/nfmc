@@ -237,8 +237,9 @@ def sample(target: Union[callable, Potential],
            n_chains: int = 100,
            x0: torch.Tensor = None,
            warmup: bool = False,
-           sample_kwargs: dict = None,
-           warmup_kwargs: dict = None,
+           show_progress: bool = True,
+           sampling_time_limit_seconds: Union[float, int] = None,
+           warmup_time_limit_seconds: Union[float, int] = None,
            **kwargs) -> MCMCOutput:
     """
     Sample from a target distributions.
@@ -258,8 +259,9 @@ def sample(target: Union[callable, Potential],
     :param int n_chains: number of chains for sampling (and warm-up, if specified). If `x0` is provided, this argument
      is unused.
     :param bool warmup: if True, perform a warm-up phase before sampling.
-    :param dict sample_kwargs: keyword arguments for `Sampler.sample`.
-    :param dict warmup_kwargs: keyword arguments for `Sampler.warmup`.
+    :param bool show_progress: if True, display a progress bar during sampling and warmup.
+    :param Union[float, int] sampling_time_limit_seconds: time limit for sampling.
+    :param Union[float, int] warmup_time_limit_seconds: time limit for warmup.
     :param dict kwargs: keyword arguments for `create_sampler`.
     :return: sampling output object.
     :rtype: MCMCOutput
@@ -274,6 +276,7 @@ def sample(target: Union[callable, Potential],
         **kwargs['param_kwargs'],
         **dict(
             n_iterations=n_iterations,
+            n_warmup_iterations=n_warmup_iterations
         )
     }
 
@@ -287,11 +290,9 @@ def sample(target: Union[callable, Potential],
     if x0 is None:
         x0 = torch.randn(size=(n_chains, *event_shape))
 
-    sample_kwargs = sample_kwargs or {}
-    warmup_kwargs = warmup_kwargs or {}
     if warmup:
         # we always store samples during warmup. TODO change this. Allow for a long warm up without storing samples.
-        warmup_output = sampler.warmup(x0, **warmup_kwargs)
+        warmup_output = sampler.warmup(x0=x0, show_progress=show_progress, time_limit_seconds=warmup_time_limit_seconds)
         x0 = warmup_output.samples.flatten(0, 1)
         x0 = x0[torch.randperm(len(x0))][:n_chains]
-    return sampler.sample(x0, **sample_kwargs)
+    return sampler.sample(x0=x0, show_progress=show_progress, time_limit_seconds=sampling_time_limit_seconds)

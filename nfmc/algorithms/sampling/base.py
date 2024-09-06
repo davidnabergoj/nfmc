@@ -307,10 +307,10 @@ class Sampler:
     def warmup(self,
                x0: torch.Tensor,
                show_progress: bool = True,
-               time_limit_seconds: int = None) -> MCMCOutput:
+               time_limit_seconds: Union[float, int] = None) -> MCMCOutput:
         raise NotImplementedError
 
     def sample(self, x0: torch.Tensor,
                show_progress: bool = True,
-               time_limit_seconds: int = None) -> MCMCOutput:
+               time_limit_seconds: Union[float, int] = None) -> MCMCOutput:
         raise NotImplementedError

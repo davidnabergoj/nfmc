@@ -123,7 +123,7 @@ class ESS(MCMCSampler):
     def sample(self,
                x0: torch.Tensor,
                show_progress: bool = True,
-               time_limit_seconds: int = None) -> MCMCOutput:
+               time_limit_seconds: Union[float, int] = None) -> MCMCOutput:
         n_chains = x0.shape[0]
         x0 = multivariate_normal_sample((n_chains,), self.event_shape, self.kernel.cov)
         return super().sample(x0=x0, show_progress=show_progress, time_limit_seconds=time_limit_seconds)

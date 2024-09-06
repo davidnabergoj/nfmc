@@ -65,7 +65,7 @@ class AdaptiveIMH(Sampler):
     def warmup(self,
                x0: torch.Tensor,
                show_progress: bool = True,
-               time_limit_seconds: int = None) -> MCMCOutput:
+               time_limit_seconds: Union[float, int] = None) -> MCMCOutput:
         self.kernel: IMHKernel
         self.params: IMHParameters
 
@@ -83,7 +83,7 @@ class AdaptiveIMH(Sampler):
     def sample(self,
                x0: torch.Tensor,
                show_progress: bool = True,
-               time_limit_seconds: int = None) -> MCMCOutput:
+               time_limit_seconds: Union[float, int] = None) -> MCMCOutput:
         self.kernel: IMHKernel
         self.params: IMHParameters
 

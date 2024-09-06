@@ -1,6 +1,6 @@
 import time
 from dataclasses import dataclass
-from typing import Sized, Optional
+from typing import Sized, Optional, Union
 
 import torch
 from tqdm import tqdm
@@ -103,7 +103,7 @@ class TESS(Sampler):
     def warmup(self,
                x0: torch.Tensor,
                show_progress: bool = True,
-               time_limit_seconds: int = None) -> MCMCOutput:
+               time_limit_seconds: Union[float, int] = None) -> MCMCOutput:
         self.kernel: TESSKernel
         self.params: TESSParameters
 
@@ -148,7 +148,7 @@ class TESS(Sampler):
     def sample(self,
                x0: torch.Tensor,
                show_progress: bool = True,
-               time_limit_seconds: int = None) -> MCMCOutput:
+               time_limit_seconds: Union[float, int] = None) -> MCMCOutput:
         self.kernel: TESSKernel
         self.params: TESSParameters
 
