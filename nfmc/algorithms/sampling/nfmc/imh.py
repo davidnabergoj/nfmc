@@ -75,8 +75,7 @@ class AdaptiveIMH(Sampler):
             show_progress=show_progress,
             time_limit_seconds=time_limit_seconds
         )
-
-        out = MCMCOutput(event_shape=x0.shape[1:], store_samples=True)
+        out = MCMCOutput(event_shape=x0.shape[1:], store_samples=self.params.store_samples)
         out.running_samples.add(self.kernel.flow.sample(x0.shape[0]).detach())
         return out
 
@@ -87,7 +86,9 @@ class AdaptiveIMH(Sampler):
         self.kernel: IMHKernel
         self.params: IMHParameters
 
-        out = MCMCOutput(event_shape=x0.shape[1:], store_samples=self.params.adaptation or self.params.store_samples)
+        if self.params.adaptation and not self.params.store_samples:
+            raise ValueError("Cannot adapt IMH kernel without storing samples")
+        out = MCMCOutput(event_shape=x0.shape[1:], store_samples=self.params.adaptation and self.params.store_samples)
 
         t0 = time.time()
         n_chains = x0.shape[0]
@@ -166,6 +167,7 @@ class FixedIMH(AdaptiveIMH):
             kernel = IMHKernel(event_shape)
         if params is None:
             params = IMHParameters(adaptation=False)
+        params.adaptation = False
         super().__init__(event_shape, target, kernel, params)
 
     @property

@@ -97,6 +97,7 @@ class NeuTra(Sampler):
 
         # Tune MCMC
         self.inner_sampler.params.tuning_mode()
+        self.inner_sampler.params.store_samples = self.params.store_samples
         return self.inner_sampler.warmup(
             x0,
             show_progress=show_progress,

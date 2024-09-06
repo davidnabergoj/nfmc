@@ -41,7 +41,20 @@ class DualAveraging:
         return f'DA error: {self.error_sum:.2f}'
 
 
-def train_val_split(x: torch.Tensor, train_pct: float, max_train_size: int, max_val_size: int, shuffle: bool = True):
+def train_val_split(x: torch.Tensor,
+                    train_pct: float,
+                    max_train_size: int,
+                    max_val_size: int,
+                    shuffle: bool = True):
+    """
+
+    :param x: data with shape `(n_iterations, n_chains, *event_shape)`.
+    :param train_pct:
+    :param max_train_size:
+    :param max_val_size:
+    :param shuffle:
+    :return:
+    """
     x_train = x.flatten(0, 1)
     if shuffle:
         x_train = x_train[torch.randperm(len(x_train))]

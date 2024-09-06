@@ -8,7 +8,7 @@ from nfmc.algorithms.sampling.mcmc.hmc import HMCKernel, HMCParameters, UHMC, HM
 from nfmc.algorithms.sampling.mcmc.langevin import LangevinKernel, LangevinParameters, ULA, MALA
 from nfmc.algorithms.sampling.mcmc.mh import MHKernel, MHParameters, MH
 from nfmc.algorithms.sampling.nfmc.dlmc import DLMCKernel, DLMCParameters, DLMC
-from nfmc.algorithms.sampling.nfmc.imh import IMHKernel, IMHParameters, AdaptiveIMH
+from nfmc.algorithms.sampling.nfmc.imh import IMHKernel, IMHParameters, FixedIMH
 from nfmc.algorithms.sampling.nfmc.jump import JumpNFMCParameters, JumpULA, JumpHMC, JumpUHMC, JumpMALA, JumpMH, JumpESS
 from nfmc.algorithms.sampling.nfmc.neutra import NeuTraKernel, NeuTraParameters, NeuTraHMC
 from nfmc.algorithms.sampling.nfmc.tess import TESSKernel, TESSParameters, TESS
@@ -121,7 +121,7 @@ def create_sampler(target: callable,
         if strategy == "imh":
             kernel = IMHKernel(event_shape, flow=flow_object)
             params = IMHParameters(**param_kwargs)
-            return AdaptiveIMH(event_shape, target, kernel, params)
+            return FixedIMH(event_shape, target, kernel, params)
         elif strategy == 'jump_mala':
             kernel = NFMCKernel(event_shape, flow=flow_object)
             params = JumpNFMCParameters(**param_kwargs)
@@ -291,8 +291,10 @@ def sample(target: Union[callable, Potential],
         x0 = torch.randn(size=(n_chains, *event_shape))
 
     if warmup:
-        # we always store samples during warmup. TODO change this. Allow for a long warm up without storing samples.
         warmup_output = sampler.warmup(x0=x0, show_progress=show_progress, time_limit_seconds=warmup_time_limit_seconds)
-        x0 = warmup_output.samples.flatten(0, 1)
-        x0 = x0[torch.randperm(len(x0))][:n_chains]
+        if warmup_output.samples is not None:
+            x0 = warmup_output.samples.flatten(0, 1)
+            x0 = x0[torch.randperm(len(x0))][:n_chains]
+        else:
+            x0 = warmup_output.running_samples.last_sample
     return sampler.sample(x0=x0, show_progress=show_progress, time_limit_seconds=sampling_time_limit_seconds)

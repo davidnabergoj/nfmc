@@ -206,6 +206,7 @@ class MCMCSamples:
     last_sample: torch.Tensor = None  # shape (n_chains, *event_shape)
     thinning: int = 1
     seen_samples: int = 0
+    max_samples: int = None
 
     def __post_init__(self):
         self.reset()
@@ -242,6 +243,10 @@ class MCMCSamples:
         self._running.extend(added_samples)
         self.n_samples += len(added_samples)
 
+        if self.max_samples is not None:
+            self._running = self._running[-self.max_samples:]
+            self.n_samples = min(self.n_samples, self.max_samples)
+
     def as_tensor(self) -> torch.Tensor:
         return torch.stack(self._running, dim=0)
 
@@ -258,15 +263,22 @@ class MCMCOutput:
     statistics: Optional[MCMCStatistics] = None
     kernel: Optional[MCMCKernel] = None
     store_samples: bool = True
+    max_samples: int = None
 
     def __post_init__(self):
         if self.running_samples is None:
-            self.running_samples = MCMCSamples(self.event_shape, store_samples=self.store_samples)
+            self.running_samples = MCMCSamples(
+                self.event_shape,
+                store_samples=self.store_samples,
+                max_samples=self.max_samples,
+            )
         if self.statistics is None:
             self.statistics = MCMCStatistics(self.event_shape)
 
     @property
-    def samples(self) -> torch.Tensor:
+    def samples(self) -> Union[torch.Tensor, None]:
+        if not self.store_samples:
+            return None
         return self.running_samples.as_tensor()
 
     def resample(self, n: int) -> torch.Tensor:
@@ -274,14 +286,17 @@ class MCMCOutput:
         mask = torch.randint(low=0, high=len(flat), size=(n,))
         return flat[mask]  # (n, *event_shape)
 
-    def estimate_mean(self):
-        return torch.mean(self.samples, dim=(0, 1))
+    @property
+    def mean(self):
+        return self.statistics.running_first_moment
 
-    def estimate_variance(self):
-        return torch.var(self.samples, dim=(0, 1))
+    @property
+    def variance(self):
+        return self.statistics.running_second_moment - self.statistics.running_first_moment ** 2
 
-    def estimate_second_moment(self):
-        return self.estimate_variance() + self.estimate_mean() ** 2
+    @property
+    def second_moment(self):
+        return self.statistics.running_second_moment
 
 
 class Sampler:

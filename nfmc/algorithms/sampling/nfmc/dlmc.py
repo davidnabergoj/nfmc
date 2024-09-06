@@ -33,6 +33,14 @@ class DLMC(Sampler):
         super().__init__(event_shape, target, kernel, params)
         self.negative_log_likelihood = negative_log_likelihood
 
+    def warmup(self,
+               x0: torch.Tensor,
+               show_progress: bool = True,
+               time_limit_seconds: Union[float, int] = None) -> MCMCOutput:
+        out = MCMCOutput(event_shape=x0.shape[1:], store_samples=self.params.store_samples)
+        out.running_samples.add(x0)
+        return out
+
     def sample(self,
                x0: torch.Tensor,
                show_progress: bool = True,

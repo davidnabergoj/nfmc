@@ -43,7 +43,6 @@ class MCMCSampler(Sampler):
         warmup_copy = deepcopy(self)
         warmup_copy.params.tuning_mode()
         warmup_copy.params.n_iterations = self.params.n_warmup_iterations
-        warmup_copy.params.store_samples = True  # always store samples during warmup
         warmup_output = warmup_copy.sample(x0, show_progress=show_progress, time_limit_seconds=time_limit_seconds)
 
         self.kernel = warmup_copy.kernel

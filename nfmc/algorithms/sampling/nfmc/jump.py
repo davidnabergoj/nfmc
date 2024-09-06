@@ -88,7 +88,6 @@ class JumpNFMC(Sampler):
         if params is None:
             params = JumpNFMCParameters()
         super().__init__(event_shape, target, kernel, params)
-        inner_sampler.params.store_samples = True  # always store the short inner sampler runs
         self.inner_sampler = inner_sampler
 
     def warmup(self,
