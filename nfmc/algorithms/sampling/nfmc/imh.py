@@ -65,8 +65,7 @@ class AdaptiveIMH(Sampler):
     def warmup(self,
                x0: torch.Tensor,
                show_progress: bool = True,
-               thinning: int = 1,
-               time_limit_seconds: int = 3600 * 24) -> MCMCOutput:
+               time_limit_seconds: int = None) -> MCMCOutput:
         self.kernel: IMHKernel
         self.params: IMHParameters
 
@@ -84,13 +83,11 @@ class AdaptiveIMH(Sampler):
     def sample(self,
                x0: torch.Tensor,
                show_progress: bool = True,
-               thinning: int = 1,
-               time_limit_seconds: int = 3600 * 24) -> MCMCOutput:
+               time_limit_seconds: int = None) -> MCMCOutput:
         self.kernel: IMHKernel
         self.params: IMHParameters
 
         out = MCMCOutput(event_shape=x0.shape[1:], store_samples=self.params.adaptation or self.params.store_samples)
-        out.running_samples.thinning = thinning
 
         t0 = time.time()
         n_chains = x0.shape[0]
@@ -98,7 +95,7 @@ class AdaptiveIMH(Sampler):
         out.statistics.elapsed_time_seconds += time.time() - t0
 
         for i in (pbar := tqdm(range(self.params.n_iterations), desc=self.name, disable=not show_progress)):
-            if out.statistics.elapsed_time_seconds >= time_limit_seconds:
+            if time_limit_seconds is not None and out.statistics.elapsed_time_seconds >= time_limit_seconds:
                 break
 
             t0 = time.time()

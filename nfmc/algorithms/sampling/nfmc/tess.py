@@ -100,8 +100,10 @@ class TESS(Sampler):
         super().__init__(event_shape, target, kernel, params)
         self.negative_log_likelihood = negative_log_likelihood
 
-    def warmup(self, x0: torch.Tensor, show_progress: bool = True, thinning: int = 1,
-               time_limit_seconds: int = 3600 * 24) -> MCMCOutput:
+    def warmup(self,
+               x0: torch.Tensor,
+               show_progress: bool = True,
+               time_limit_seconds: int = None) -> MCMCOutput:
         self.kernel: TESSKernel
         self.params: TESSParameters
 
@@ -114,7 +116,7 @@ class TESS(Sampler):
 
         pbar = tqdm(range(self.params.n_warmup_iterations), desc='[Warmup] TESS', disable=not show_progress)
         for i in pbar:
-            if out.statistics.elapsed_time_seconds >= time_limit_seconds:
+            if time_limit_seconds is not None and out.statistics.elapsed_time_seconds >= time_limit_seconds:
                 break
 
             t0 = time.time()
@@ -143,13 +145,14 @@ class TESS(Sampler):
         out.kernel = self.kernel
         return out
 
-    def sample(self, x0: torch.Tensor, show_progress: bool = True, thinning: int = 1,
-               time_limit_seconds: int = 3600 * 24) -> MCMCOutput:
+    def sample(self,
+               x0: torch.Tensor,
+               show_progress: bool = True,
+               time_limit_seconds: int = None) -> MCMCOutput:
         self.kernel: TESSKernel
         self.params: TESSParameters
 
         out = MCMCOutput(event_shape=x0.shape[1:], store_samples=self.params.store_samples)
-        out.thinning = thinning
 
         t0 = time.time()
         n_chains, *event_shape = x0.shape
@@ -157,7 +160,7 @@ class TESS(Sampler):
         out.statistics.elapsed_time_seconds += time.time() - t0
 
         for i in (pbar := tqdm(range(self.params.n_iterations), desc='TESS sampling')):
-            if out.statistics.elapsed_time_seconds >= time_limit_seconds:
+            if time_limit_seconds is not None and out.statistics.elapsed_time_seconds >= time_limit_seconds:
                 break
 
             t0 = time.time()

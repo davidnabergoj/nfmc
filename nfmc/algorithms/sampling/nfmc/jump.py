@@ -91,15 +91,19 @@ class JumpNFMC(Sampler):
         inner_sampler.params.store_samples = True  # always store the short inner sampler runs
         self.inner_sampler = inner_sampler
 
-    def warmup(self, x0: torch.Tensor, show_progress: bool = True, thinning: int = 1,
-               time_limit_seconds: int = 3600 * 24) -> MCMCOutput:
+    def warmup(self,
+               x0: torch.Tensor,
+               show_progress: bool = True,
+               time_limit_seconds: int = None) -> MCMCOutput:
         self.kernel: NFMCKernel
         self.params: JumpNFMCParameters
 
-        inner_sampler_warmup_time_limit = int(0.3 * time_limit_seconds)
-        flow_training_time_limit = time_limit_seconds - inner_sampler_warmup_time_limit
+        if time_limit_seconds is not None:
+            inner_sampler_warmup_time_limit = int(0.7 * time_limit_seconds)
+        else:
+            inner_sampler_warmup_time_limit = None
 
-
+        t0 = time.time()
         self.inner_sampler.params.store_samples = True
         warmup_output = self.inner_sampler.warmup(
             x0,
@@ -113,8 +117,14 @@ class JumpNFMC(Sampler):
             max_train_size=self.params.max_train_size,
             max_val_size=self.params.max_val_size
         )
-
         flow_params = deepcopy(self.kernel.flow.state_dict())
+        elapsed_time = time.time() - t0
+
+        if time_limit_seconds is not None:
+            flow_fit_time_limit = time_limit_seconds - elapsed_time
+        else:
+            flow_fit_time_limit = None
+
         try:
             self.kernel.flow.fit(
                 x_train=x_train,
@@ -123,7 +133,7 @@ class JumpNFMC(Sampler):
                     **self.params.flow_fit_kwargs,
                     **dict(
                         show_progress=show_progress,
-                        time_limit_seconds=flow_training_time_limit
+                        time_limit_seconds=flow_fit_time_limit
                     )
                 }
             )
@@ -136,8 +146,7 @@ class JumpNFMC(Sampler):
     def sample(self,
                x0: torch.Tensor,
                show_progress: bool = True,
-               thinning: int = 1,
-               time_limit_seconds: int = 3600 * 24) -> MCMCOutput:
+               time_limit_seconds: int = None) -> MCMCOutput:
         self.kernel: NFMCKernel
         self.params: JumpNFMCParameters
 
@@ -148,12 +157,11 @@ class JumpNFMC(Sampler):
         event_shape = tuple(event_shape)
 
         out = JumpNFMCOutput(event_shape=x0.shape[1:], store_samples=self.params.store_samples)
-        out.running_samples.thinning = thinning
 
         x = torch.clone(x0)
 
         for i in (pbar := tqdm(range(self.params.n_iterations), desc='Jump MCMC', disable=not show_progress)):
-            if out.statistics.elapsed_time_seconds >= time_limit_seconds:
+            if time_limit_seconds is not None and out.statistics.elapsed_time_seconds >= time_limit_seconds:
                 break
             # Trajectories
             pbar.set_description_str(f'Jump MCMC')

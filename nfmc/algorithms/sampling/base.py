@@ -304,10 +304,13 @@ class Sampler:
     def name(self):
         return "Generic sampler"
 
-    def warmup(self, x0: torch.Tensor, show_progress: bool = True, thinning: int = 1,
+    def warmup(self,
+               x0: torch.Tensor,
+               show_progress: bool = True,
                time_limit_seconds: int = None) -> MCMCOutput:
         raise NotImplementedError
 
-    def sample(self, x0: torch.Tensor, show_progress: bool = True, thinning: int = 1,
+    def sample(self, x0: torch.Tensor,
+               show_progress: bool = True,
                time_limit_seconds: int = None) -> MCMCOutput:
         raise NotImplementedError

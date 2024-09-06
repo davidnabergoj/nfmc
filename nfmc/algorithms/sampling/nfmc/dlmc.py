@@ -1,5 +1,5 @@
 import time
-from typing import Sized, Optional
+from typing import Sized, Optional, Union, Tuple
 
 from tqdm import tqdm
 import torch
@@ -21,7 +21,7 @@ class DLMCParameters(NFMCParameters):
 
 class DLMC(Sampler):
     def __init__(self,
-                 event_shape: Sized,
+                 event_shape: Union[Tuple[int, ...], torch.Size],
                  target: callable,
                  negative_log_likelihood: callable,
                  kernel: Optional[DLMCKernel] = None,
@@ -33,7 +33,10 @@ class DLMC(Sampler):
         super().__init__(event_shape, target, kernel, params)
         self.negative_log_likelihood = negative_log_likelihood
 
-    def sample(self, x0: torch.Tensor, show_progress: bool = True, thinning: int = 1, **kwargs) -> MCMCOutput:
+    def sample(self,
+               x0: torch.Tensor,
+               show_progress: bool = True,
+               time_limit_seconds: int = None) -> MCMCOutput:
         self.kernel: DLMCKernel
         self.params: DLMCParameters
         n_chains = x0.shape[0]
@@ -42,7 +45,6 @@ class DLMC(Sampler):
             return self.kernel.flow.log_prob(inputs.to(self.kernel.flow.get_device())).cpu()
 
         out = MCMCOutput(event_shape=x0.shape[1:], store_samples=self.params.store_samples)
-        out.thinning = thinning
 
         # Initial update
         t0 = time.time()
@@ -54,6 +56,8 @@ class DLMC(Sampler):
         out.statistics.elapsed_time_seconds += time.time() - t0
 
         for i in (pbar := tqdm(range(self.params.n_iterations), desc='DLMC sampling', disable=not show_progress)):
+            if time_limit_seconds is not None and out.statistics.elapsed_time_seconds >= time_limit_seconds:
+                break
             t0 = time.time()
             x_train = x.detach().clone()
             x_train = x_train[torch.randperm(len(x_train))]

@@ -1,3 +1,4 @@
+import time
 from dataclasses import dataclass
 from typing import Union, Tuple, Type
 
@@ -68,15 +69,17 @@ class NeuTra(Sampler):
     def warmup(self,
                x0: torch.Tensor,
                show_progress: bool = True,
-               time_limit_seconds: int = 3600 * 24,
-               **kwargs) -> MCMCOutput:
+               time_limit_seconds: int = None) -> MCMCOutput:
         self.kernel: NeuTraKernel
         self.params: NeuTraParameters
 
-        flow_fit_time_limit = int(0.3 * time_limit_seconds)
-        inner_sampler_warmup_time_limit = time_limit_seconds - flow_fit_time_limit
+        if time_limit_seconds is not None:
+            flow_fit_time_limit = int(0.3 * time_limit_seconds)
+        else:
+            flow_fit_time_limit = None
 
         # Fit flow to target via variational inference
+        t0 = time.time()
         self.kernel.flow.variational_fit(
             lambda v: -self.target(v),
             **{
@@ -85,19 +88,25 @@ class NeuTra(Sampler):
             },
             show_progress=show_progress
         )
+        elapsed_time = time.time() - t0
+
+        if time_limit_seconds is not None:
+            inner_sampler_warmup_time_limit = time_limit_seconds - elapsed_time
+        else:
+            inner_sampler_warmup_time_limit = None
 
         # Tune MCMC
         self.inner_sampler.params.tuning_mode()
         return self.inner_sampler.warmup(
             x0,
             show_progress=show_progress,
-            **{
-                **kwargs,
-                **dict(time_limit_seconds=inner_sampler_warmup_time_limit)
-            }
+            time_limit_seconds=inner_sampler_warmup_time_limit
         )
 
-    def sample(self, z0: torch.Tensor, **kwargs) -> MCMCOutput:
+    def sample(self,
+               x0: torch.Tensor,
+               show_progress: bool = True,
+               time_limit_seconds: int = None) -> MCMCOutput:
         self.kernel: NeuTraKernel
         self.params: NeuTraParameters
 
@@ -106,10 +115,12 @@ class NeuTra(Sampler):
         self.inner_sampler.params.store_samples = self.params.store_samples
 
         # Run MCMC with the adjusted target, returns output related to the original space (not the latent space)
+        z0 = x0
+        self.inner_sampler.data_transform = lambda v: self.kernel.flow.bijection.inverse(v)[0].detach()
         return self.inner_sampler.sample(
             z0,
-            data_transform=lambda v: self.kernel.flow.bijection.inverse(v)[0].detach(),
-            **kwargs
+            show_progress=show_progress,
+            time_limit_seconds=time_limit_seconds
         )
 
 

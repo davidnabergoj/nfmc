@@ -314,3 +314,26 @@ def multivariate_normal_sample(batch_shape, event_shape, cov):
         samples_flat = samples_dist.sample(batch_shape)
         samples = samples_flat.view(*batch_shape, *event_shape)
     return samples
+
+
+def get_supported_mcmc_samplers() -> List[str]:
+    return ['hmc', 'uhmc', 'ula', 'mala', 'mh', 'ess']
+
+
+def get_supported_nfmc_samplers() -> List[str]:
+    return [
+        "imh",
+        "jump_mala",
+        "jump_ula",
+        "jump_hmc",
+        "jump_uhmc",
+        "jump_ess",
+        "jump_mh",
+        "neutra_hmc",
+        "tess",
+        "dlmc"
+    ]
+
+
+def get_supported_samplers() -> List[str]:
+    return get_supported_mcmc_samplers() + get_supported_nfmc_samplers()

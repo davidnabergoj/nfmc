@@ -15,8 +15,10 @@ class MCMCSampler(Sampler):
                  event_shape: Union[torch.Size, Tuple[int, ...]],
                  target: callable,
                  kernel: MCMCKernel,
-                 params: MCMCParameters):
+                 params: MCMCParameters,
+                 data_transform: callable = lambda v: v):
         super().__init__(event_shape, target, kernel, params)
+        self.data_transform = data_transform
 
     @property
     def name(self):
@@ -34,12 +36,15 @@ class MCMCSampler(Sampler):
     def update_kernel(self, data: Dict[str, Any]):
         raise NotImplementedError
 
-    def warmup(self, x0: torch.Tensor, **kwargs) -> MCMCOutput:
+    def warmup(self,
+               x0: torch.Tensor,
+               show_progress: bool = True,
+               time_limit_seconds: int = None) -> MCMCOutput:
         warmup_copy = deepcopy(self)
         warmup_copy.params.tuning_mode()
         warmup_copy.params.n_iterations = self.params.n_warmup_iterations
         warmup_copy.params.store_samples = True  # always store samples during warmup
-        warmup_output = warmup_copy.sample(x0, **kwargs)
+        warmup_output = warmup_copy.sample(x0, show_progress=show_progress, time_limit_seconds=time_limit_seconds)
 
         self.kernel = warmup_copy.kernel
         new_params = warmup_copy.params
@@ -51,22 +56,18 @@ class MCMCSampler(Sampler):
     def sample(self,
                x0: torch.Tensor,
                show_progress: bool = True,
-               thinning: int = 1,
-               time_limit_seconds: int = 3600 * 24,
-               data_transform: callable = lambda v: v,
-               **kwargs) -> MCMCOutput:
+               time_limit_seconds: int = None) -> MCMCOutput:
         n_chains, *event_shape = x0.shape
         event_shape = tuple(event_shape)
         out = MCMCOutput(event_shape, store_samples=self.params.store_samples)
-        out.statistics.data_transform = data_transform
-        out.running_samples.thinning = thinning
+        out.statistics.data_transform = self.data_transform
         x = torch.clone(x0).detach()
 
         bar_label = f'{self.name}'
         if self.params.tuning:
             bar_label = f'{self.name} (tuning)'
         for _ in (pbar := tqdm(range(self.params.n_iterations), desc=bar_label, disable=not show_progress)):
-            if out.statistics.elapsed_time_seconds > time_limit_seconds:
+            if time_limit_seconds is not None and out.statistics.elapsed_time_seconds > time_limit_seconds:
                 break
 
             t0 = time.time()
