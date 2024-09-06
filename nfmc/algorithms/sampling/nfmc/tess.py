@@ -128,6 +128,7 @@ class TESS(Sampler):
                 cov=self.kernel.cov
             )
             out.running_samples.add(u)
+            out.statistics.expectations.update(u)
             out.statistics.n_target_calls += (self.params.max_ess_step_iterations + 1) * n_chains
 
             out.statistics.n_accepted_trajectories += int(torch.sum(accepted_mask))
@@ -176,6 +177,7 @@ class TESS(Sampler):
             out.statistics.n_attempted_trajectories += n_chains
             pbar.set_postfix_str(f'{out.statistics}')
             out.running_samples.add(x)
+            out.statistics.expectations.update(x)
             out.statistics.elapsed_time_seconds += time.time() - t0
 
         out.kernel = self.kernel

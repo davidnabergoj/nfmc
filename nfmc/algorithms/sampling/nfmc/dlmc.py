@@ -101,6 +101,7 @@ class DLMC(Sampler):
             x[accepted_mask] = x_tilde[accepted_mask].to(x)
             x = x.detach()
             out.running_samples.add(x)
+            out.statistics.expectations.update(x)
 
             out.statistics.n_accepted_trajectories += int(torch.sum(accepted_mask))
             out.statistics.n_attempted_trajectories += n_chains
