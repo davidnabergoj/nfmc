@@ -119,11 +119,13 @@ class NeuTra(Sampler):
         # Run MCMC with the adjusted target, returns output related to the original space (not the latent space)
         z0 = x0
         self.inner_sampler.data_transform = lambda v: self.kernel.flow.bijection.inverse(v)[0].detach()
-        return self.inner_sampler.sample(
+        out = self.inner_sampler.sample(
             z0,
             show_progress=show_progress,
             time_limit_seconds=time_limit_seconds
         )
+        out.kernel.flow = self.kernel.flow
+        return out
 
 
 class NeuTraHMC(NeuTra):
