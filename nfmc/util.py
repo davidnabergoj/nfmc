@@ -1,50 +1,111 @@
 from typing import Dict, List
-
 import torch
 
+FLOW_REFERENCE_DATA = {
+    'realnvp': {'alt': ["realnvp", 'real_nvp', 'rnvp'], 'family': ('autoregressive', 'coupling', 'affine')},
+    'ms-realnvp': {'alt': ['ms-realnvp', 'multiscale-realnvp'], 'family': ('autoregressive', 'multiscale', 'affine')},
+    'glow-realnvp': {'alt': ['affine-glow', 'glow-affine', 'glow'],
+                     'family': ('autoregressive', 'multiscale', 'affine')},
+    'maf': {'alt': [], 'family': ('autoregressive', 'masked', 'affine')},
+    'iaf': {'alt': [], 'family': ('autoregressive', 'masked', 'affine')},
+
+    'nice': {'alt': [], 'family': ('autoregressive', 'coupling', 'affine')},
+    'ms-nice': {'alt': ['ms-nice', 'multiscale-nice'], 'family': ('autoregressive', 'multiscale', 'affine')},
+    'glow-nice': {'alt': ['shift-glow', 'glow-shift'], 'family': ('autoregressive', 'multiscale', 'affine')},
+
+    'c-rqnsf': {'alt': ['c-rqsnsf'], 'family': ('autoregressive', 'coupling', 'spline')},
+    'ms-rqnsf': {'alt': ['ms-rqnsf', 'multiscale-rqnsf'], 'family': ('autoregressive', 'multiscale', 'spline')},
+    'glow-rqnsf': {'alt': ['rqs-glow', 'glow-rqs'], 'family': ('autoregressive', 'multiscale', 'spline')},
+    'ma-rqnsf': {'alt': ['ma-rqsnsf', 'maf-rqsnsf', 'maf-rqnsf'], 'family': ('autoregressive', 'masked', 'spline')},
+    'ia-rqnsf': {'alt': ['ia-rqsnsf', 'iaf-rqsnsf', 'iaf-rqnsf'], 'family': ('autoregressive', 'masked', 'spline')},
+
+    'c-lrsnsf': {'alt': ['c-lrnsf'], 'family': ('autoregressive', 'coupling', 'spline')},
+    'ms-lrsnsf': {'alt': ['ms-lrsnsf', 'multiscale-lrsnsf'], 'family': ('autoregressive', 'multiscale', 'spline')},
+    'glow-lrsnsf': {'alt': ['lrs-glow', 'glow-lrs'], 'family': ('autoregressive', 'multiscale', 'spline')},
+    'ma-lrsnsf': {'alt': ['ma-lrnsf', 'maf-lrsnsf', 'maf-lrnsf'], 'family': ('autoregressive', 'masked', 'spline')},
+    'ia-lrsnsf': {'alt': ['ia-lrnsf', 'iaf-lrsnsf', 'iaf-lrnsf'], 'family': ('autoregressive', 'masked', 'spline')},
+
+    'c-naf-deep': {'alt': [], 'family': ('autoregressive', 'coupling', 'nn')},
+    'ms-naf-deep': {'alt': ['ms-naf-deep', 'multiscale-naf-deep'], 'family': ('autoregressive', 'multiscale', 'nn')},
+    'glow-naf-deep': {'alt': ['naf-deep-glow', 'glow-naf-deep'], 'family': ('autoregressive', 'multiscale', 'nn')},
+    'ma-naf-deep': {'alt': ['maf-naf-deep'], 'family': ('autoregressive', 'masked', 'nn')},
+    'ia-naf-deep': {'alt': ['iaf-naf-deep'], 'family': ('autoregressive', 'masked', 'nn')},
+
+    'c-naf-deep-dense': {'alt': [], 'family': ('autoregressive', 'coupling', 'nn')},
+    'ms-naf-deep-dense': {'alt': ['ms-naf-deep-dense', 'multiscale-naf-deep-dense'],
+                          'family': ('autoregressive', 'multiscale', 'nn')},
+    'glow-naf-deep-dense': {'alt': ['naf-deep-dense-glow', 'glow-naf-deep-dense'],
+                            'family': ('autoregressive', 'multiscale', 'nn')},
+    'ma-naf-deep-dense': {'alt': ['maf-naf-deep-dense'], 'family': ('autoregressive', 'masked', 'nn')},
+    'ia-naf-deep-dense': {'alt': ['iaf-naf-deep-dense'], 'family': ('autoregressive', 'masked', 'nn')},
+
+    'c-naf-dense': {'alt': [], 'family': ('autoregressive', 'coupling', 'nn')},
+    'ms-naf-dense': {'alt': ['ms-naf-dense', 'multiscale-naf-dense'], 'family': ('autoregressive', 'multiscale', 'nn')},
+    'glow-naf-dense': {'alt': ['naf-dense-glow', 'glow-naf-dense'], 'family': ('autoregressive', 'multiscale', 'nn')},
+    'ma-naf-dense': {'alt': ['maf-naf-dense'], 'family': ('autoregressive', 'masked', 'nn')},
+    'ia-naf-dense': {'alt': ['iaf-naf-dense'], 'family': ('autoregressive', 'masked', 'nn')},
+
+    'i-resnet': {'alt': ['iresnet', 'invertible resnet', 'invertible-resnet', 'i-resnet'],
+                 'family': ('residual', 'iterative', 'standard')},
+    'conv-i-resnet': {
+        'alt': ['conv-iresnet', 'convolutional invertible resnet', 'conv-invertible-resnet', 'conv-i-resnet'],
+        'family': ('residual', 'iterative', 'convolutional')},
+    'resflow': {'alt': ['resflow', 'residual flow', 'residual-flow', 'res-flow'],
+                'family': ('residual', 'iterative', 'standard')},
+    'conv-resflow': {'alt': ['conv-resflow', 'convolutional residual flow', 'conv-residual-flow', 'conv-res-flow'],
+                     'family': ('residual', 'iterative', 'convolutional')},
+    'proximal-resflow': {'alt': ["proximal-resflow", 'p-resflow', 'presflow', 'proximal resflow'],
+                         'family': ('residual', 'iterative', 'standard')},
+
+    'planar': {'alt': [], 'family': ('residual', 'matrix-det')},
+    'radial': {'alt': [], 'family': ('residual', 'matrix-det')},
+    'sylvester': {'alt': [], 'family': ('residual', 'matrix-det')},
+
+    'ot-flow': {'alt': ['ot-flow', 'otflow', 'ot flow'], 'family': ('continuous', 'standard')},
+    'ffjord': {'alt': ['ffjord'], 'family': ('continuous', 'standard')},
+    'conv-ffjord': {'alt': ['conv-ffjord'], 'family': ('continuous', 'convolutional')},
+    'ddb': {'alt': ['ddnf'], 'family': ('continuous', 'standard')},
+    'conv-ddb': {'alt': ['ddnf'], 'family': ('continuous', 'convolutional')},
+    'rnode': {'alt': ['rnode'], 'family': ('continuous', 'standard')},
+    'conv-rnode': {'alt': ['rnode'], 'family': ('continuous', 'convolutional')},
+}
+
+
+def get_flow_family(flow: str):
+    try:
+        return FLOW_REFERENCE_DATA[flow]['family']
+    except KeyError:
+        for key in FLOW_REFERENCE_DATA:
+            if flow in FLOW_REFERENCE_DATA[key]['alt']:
+                return FLOW_REFERENCE_DATA[key]['family']
+    raise KeyError(f"Flow {flow} not found in reference data")
+
+
 AFFINE_AUTOREGRESSIVE_FLOW_NAMES: Dict[str, List[str]] = {
-    'realnvp': ["realnvp", 'real_nvp', 'rnvp'],
-    'nice': ['nice'],
-    'maf': ['maf'],
-    'iaf': ['iaf'],
+    k: [k] + FLOW_REFERENCE_DATA[k]['alt'] for k in FLOW_REFERENCE_DATA.keys()
+    if FLOW_REFERENCE_DATA[k]['family'][0] == 'autoregressive'
+       and FLOW_REFERENCE_DATA[k]['family'][2] == 'affine'
+       and FLOW_REFERENCE_DATA[k]['family'][1] in ['coupling', 'masked']
 }
 
 SPLINE_AUTOREGRESSIVE_FLOW_NAMES: Dict[str, List[str]] = {
-    'c-rqnsf': ['c-rqnsf'],
-    'ma-rqnsf': ['ma-rqnsf', 'maf-rqnsf'],
-    'ia-rqnsf': ['ia-rqnsf', 'iaf-rqnsf'],
-    'c-lrsnsf': ['c-lrsnsf', 'c-lrs'],
-    'ma-lrsnsf': ['ma-lrsnsf', 'maf-lrsnsf', 'ma-lrs', 'maf-lrs'],
-    'ia-lrsnsf': ['ia-lrsnsf', 'iaf-lrsnsf', 'ia-lrs', 'iaf-lrs'],
+    k: [k] + FLOW_REFERENCE_DATA[k]['alt'] for k in FLOW_REFERENCE_DATA.keys()
+    if FLOW_REFERENCE_DATA[k]['family'][0] == 'autoregressive'
+       and FLOW_REFERENCE_DATA[k]['family'][2] == 'spline'
+       and FLOW_REFERENCE_DATA[k]['family'][1] in ['coupling', 'masked']
 }
 
 NEURAL_AUTOREGRESSIVE_FLOW_NAMES: Dict[str, List[str]] = {
-    'c-naf-deep': ['c-naf-deep'],
-    'ma-naf-deep': ['ma-naf-deep'],
-    'ia-naf-deep': ['ia-naf-deep'],
-    'c-naf-deep-dense': ['c-naf-deep-dense', 'c-naf-dense-deep'],
-    'ma-naf-deep-dense': ['ma-naf-deep-dense', 'ma-naf-dense-deep'],
-    'ia-naf-deep-dense': ['ia-naf-deep-dense', 'ia-naf-dense-deep'],
-    'c-naf-dense': ['c-naf-dense'],
-    'ma-naf-dense': ['ma-naf-dense'],
-    'ia-naf-dense': ['ia-naf-dense'],
+    k: [k] + FLOW_REFERENCE_DATA[k]['alt'] for k in FLOW_REFERENCE_DATA.keys()
+    if FLOW_REFERENCE_DATA[k]['family'][0] == 'autoregressive'
+       and FLOW_REFERENCE_DATA[k]['family'][2] == 'nn'
+       and FLOW_REFERENCE_DATA[k]['family'][1] in ['coupling', 'masked']
 }
 
 MULTISCALE_FLOW_NAMES: Dict[str, List[str]] = {
-    'ms-realnvp': ['ms-realnvp', 'multiscale-realnvp'],
-    'ms-nice': ['ms-nice', 'multiscale-nice'],
-    'ms-rqnsf': ['ms-rqnsf', 'multiscale-rqnsf'],
-    'ms-lrsnsf': ['ms-lrsnsf', 'multiscale-lrsnsf'],
-    'ms-naf-deep': ['ms-naf-deep', 'multiscale-naf-deep'],
-    'ms-naf-dense': ['ms-naf-dense', 'multiscale-naf-dense'],
-    'ms-naf-deep-dense': ['ms-naf-deep-dense', 'multiscale-naf-deep-dense'],
-    'glow-affine': ['affine-glow', 'glow-affine', 'glow'],
-    'glow-shift': ['shift-glow', 'glow-shift'],
-    'glow-rqs': ['rqs-glow', 'glow-rqs'],
-    'glow-lrs': ['lrs-glow', 'glow-lrs'],
-    'glow-naf-dense': ['naf-dense-glow', 'glow-naf-dense'],
-    'glow-naf-deep': ['naf-deep-glow', 'glow-naf-deep'],
-    'glow-naf-deep-dense': ['naf-deep-dense-glow', 'glow-naf-deep-dense'],
+    k: [k] + FLOW_REFERENCE_DATA[k]['alt'] for k in FLOW_REFERENCE_DATA.keys()
+    if FLOW_REFERENCE_DATA[k]['family'][0] == 'autoregressive'
+       and FLOW_REFERENCE_DATA[k]['family'][1] == 'multiscale'
 }
 
 AUTOREGRESSIVE_FLOW_NAMES: Dict[str, List[str]] = {
@@ -55,24 +116,13 @@ AUTOREGRESSIVE_FLOW_NAMES: Dict[str, List[str]] = {
 }
 
 CONTINUOUS_FLOW_NAMES: Dict[str, List[str]] = {
-    'ot-flow': ['ot-flow', 'otflow', 'ot flow'],
-    'ffjord': ['ffjord'],
-    'conv-ffjord': ['conv-ffjord'],
-    'ddb': ['ddnf', 'ddb'],
-    'conv-ddb': ['conv-ddnf', 'conv-ddb'],
-    'rnode': ["rnode", 'r-node'],
-    'conv-rnode': ["conv-rnode", 'conv-r-node'],
+    k: [k] + FLOW_REFERENCE_DATA[k]['alt'] for k in FLOW_REFERENCE_DATA.keys()
+    if FLOW_REFERENCE_DATA[k]['family'][0] == 'continuous'
 }
 
 RESIDUAL_FLOW_NAMES: Dict[str, List[str]] = {
-    'i-resnet': ['iresnet', 'invertible resnet', 'invertible-resnet', 'i-resnet'],
-    'conv-i-resnet': ['conv-iresnet', 'convolutional invertible resnet', 'conv-invertible-resnet', 'conv-i-resnet'],
-    'resflow': ['resflow', 'residual flow', 'residual-flow', 'res-flow'],
-    'conv-resflow': ['conv-resflow', 'convolutional residual flow', 'conv-residual-flow', 'conv-res-flow'],
-    'proximal-resflow': ["proximal-resflow", 'p-resflow', 'presflow', 'proximal resflow'],
-    'planar': ['planar'],
-    'radial': ['radial'],
-    'sylvester': ['sylvester'],
+    k: [k] + FLOW_REFERENCE_DATA[k]['alt'] for k in FLOW_REFERENCE_DATA.keys()
+    if FLOW_REFERENCE_DATA[k]['family'][0] == 'residual'
 }
 
 FLOW_NAMES: Dict[str, List[str]] = {
