@@ -201,12 +201,12 @@ def parse_flow_string(flow_string: str):
 def create_flow_object(flow_string: str, event_shape, **kwargs):
     flow_data = parse_flow_string(flow_string)
     flow_name = flow_data['name']
-    kwargs = {
-        **flow_data['kwargs'],
-        **kwargs,
-    }
+    kwargs.update(flow_data['kwargs'])
 
-    assert is_flow_supported(flow_name)
+    if isinstance(flow_name, str):
+        assert is_flow_supported(flow_name)
+    else:
+        raise ValueError
 
     from torchflows.flows import Flow
     from torchflows.architectures import (
