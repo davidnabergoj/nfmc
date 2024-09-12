@@ -175,17 +175,26 @@ def parse_flow_string(flow_string: str):
     """
     Flow string syntax: <flow_name>%<json_string> or <flow_name>.
     """
+    if flow_string is None:
+        return {
+            'name': None,
+            'kwargs': {},
+            'hash': hash('None')
+        }
+
     if '%' not in flow_string:
         return {
             'name': flow_string,
-            'kwargs': dict()
+            'kwargs': {},
+            'hash': hash(flow_string)
         }
     else:
         flow_name = flow_string.split('%')[0]
         kwargs = json.loads(flow_string.split('%')[1])
         return {
             'name': flow_name,
-            'kwargs': kwargs
+            'kwargs': kwargs,
+            'hash': hash(flow_name + str(kwargs))
         }
 
 
