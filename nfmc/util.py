@@ -1,3 +1,4 @@
+import json
 from typing import Dict, List
 import torch
 
@@ -170,7 +171,32 @@ def get_supported_normalizing_flows(synonyms: bool = True):
     )))
 
 
-def create_flow_object(flow_name: str, event_shape, **kwargs):
+def parse_flow_string(flow_string: str):
+    """
+    Flow string syntax: <flow_name>%<json_string> or <flow_name>.
+    """
+    if '%' not in flow_string:
+        return {
+            'name': flow_string,
+            'kwargs': dict()
+        }
+    else:
+        flow_name = flow_string.split('%')[0]
+        kwargs = json.loads(flow_string.split('%')[1])
+        return {
+            'name': flow_name,
+            'kwargs': kwargs
+        }
+
+
+def create_flow_object(flow_string: str, event_shape, **kwargs):
+    flow_data = parse_flow_string(flow_string)
+    flow_name = flow_data['name']
+    kwargs = {
+        **flow_data['kwargs'],
+        **kwargs,
+    }
+
     assert is_flow_supported(flow_name)
 
     from torchflows.flows import Flow

@@ -113,7 +113,7 @@ def create_sampler(target: callable,
         if flow is None:
             raise ValueError("Flow object must be provided")
         if isinstance(flow, str):
-            flow_object = create_flow_object(flow_name=flow, event_shape=event_shape, **flow_kwargs).to(device)
+            flow_object = create_flow_object(flow_string=flow, event_shape=event_shape, **flow_kwargs).to(device)
         elif isinstance(flow, Flow):
             flow_object = flow.to(device)
         else:
