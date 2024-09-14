@@ -8,6 +8,7 @@ from nfmc.algorithms.sampling.base import Sampler, NFMCKernel, NFMCParameters, M
 from nfmc.algorithms.sampling.mcmc import HMC
 from nfmc.algorithms.sampling.mcmc.base import MetropolisKernel, MetropolisParameters, MetropolisSampler
 from nfmc.algorithms.sampling.mcmc.hmc import HMCKernel, HMCParameters
+from nfmc.algorithms.sampling.mcmc.mh import MHKernel, MHParameters, MH
 
 
 @dataclass
@@ -141,3 +142,18 @@ class NeuTraHMC(NeuTra):
         if inner_params is None:
             inner_params = HMCParameters()
         super().__init__(event_shape, target, HMC, inner_kernel, inner_params, kernel, params)
+
+
+class NeuTraMH(NeuTra):
+    def __init__(self,
+                 event_shape: Union[Tuple[int, ...], torch.Size],
+                 target: callable,
+                 inner_kernel: MHKernel = None,
+                 inner_params: MHParameters = None,
+                 kernel: NeuTraKernel = None,
+                 params: NeuTraParameters = None):
+        if inner_kernel is None:
+            inner_kernel = MHKernel(event_size=int(torch.prod(torch.as_tensor(event_shape))))
+        if inner_params is None:
+            inner_params = MHParameters()
+        super().__init__(event_shape, target, MH, inner_kernel, inner_params, kernel, params)

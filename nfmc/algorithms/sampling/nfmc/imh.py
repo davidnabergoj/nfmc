@@ -146,7 +146,7 @@ class AdaptiveIMH(Sampler):
 
                     flow_weights = deepcopy(self.kernel.flow.state_dict())
                     try:
-                        self.kernel.flow.fit(x_train, n_epochs=1)
+                        self.kernel.flow.fit(x_train, n_epochs=1, show_progress=False)
                     except ValueError:
                         self.kernel.flow.load_state_dict(flow_weights)
 

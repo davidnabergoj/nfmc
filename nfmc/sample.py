@@ -8,9 +8,9 @@ from nfmc.algorithms.sampling.mcmc.hmc import HMCKernel, HMCParameters, UHMC, HM
 from nfmc.algorithms.sampling.mcmc.langevin import LangevinKernel, LangevinParameters, ULA, MALA
 from nfmc.algorithms.sampling.mcmc.mh import MHKernel, MHParameters, MH
 from nfmc.algorithms.sampling.nfmc.dlmc import DLMCKernel, DLMCParameters, DLMC
-from nfmc.algorithms.sampling.nfmc.imh import IMHKernel, IMHParameters, FixedIMH
+from nfmc.algorithms.sampling.nfmc.imh import IMHKernel, IMHParameters, FixedIMH, AdaptiveIMH
 from nfmc.algorithms.sampling.nfmc.jump import JumpNFMCParameters, JumpULA, JumpHMC, JumpUHMC, JumpMALA, JumpMH, JumpESS
-from nfmc.algorithms.sampling.nfmc.neutra import NeuTraKernel, NeuTraParameters, NeuTraHMC
+from nfmc.algorithms.sampling.nfmc.neutra import NeuTraKernel, NeuTraParameters, NeuTraHMC, NeuTraMH
 from nfmc.algorithms.sampling.nfmc.tess import TESSKernel, TESSParameters, TESS
 from nfmc.util import create_flow_object
 from torchflows.flows import Flow
@@ -98,7 +98,8 @@ def create_sampler(target: callable,
         else:
             raise ValueError(f"Unsupported sampling strategy: {strategy}")
     elif strategy in [
-        "imh",
+        "imh", "fixed_imh",  # "imh" means "fixed_imh" by default
+        "adaptive_imh",
         "jump_mala",
         "jump_ula",
         "jump_hmc",
@@ -106,6 +107,7 @@ def create_sampler(target: callable,
         "jump_ess",
         "jump_mh",
         "neutra_hmc",
+        "neutra_mh",
         "tess",
         "dlmc"
     ]:
@@ -118,10 +120,14 @@ def create_sampler(target: callable,
             flow_object = flow.to(device)
         else:
             raise ValueError(f"Unknown type for normalizing flow: {type(flow)}")
-        if strategy == "imh":
+        if strategy in ["imh", "fixed_imh"]:
             kernel = IMHKernel(event_shape, flow=flow_object)
             params = IMHParameters(**param_kwargs)
             return FixedIMH(event_shape, target, kernel, params)
+        if strategy == "adaptive_imh":
+            kernel = IMHKernel(event_shape, flow=flow_object)
+            params = IMHParameters(**param_kwargs)
+            return AdaptiveIMH(event_shape, target, kernel, params)
         elif strategy == 'jump_mala':
             kernel = NFMCKernel(event_shape, flow=flow_object)
             params = JumpNFMCParameters(**param_kwargs)
@@ -223,6 +229,12 @@ def create_sampler(target: callable,
             inner_kernel = HMCKernel(event_size=event_size, **inner_kernel_kwargs)
             inner_params = HMCParameters(**inner_param_kwargs)
             return NeuTraHMC(event_shape, target, inner_kernel, inner_params, kernel, params)
+        elif strategy == 'neutra_mh':
+            kernel = NeuTraKernel(event_shape, flow=flow_object)
+            params = NeuTraParameters(**param_kwargs)
+            inner_kernel = MHKernel(event_size=event_size, **inner_kernel_kwargs)
+            inner_params = MHParameters(**inner_param_kwargs)
+            return NeuTraMH(event_shape, target, inner_kernel, inner_params, kernel, params)
         else:
             raise ValueError(f"Unsupported sampling strategy: {strategy}")
     raise ValueError(f"Unsupported sampling strategy: {strategy}")

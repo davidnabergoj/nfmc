@@ -39,6 +39,10 @@ class MH(MetropolisSampler):
             params = MHParameters()
         super().__init__(event_shape, target, kernel, params)
 
+    @property
+    def name(self):
+        return "MH"
+
     def propose(self, x: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor, int, int, int]:
         n_chains = x.shape[0]
 

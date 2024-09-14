@@ -1,7 +1,7 @@
 import time
 from copy import deepcopy
 from dataclasses import dataclass
-from typing import Sized, Tuple, Union, Optional
+from typing import Union, Tuple, Optional
 
 import torch
 
@@ -234,7 +234,7 @@ class JumpNFMC(Sampler):
 
 class JumpHMC(JumpNFMC):
     def __init__(self,
-                 event_shape: Sized,
+                 event_shape: Union[Tuple[int, ...], torch.Size],
                  target: callable,
                  kernel: NFMCKernel = None,
                  params: JumpNFMCParameters = None,
@@ -246,7 +246,7 @@ class JumpHMC(JumpNFMC):
 
 class JumpUHMC(JumpNFMC):
     def __init__(self,
-                 event_shape: Sized,
+                 event_shape: Union[Tuple[int, ...], torch.Size],
                  target: callable,
                  kernel: NFMCKernel = None,
                  params: JumpNFMCParameters = None,
@@ -258,7 +258,7 @@ class JumpUHMC(JumpNFMC):
 
 class JumpMALA(JumpNFMC):
     def __init__(self,
-                 event_shape: Sized,
+                 event_shape: Union[Tuple[int, ...], torch.Size],
                  target: callable,
                  kernel: NFMCKernel = None,
                  params: JumpNFMCParameters = None,
@@ -270,7 +270,7 @@ class JumpMALA(JumpNFMC):
 
 class JumpULA(JumpNFMC):
     def __init__(self,
-                 event_shape: Sized,
+                 event_shape: Union[Tuple[int, ...], torch.Size],
                  target: callable,
                  kernel: NFMCKernel = None,
                  params: JumpNFMCParameters = None,
@@ -282,7 +282,7 @@ class JumpULA(JumpNFMC):
 
 class JumpMH(JumpNFMC):
     def __init__(self,
-                 event_shape: Sized,
+                 event_shape: Union[Tuple[int, ...], torch.Size],
                  target: callable,
                  kernel: NFMCKernel = None,
                  params: JumpNFMCParameters = None,
@@ -294,7 +294,7 @@ class JumpMH(JumpNFMC):
 
 class JumpESS(JumpNFMC):
     def __init__(self,
-                 event_shape: Sized,
+                 event_shape: Union[Tuple[int, ...], torch.Size],
                  target: callable,
                  negative_log_likelihood: callable,
                  kernel: NFMCKernel = None,
@@ -307,7 +307,7 @@ class JumpESS(JumpNFMC):
 
 class JumpNUTS(JumpNFMC):
     def __init__(self,
-                 event_shape: Sized,
+                 event_shape: Union[Tuple[int, ...], torch.Size],
                  target: callable,
                  kernel: NFMCKernel = None,
                  params: JumpNFMCParameters = None,
