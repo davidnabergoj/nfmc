@@ -25,10 +25,10 @@ class NeuTraParameters(NFMCParameters):
         if self.warmup_fit_kwargs is None:
             self.warmup_fit_kwargs = {
                 'early_stopping': True,
-                'early_stopping_threshold': 50,
+                'early_stopping_threshold': 5000,
                 'keep_best_weights': True,
                 'n_samples': 1,
-                'n_epochs': 500,
+                'n_epochs': 50000,
                 'lr': 0.05
             }
 
