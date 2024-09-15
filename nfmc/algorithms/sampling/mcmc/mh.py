@@ -18,8 +18,11 @@ class MHKernel(MetropolisKernel):
 
 @dataclass
 class MHParameters(MetropolisParameters):
+    imd_adjustment: float = 1e-5
+
     def __post_init__(self):
-        self.tune_inv_mass_diag = False
+        self.tune_step_size = False
+        self.tune_inv_mass_diag = True
 
 
 class MH(MetropolisSampler):
