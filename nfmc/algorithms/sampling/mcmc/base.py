@@ -40,7 +40,8 @@ class MCMCSampler(Sampler):
                x0: torch.Tensor,
                show_progress: bool = True,
                time_limit_seconds: Union[float, int] = None) -> MCMCOutput:
-        warmup_copy = deepcopy(self)
+        with torch.no_grad():
+            warmup_copy = deepcopy(self)
         warmup_copy.params.tuning_mode()
         warmup_copy.params.n_iterations = self.params.n_warmup_iterations
         warmup_output = warmup_copy.sample(x0, show_progress=show_progress, time_limit_seconds=time_limit_seconds)
