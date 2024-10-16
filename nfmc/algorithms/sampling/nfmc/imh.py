@@ -46,7 +46,7 @@ def sample_bounded_geom(p, max_val):
     return int(torch.searchsorted(cdf, u, right=True))
 
 
-class AdaptiveIMH(Sampler):
+class AbstractIMH(Sampler):
     def __init__(self,
                  event_shape: Union[Tuple[int, ...], torch.Size],
                  target: callable,
@@ -57,10 +57,6 @@ class AdaptiveIMH(Sampler):
         if params is None:
             params = IMHParameters()
         super().__init__(event_shape, target, kernel, params)
-
-    @property
-    def name(self):
-        return "Adaptive IMH"
 
     def warmup(self,
                x0: torch.Tensor,
@@ -78,6 +74,27 @@ class AdaptiveIMH(Sampler):
         out = MCMCOutput(event_shape=x0.shape[1:], store_samples=self.params.store_samples)
         out.running_samples.add(self.kernel.flow.sample(x0.shape[0]).detach())
         return out
+
+    @property
+    def name(self):
+        return "Abstract IMH"
+
+
+class AdaptiveIMH(AbstractIMH):
+    def __init__(self,
+                 event_shape: Union[Tuple[int, ...], torch.Size],
+                 target: callable,
+                 kernel: Optional[IMHKernel] = None,
+                 params: Optional[IMHParameters] = None):
+        if kernel is None:
+            kernel = IMHKernel(event_shape)
+        if params is None:
+            params = IMHParameters(adaptation=True)
+        super().__init__(event_shape, target, kernel, params)
+
+    @property
+    def name(self):
+        return "Adaptive IMH"
 
     def sample(self,
                x0: torch.Tensor,
@@ -173,3 +190,60 @@ class FixedIMH(AdaptiveIMH):
     @property
     def name(self):
         return "Fixed IMH"
+
+    def sample(self,
+               x0: torch.Tensor,
+               show_progress: bool = True,
+               time_limit_seconds: Union[float, int] = None) -> MCMCOutput:
+        self.kernel: IMHKernel
+        self.params: IMHParameters
+
+        if self.params.adaptation and not self.params.store_samples:
+            raise ValueError("Cannot adapt IMH kernel without storing samples")
+        out = MCMCOutput(event_shape=x0.shape[1:], store_samples=self.params.adaptation and self.params.store_samples)
+
+        t0 = time.time()
+        n_chains = x0.shape[0]
+        x = deepcopy(x0)
+        out.statistics.elapsed_time_seconds += time.time() - t0
+
+        flow_log_prob_x = None
+
+        for i in (pbar := tqdm(range(self.params.n_iterations), desc=self.name, disable=not show_progress)):
+            if time_limit_seconds is not None and out.statistics.elapsed_time_seconds >= time_limit_seconds:
+                break
+
+            t0 = time.time()
+            with torch.no_grad():
+                x_prime, flow_log_prob_x_prime = self.kernel.flow.sample(n_chains, no_grad=True, return_log_prob=True)
+                try:
+                    log_alpha = metropolis_acceptance_log_ratio(
+                        log_prob_target_curr=-self.target(x).cpu(),
+                        log_prob_target_prime=-self.target(x_prime).cpu(),
+                        log_prob_proposal_curr=flow_log_prob_x.cpu(),
+                        log_prob_proposal_prime=flow_log_prob_x_prime.cpu()
+                    )
+                    log_u = torch.rand(n_chains).log().to(log_alpha)
+                    accepted_mask = torch.less(log_u, log_alpha)
+
+                    x[accepted_mask] = x_prime[accepted_mask].to(x)
+                    flow_log_prob_x[accepted_mask] = flow_log_prob_x_prime[accepted_mask].to(x)
+
+                    x = x.detach()
+                    flow_log_prob_x = flow_log_prob_x.detach()
+                except ValueError:
+                    accepted_mask = torch.zeros(size=(n_chains,), dtype=torch.bool, device=x0.device)
+                    out.statistics.n_divergences += 1
+
+            out.statistics.expectations.update(x)
+            out.statistics.n_target_calls += 2 * n_chains
+
+            out.running_samples.add(x)
+            out.statistics.n_accepted_trajectories += int(torch.sum(accepted_mask))
+            out.statistics.n_attempted_trajectories += n_chains
+
+            out.statistics.elapsed_time_seconds += time.time() - t0
+            pbar.set_postfix_str(f'{out.statistics}')
+
+        out.kernel = self.kernel
+        return out
