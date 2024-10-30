@@ -332,13 +332,13 @@ def create_flow_object(flow_string: str, event_shape, **kwargs):
         bijection = MultiscaleDeepDenseSigmoid(event_shape, **kwargs)
     elif flow_name in FLOW_NAMES['ms-naf-dense']:
         bijection = MultiscaleDenseSigmoid(event_shape, **kwargs)
-    elif flow_name in FLOW_NAMES['glow-affine']:
+    elif flow_name in FLOW_NAMES['glow-realnvp']:
         bijection = AffineGlow(event_shape, **kwargs)
-    elif flow_name in FLOW_NAMES['glow-shift']:
+    elif flow_name in FLOW_NAMES['glow-nice']:
         bijection = ShiftGlow(event_shape, **kwargs)
-    elif flow_name in FLOW_NAMES['glow-rqs']:
+    elif flow_name in FLOW_NAMES['glow-rqnsf']:
         bijection = RQSGlow(event_shape, **kwargs)
-    elif flow_name in FLOW_NAMES['glow-lrs']:
+    elif flow_name in FLOW_NAMES['glow-lrsnsf']:
         bijection = LRSGlow(event_shape, **kwargs)
     elif flow_name in FLOW_NAMES['glow-naf-deep']:
         bijection = DeepSigmoidGlow(event_shape, **kwargs)
