@@ -90,6 +90,10 @@ class AdaptiveIMH(AbstractIMH):
             kernel = IMHKernel(event_shape)
         if params is None:
             params = IMHParameters(adaptation=True)
+        if not params.adaptation:
+            print(f'Warning: params.adaptation is False')
+            print(f'Warning: Setting params.adaptation to True')
+            params.adaptation = True
         super().__init__(event_shape, target, kernel, params)
 
     @property
@@ -184,7 +188,9 @@ class FixedIMH(AdaptiveIMH):
             kernel = IMHKernel(event_shape)
         if params is None:
             params = IMHParameters(adaptation=False)
-        params.adaptation = False
+        if params.adaptation:
+            print('Warning: params.adaptation is True')
+            print('Warning: setting params.adaptation to False')
         super().__init__(event_shape, target, kernel, params)
 
     @property

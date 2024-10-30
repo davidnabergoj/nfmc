@@ -126,6 +126,9 @@ def create_sampler(target: callable,
             return FixedIMH(event_shape, target, kernel, params)
         if strategy == "adaptive_imh":
             kernel = IMHKernel(event_shape, flow=flow_object)
+            param_kwargs.update({
+                'adaptation': True
+            })
             params = IMHParameters(**param_kwargs)
             return AdaptiveIMH(event_shape, target, kernel, params)
         elif strategy == 'jump_mala':
