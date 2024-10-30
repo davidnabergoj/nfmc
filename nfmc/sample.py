@@ -247,7 +247,7 @@ def create_sampler(target: callable,
 def sample(target: Union[callable, Potential],
            event_shape: Optional[Union[torch.Size, Tuple[int, ...]]] = None,
            flow: Optional[Union[str, Flow]] = 'realnvp',
-           strategy: str = "imh",
+           strategy: str = "imh",  # todo rename to 'sampler'
            n_iterations: int = 100,
            n_warmup_iterations: int = 100,
            n_chains: int = 100,
