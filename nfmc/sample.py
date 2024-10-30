@@ -282,6 +282,8 @@ def sample(target: Union[callable, Potential],
     :return: sampling output object.
     :rtype: MCMCOutput
     """
+    if flow == 'None':
+        flow = None
     if flow is not None and not isinstance(flow, str):
         event_shape = flow.event_shape
     elif isinstance(target, Potential):

@@ -175,6 +175,8 @@ def parse_flow_string(flow_string: str):
     """
     Flow string syntax: <flow_name>%<json_string> or <flow_name>.
     """
+
+    # Maybe we can remove this? Check usages.
     if flow_string is None:
         return {
             'name': None,
