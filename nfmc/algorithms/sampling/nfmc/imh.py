@@ -181,7 +181,7 @@ class AdaptiveIMH(AbstractIMH):
         return out
 
 
-class FixedIMH(AdaptiveIMH):
+class FixedIMH(AbstractIMH):
     def __init__(self,
                  event_shape: Union[Tuple[int, ...], torch.Size],
                  target: callable,
