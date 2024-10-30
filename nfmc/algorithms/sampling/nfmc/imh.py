@@ -216,12 +216,11 @@ class FixedIMH(AdaptiveIMH):
         x = deepcopy(x0)
         out.statistics.elapsed_time_seconds += time.time() - t0
 
-        flow_log_prob_x = None
+        flow_log_prob_x = self.kernel.flow.log_prob(x)
 
         for i in (pbar := tqdm(range(self.params.n_iterations), desc=self.name, disable=not show_progress)):
             if time_limit_seconds is not None and out.statistics.elapsed_time_seconds >= time_limit_seconds:
                 break
-
             t0 = time.time()
             with torch.no_grad():
                 x_prime, flow_log_prob_x_prime = self.kernel.flow.sample(n_chains, no_grad=True, return_log_prob=True)
