@@ -127,7 +127,8 @@ def create_sampler(target: callable,
         if strategy == "adaptive_imh":
             kernel = IMHKernel(event_shape, flow=flow_object)
             param_kwargs.update({
-                'adaptation': True
+                'adaptation': True,
+                'store_samples': True
             })
             params = IMHParameters(**param_kwargs)
             return AdaptiveIMH(event_shape, target, kernel, params)

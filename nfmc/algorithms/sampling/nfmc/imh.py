@@ -94,6 +94,9 @@ class AdaptiveIMH(AbstractIMH):
             print(f'Warning: params.adaptation is False')
             print(f'Warning: Setting params.adaptation to True')
             params.adaptation = True
+        if not params.store_samples:
+            print(f'Warning: params.store_samples is False')
+            print(f'Warning: setting params.store_samples to True')
         super().__init__(event_shape, target, kernel, params)
 
     @property
