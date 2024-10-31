@@ -410,12 +410,15 @@ def get_supported_mcmc_samplers() -> List[str]:
 def get_supported_nfmc_samplers() -> List[str]:
     return [
         "imh",
+        'fixed_imh',
+        'adaptive_imh',
         "jump_mala",
         "jump_ula",
         "jump_hmc",
         "jump_uhmc",
         "jump_ess",
         "jump_mh",
+        "neutra_mh",
         "neutra_hmc",
         "tess",
         "dlmc"
