@@ -17,7 +17,6 @@ class IMHKernel(NFMCKernel):
 
 @dataclass
 class IMHParameters(NFMCParameters):
-    adaptation: bool = True
     train_distribution: str = 'uniform'
     adaptation_dropoff: float = 0.9999
     warmup_fit_kwargs: dict = None
@@ -89,14 +88,11 @@ class AdaptiveIMH(AbstractIMH):
         if kernel is None:
             kernel = IMHKernel(event_shape)
         if params is None:
-            params = IMHParameters(adaptation=True)
-        if not params.adaptation:
-            print(f'Warning: params.adaptation is False')
-            print(f'Warning: Setting params.adaptation to True')
-            params.adaptation = True
+            params = IMHParameters()
         if not params.store_samples:
             print(f'Warning: params.store_samples is False')
             print(f'Warning: setting params.store_samples to True')
+            self.params.store_samples = True
         super().__init__(event_shape, target, kernel, params)
 
     @property
@@ -110,9 +106,13 @@ class AdaptiveIMH(AbstractIMH):
         self.kernel: IMHKernel
         self.params: IMHParameters
 
-        if self.params.adaptation and not self.params.store_samples:
-            raise ValueError("Cannot adapt IMH kernel without storing samples")
-        out = MCMCOutput(event_shape=x0.shape[1:], store_samples=self.params.adaptation and self.params.store_samples)
+        if not self.params.store_samples:
+            print("WARNING: params.store_samples is False")
+            print("WARNING: cannot adapt IMH kernel without storing samples - params.store_samples")
+            print("WARNING: setting params.store_samples to True")
+            self.params.store_samples = True
+
+        out = MCMCOutput(event_shape=x0.shape[1:], store_samples=True)
 
         t0 = time.time()
         n_chains = x0.shape[0]
@@ -148,31 +148,30 @@ class AdaptiveIMH(AbstractIMH):
             out.statistics.n_accepted_trajectories += int(torch.sum(accepted_mask))
             out.statistics.n_attempted_trajectories += n_chains
 
-            if self.params.adaptation:
-                u_prime = torch.rand(size=())
-                alpha_prime = self.params.adaptation_dropoff ** i
-                if u_prime < alpha_prime:
-                    # only use recent states to adapt
-                    # this is an approximation of a bounded "geometric distribution" that picks the training data
-                    # we can program the exact bounded geometric as well. Then its parameter p can be adapted with dual
-                    # averaging.
-                    n_samples = out.running_samples.n_samples
-                    if self.params.train_distribution == 'uniform':
-                        k = int(torch.randint(low=0, high=n_samples, size=()))
-                    elif self.params.train_distribution == 'bounded_geom_approx':
-                        k = int(torch.randint(low=max(0, n_samples - 100), high=n_samples, size=()))
-                    elif self.params.train_distribution == 'bounded_geom':
-                        k = sample_bounded_geom(p=0.025, max_val=n_samples - 1)
-                    else:
-                        raise ValueError
+            u_prime = torch.rand(size=())
+            alpha_prime = self.params.adaptation_dropoff ** i
+            if u_prime < alpha_prime:
+                # only use recent states to adapt
+                # this is an approximation of a bounded "geometric distribution" that picks the training data
+                # we can program the exact bounded geometric as well. Then its parameter p can be adapted with dual
+                # averaging.
+                n_samples = out.running_samples.n_samples
+                if self.params.train_distribution == 'uniform':
+                    k = int(torch.randint(low=0, high=n_samples, size=()))
+                elif self.params.train_distribution == 'bounded_geom_approx':
+                    k = int(torch.randint(low=max(0, n_samples - 100), high=n_samples, size=()))
+                elif self.params.train_distribution == 'bounded_geom':
+                    k = sample_bounded_geom(p=0.025, max_val=n_samples - 1)
+                else:
+                    raise ValueError
 
-                    x_train = out.running_samples[k]
+                x_train = out.running_samples[k]
 
-                    flow_weights = deepcopy(self.kernel.flow.state_dict())
-                    try:
-                        self.kernel.flow.fit(x_train, n_epochs=1, show_progress=False)
-                    except ValueError:
-                        self.kernel.flow.load_state_dict(flow_weights)
+                flow_weights = deepcopy(self.kernel.flow.state_dict())
+                try:
+                    self.kernel.flow.fit(x_train, n_epochs=1, show_progress=False)
+                except ValueError:
+                    self.kernel.flow.load_state_dict(flow_weights)
 
             out.statistics.elapsed_time_seconds += time.time() - t0
             pbar.set_postfix_str(f'{out.statistics}')
@@ -190,10 +189,7 @@ class FixedIMH(AbstractIMH):
         if kernel is None:
             kernel = IMHKernel(event_shape)
         if params is None:
-            params = IMHParameters(adaptation=False)
-        if params.adaptation:
-            print('Warning: params.adaptation is True')
-            print('Warning: setting params.adaptation to False')
+            params = IMHParameters()
         super().__init__(event_shape, target, kernel, params)
 
     @property
@@ -207,9 +203,7 @@ class FixedIMH(AbstractIMH):
         self.kernel: IMHKernel
         self.params: IMHParameters
 
-        if self.params.adaptation and not self.params.store_samples:
-            raise ValueError("Cannot adapt IMH kernel without storing samples")
-        out = MCMCOutput(event_shape=x0.shape[1:], store_samples=self.params.adaptation and self.params.store_samples)
+        out = MCMCOutput(event_shape=x0.shape[1:], store_samples=self.params.store_samples)
 
         t0 = time.time()
         n_chains = x0.shape[0]
