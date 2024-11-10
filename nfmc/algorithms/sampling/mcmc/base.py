@@ -106,7 +106,7 @@ class MetropolisKernel(MCMCKernel):
     inv_mass_diag: torch.Tensor = None
     step_size: float = 0.01
     da: DualAveraging = None
-    da_params: DualAveragingParams = DualAveragingParams()
+    da_params: DualAveragingParams = None
 
     def __post_init__(self):
         super().__post_init__()
@@ -115,6 +115,8 @@ class MetropolisKernel(MCMCKernel):
         else:
             if self.inv_mass_diag.shape != (self.event_size,):
                 raise ValueError
+        if self.da_params is None:
+            self.da_params = DualAveragingParams()
         if self.da is None:
             self.da = DualAveraging(self.step_size, self.da_params)
 
