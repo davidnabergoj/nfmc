@@ -315,6 +315,8 @@ class Sampler:
         self.kernel = kernel
         self.params = params
 
+        self.event_size = int(torch.prod(torch.as_tensor(event_shape)))
+
     @property
     def name(self):
         return "Generic sampler"

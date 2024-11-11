@@ -42,27 +42,33 @@ class MH(MetropolisSampler):
         return "MH"
 
     def propose(self, x: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor, int, int, int]:
-        n_chains = x.shape[0]
+        """
+        :param torch.Tensor x: current state with shape (*batch_shape, *event_shape).
+        """
+        batch_shape = x.shape[:-len(self.event_shape)]
 
         try:
-            noise = torch.randn_like(x) * self.kernel.inv_mass_diag
+            noise = torch.multiply(
+                torch.randn(size=(*batch_shape, self.event_size)),
+                self.kernel.inv_mass_diag[[None] * len(batch_shape)]
+            ).view_as(x)
             x_prime = x + noise
 
             if self.params.adjustment:
                 log_ratio = metropolis_acceptance_log_ratio(-self.target(x), -self.target(x_prime), 0, 0)
-                mask = torch.as_tensor(torch.log(torch.rand(n_chains)) < log_ratio)
+                mask = torch.as_tensor(torch.log(torch.rand(size=batch_shape)) < log_ratio)
             else:
-                mask = torch.ones(n_chains, dtype=torch.bool)
+                mask = torch.ones(size=batch_shape, dtype=torch.bool)
             n_divergences = 0
         except ValueError:
             x_prime = x
-            mask = torch.zeros(n_chains, dtype=torch.bool)
+            mask = torch.zeros(size=batch_shape, dtype=torch.bool)
             n_divergences = 1
 
         n_grads = 0
         n_calls = 0
         if self.params.adjustment:
-            n_calls = 2 * n_chains
+            n_calls = 2 * torch.prod(torch.as_tensor(batch_shape))
 
         return x_prime.detach(), mask, n_calls, n_grads, n_divergences
 
