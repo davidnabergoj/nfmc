@@ -81,6 +81,11 @@ def get_flow_family(flow: str):
                 return FLOW_REFERENCE_DATA[key]['family']
     raise KeyError(f"Flow {flow} not found in reference data")
 
+COUPLING_FLOW_NAMES: Dict[str, List[str]] = {
+    k: [k] + FLOW_REFERENCE_DATA[k]['alt'] for k in FLOW_REFERENCE_DATA.keys()
+    if FLOW_REFERENCE_DATA[k]['family'][0] == 'autoregressive'
+       and FLOW_REFERENCE_DATA[k]['family'][1] in ['coupling']
+}
 
 AFFINE_AUTOREGRESSIVE_FLOW_NAMES: Dict[str, List[str]] = {
     k: [k] + FLOW_REFERENCE_DATA[k]['alt'] for k in FLOW_REFERENCE_DATA.keys()
@@ -124,6 +129,16 @@ CONTINUOUS_FLOW_NAMES: Dict[str, List[str]] = {
 RESIDUAL_FLOW_NAMES: Dict[str, List[str]] = {
     k: [k] + FLOW_REFERENCE_DATA[k]['alt'] for k in FLOW_REFERENCE_DATA.keys()
     if FLOW_REFERENCE_DATA[k]['family'][0] == 'residual'
+}
+
+RESIDUAL_MATRIX_DET_FLOW_NAMES: Dict[str, List[str]] = {
+    k: [k] + FLOW_REFERENCE_DATA[k]['alt'] for k in FLOW_REFERENCE_DATA.keys()
+    if FLOW_REFERENCE_DATA[k]['family'][0] == 'residual' and FLOW_REFERENCE_DATA[k]['family'][1] == 'matrix-det'
+}
+
+RESIDUAL_CONTRACTIVE_FLOW_NAMES: Dict[str, List[str]] = {
+    k: [k] + FLOW_REFERENCE_DATA[k]['alt'] for k in FLOW_REFERENCE_DATA.keys()
+    if FLOW_REFERENCE_DATA[k]['family'][0] == 'residual' and FLOW_REFERENCE_DATA[k]['family'][1] != 'matrix-det'
 }
 
 FLOW_NAMES: Dict[str, List[str]] = {
