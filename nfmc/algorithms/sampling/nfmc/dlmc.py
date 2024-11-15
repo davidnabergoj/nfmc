@@ -1,10 +1,10 @@
 import time
-from typing import Sized, Optional, Union, Tuple
+from typing import Optional, Union, Tuple
 
 from tqdm import tqdm
 import torch
 
-from nfmc.algorithms.sampling.base import Sampler, MCMCOutput, MCMCStatistics, NFMCKernel, NFMCParameters
+from nfmc.algorithms.sampling.base import Sampler, MCMCOutput, NFMCKernel, NFMCParameters
 from nfmc.util import metropolis_acceptance_log_ratio, compute_grad
 from dataclasses import dataclass
 
@@ -59,9 +59,12 @@ class DLMC(Sampler):
         grad = compute_grad(self.negative_log_likelihood, x0)
         x = x0 - self.kernel.step_size * grad
         x.requires_grad_(False)
-        out.statistics.n_target_calls += n_chains
-        out.statistics.n_target_gradient_calls += n_chains
-        out.statistics.elapsed_time_seconds += time.time() - t0
+
+        out.statistics.update_counters(
+            n_target_calls=n_chains,
+            n_target_gradient_calls=n_chains,
+        )
+        out.statistics.update_elapsed_time(time.time() - t0)
 
         for i in (pbar := tqdm(range(self.params.n_iterations), desc='DLMC sampling', disable=not show_progress)):
             if time_limit_seconds is not None and out.statistics.elapsed_time_seconds >= time_limit_seconds:
@@ -80,14 +83,14 @@ class DLMC(Sampler):
                 grad = compute_grad(self.target, x)
                 z = z - self.kernel.step_size * (grad - z)
                 x, _ = self.kernel.flow.bijection.inverse(z)
-                out.statistics.n_target_calls += n_chains
-                out.statistics.n_target_gradient_calls += n_chains
             else:
                 grad = compute_grad(lambda v: self.target(v).cpu() + flow_log_prob(v), x)
                 x = x - self.kernel.step_size * grad
-                out.statistics.n_target_calls += n_chains
-                out.statistics.n_target_gradient_calls += n_chains
 
+            out.statistics.update_counters(
+                n_target_calls=n_chains,
+                n_target_gradient_calls=n_chains
+            )
             x_tilde = self.kernel.flow.sample(n_chains, no_grad=True)
             log_alpha = metropolis_acceptance_log_ratio(
                 log_prob_target_curr=-self.target(x).cpu(),
@@ -95,17 +98,21 @@ class DLMC(Sampler):
                 log_prob_proposal_curr=flow_log_prob(x).cpu(),
                 log_prob_proposal_prime=flow_log_prob(x_tilde).cpu()
             )
-            out.statistics.n_target_calls += 2 * n_chains
             log_u = torch.rand(n_chains).log().to(log_alpha)
             accepted_mask = torch.less(log_u, log_alpha)
             x[accepted_mask] = x_tilde[accepted_mask].to(x)
             x = x.detach()
+
+            # Update output
             out.running_samples.add(x)
             out.statistics.expectations.update(x)
+            out.statistics.update_counters(
+                n_target_calls=2 * n_chains,
+                n_accepted_trajectories=int(torch.sum(accepted_mask)),
+                n_attempted_trajectories=n_chains,
+            )
+            out.statistics.update_elapsed_time(time.time() - t0)
 
-            out.statistics.n_accepted_trajectories += int(torch.sum(accepted_mask))
-            out.statistics.n_attempted_trajectories += n_chains
-            out.statistics.elapsed_time_seconds += time.time() - t0
             pbar.set_postfix_str(f'{out.statistics}')
 
         out.kernel = self.kernel

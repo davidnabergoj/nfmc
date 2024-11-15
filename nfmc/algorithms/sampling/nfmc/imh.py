@@ -117,7 +117,7 @@ class AdaptiveIMH(AbstractIMH):
         t0 = time.time()
         n_chains = x0.shape[0]
         x = deepcopy(x0)
-        out.statistics.elapsed_time_seconds += time.time() - t0
+        out.statistics.update_elapsed_time(time.time() - t0)
 
         for i in (pbar := tqdm(range(self.params.n_iterations), desc=self.name, disable=not show_progress)):
             if time_limit_seconds is not None and out.statistics.elapsed_time_seconds >= time_limit_seconds:
@@ -139,14 +139,15 @@ class AdaptiveIMH(AbstractIMH):
                     x = x.detach()
                 except ValueError:
                     accepted_mask = torch.zeros(size=(n_chains,), dtype=torch.bool, device=x0.device)
-                    out.statistics.n_divergences += 1
+                    out.statistics.update_counters(n_divergences=1)
 
             out.statistics.expectations.update(x)
-            out.statistics.n_target_calls += 2 * n_chains
-
+            out.statistics.update_counters(
+                n_target_gradient_calls=2 * n_chains,
+                n_accepted_trajectories=int(torch.sum(accepted_mask)),
+                n_attempted_trajectories=n_chains,
+            )
             out.running_samples.add(x)
-            out.statistics.n_accepted_trajectories += int(torch.sum(accepted_mask))
-            out.statistics.n_attempted_trajectories += n_chains
 
             u_prime = torch.rand(size=())
             alpha_prime = self.params.adaptation_dropoff ** i
@@ -173,7 +174,7 @@ class AdaptiveIMH(AbstractIMH):
                 except ValueError:
                     self.kernel.flow.load_state_dict(flow_weights)
 
-            out.statistics.elapsed_time_seconds += time.time() - t0
+            out.statistics.update_elapsed_time(time.time() - t0)
             pbar.set_postfix_str(f'{out.statistics}')
 
         out.kernel = self.kernel
@@ -208,7 +209,7 @@ class FixedIMH(AbstractIMH):
         t0 = time.time()
         n_chains = x0.shape[0]
         x = deepcopy(x0)
-        out.statistics.elapsed_time_seconds += time.time() - t0
+        out.statistics.update_elapsed_time(time.time() - t0)
 
         flow_log_prob_x = self.kernel.flow.log_prob(x)
 
@@ -235,16 +236,19 @@ class FixedIMH(AbstractIMH):
                     flow_log_prob_x = flow_log_prob_x.detach()
                 except ValueError:
                     accepted_mask = torch.zeros(size=(n_chains,), dtype=torch.bool, device=x0.device)
-                    out.statistics.n_divergences += 1
+                    out.statistics.update_counters(n_divergences=1)
 
+            # Update output
             out.statistics.expectations.update(x)
-            out.statistics.n_target_calls += 2 * n_chains
+            out.statistics.update_counters(
+                n_target_calls=2 * n_chains,
+                n_accepted_trajectories=int(torch.sum(accepted_mask)),
+                n_attempted_trajectories=n_chains,
+            )
 
             out.running_samples.add(x)
-            out.statistics.n_accepted_trajectories += int(torch.sum(accepted_mask))
-            out.statistics.n_attempted_trajectories += n_chains
-
-            out.statistics.elapsed_time_seconds += time.time() - t0
+            out.statistics.update_elapsed_time(time.time() - t0)
+            
             pbar.set_postfix_str(f'{out.statistics}')
 
         out.kernel = self.kernel

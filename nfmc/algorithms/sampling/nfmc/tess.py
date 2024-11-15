@@ -112,7 +112,7 @@ class TESS(Sampler):
         t0 = time.time()
         n_chains, *event_shape = x0.shape
         u = multivariate_normal_sample((n_chains,), self.kernel.flow.bijection.event_shape, self.kernel.cov)
-        out.statistics.elapsed_time_seconds += time.time() - t0
+        out.statistics.update_elapsed_time(time.time() - t0)
 
         pbar = tqdm(range(self.params.n_warmup_iterations), desc='[Warmup] TESS', disable=not show_progress)
         for i in pbar:
@@ -129,10 +129,11 @@ class TESS(Sampler):
             )
             out.running_samples.add(u)
             out.statistics.expectations.update(u)
-            out.statistics.n_target_calls += (self.params.max_ess_step_iterations + 1) * n_chains
-
-            out.statistics.n_accepted_trajectories += int(torch.sum(accepted_mask))
-            out.statistics.n_attempted_trajectories += n_chains
+            out.statistics.update_counters(
+                n_target_calls=(self.params.max_ess_step_iterations + 1) * n_chains,
+                n_accepted_trajectories=int(torch.sum(accepted_mask)),
+                n_attempted_trajectories=n_chains
+            )
             pbar.set_postfix_str(f'{out.statistics}')
 
             x_train = x.detach().clone()
@@ -171,14 +172,18 @@ class TESS(Sampler):
                 self.negative_log_likelihood,
                 cov=self.kernel.cov
             )
-            out.statistics.n_target_calls += (self.params.max_ess_step_iterations + 1) * n_chains
 
-            out.statistics.n_accepted_trajectories += int(torch.sum(accepted_mask))
-            out.statistics.n_attempted_trajectories += n_chains
-            pbar.set_postfix_str(f'{out.statistics}')
+            # Update output
+            out.statistics.update_elapsed_time(time.time() - t0)
+            out.statistics.update_counters(
+                n_target_calls=(self.params.max_ess_step_iterations + 1) * n_chains,
+                n_accepted_trajectories=int(torch.sum(accepted_mask)),
+                n_attempted_trajectories=n_chains
+            )
             out.running_samples.add(x)
             out.statistics.expectations.update(x)
-            out.statistics.elapsed_time_seconds += time.time() - t0
+
+            pbar.set_postfix_str(f'{out.statistics}')
 
         out.kernel = self.kernel
         return out

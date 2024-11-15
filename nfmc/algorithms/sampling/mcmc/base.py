@@ -76,11 +76,13 @@ class MCMCSampler(Sampler):
             x_prime = x_prime.detach()
             x[mask] = x_prime[mask]
 
-            out.statistics.n_target_calls += n_calls
-            out.statistics.n_target_gradient_calls += n_grads
-            out.statistics.n_divergences += n_divs
-            out.statistics.n_accepted_trajectories += int(torch.sum(mask))
-            out.statistics.n_attempted_trajectories += n_chains
+            out.statistics.update_counters(
+                n_target_calls=n_calls,
+                n_target_gradient_calls=n_grads,
+                n_divergences=n_divs,
+                n_accepted_trajectories=int(torch.sum(mask)),
+                n_attempted_trajectories=n_chains
+            )
             out.statistics.expectations.update(x)
 
             with torch.no_grad():
@@ -93,7 +95,7 @@ class MCMCSampler(Sampler):
                         'mask': mask
                     })
 
-            out.statistics.elapsed_time_seconds += time.time() - t0
+            out.statistics.update_elapsed_time(time.time() - t0)
             pbar.set_postfix_str(f'{out.statistics} | {self.kernel}')
 
         out.kernel = self.kernel

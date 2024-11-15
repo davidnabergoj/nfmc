@@ -56,8 +56,10 @@ class NUTS(Sampler):
         )
 
         # TODO better statistics
-        out.statistics.n_accepted_trajectories = n_chains * self.params.n_iterations
-        out.statistics.n_attempted_trajectories = n_chains * self.params.n_iterations
+        out.statistics.update_counters(
+            n_accepted_trajectories=n_chains * self.params.n_iterations,
+            n_attempted_trajectories=n_chains * self.params.n_iterations,
+        )
 
         out.kernel = self.kernel
         return out

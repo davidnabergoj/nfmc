@@ -136,6 +136,21 @@ class MCMCStatistics:
     data_transform: callable = lambda v: v  # transform data using this function when computing statistics
     expectations: MCMCExpectationDict = None
 
+    def update_counters(self,
+                        n_accepted_trajectories: int = 0,
+                        n_attempted_trajectories: int = 0,
+                        n_divergences: int = 0,
+                        n_target_gradient_calls: int = 0,
+                        n_target_calls: int = 0):
+        self.n_accepted_trajectories = int(self.n_accepted_trajectories + n_accepted_trajectories)
+        self.n_attempted_trajectories = int(self.n_attempted_trajectories + n_attempted_trajectories)
+        self.n_divergences = int(self.n_divergences + n_divergences)
+        self.n_target_gradient_calls = int(self.n_target_gradient_calls + n_target_gradient_calls)
+        self.n_target_calls = int(self.n_target_calls + n_target_calls)
+
+    def update_elapsed_time(self, delta_time_seconds: float):
+        self.elapsed_time_seconds = float(self.elapsed_time_seconds + delta_time_seconds)
+
     def __post_init__(self):
         self.expectations = MCMCExpectationDict(
             {

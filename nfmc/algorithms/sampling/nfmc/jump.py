@@ -46,6 +46,14 @@ class JumpNFMCStatistics(MCMCStatistics):
             return torch.nan
         return self.n_accepted_jumps / self.n_attempted_jumps
 
+    def update_counters(self,
+                        n_accepted_jumps: int = 0,
+                        n_attempted_jumps: int = 0,
+                        **kwargs):
+        super().update_counters(**kwargs)
+        self.n_accepted_jumps = int(self.n_accepted_jumps + n_accepted_jumps)
+        self.n_attempted_jumps = int(self.n_attempted_jumps + n_attempted_jumps)
+
     def __repr__(self):
         return (
             f"MCMC acc-rate: {self.acceptance_rate:.2f}, "
@@ -165,19 +173,19 @@ class JumpNFMC(Sampler):
             # Trajectories
             pbar.set_description_str(f'Jump MCMC')
             mcmc_output = self.inner_sampler.sample(x0=x, show_progress=False)
-            out.statistics.n_accepted_trajectories += mcmc_output.statistics.n_accepted_trajectories
-            out.statistics.n_attempted_trajectories += mcmc_output.statistics.n_attempted_trajectories
-            out.statistics.n_divergences += mcmc_output.statistics.n_divergences
 
-            out.statistics.n_target_calls += mcmc_output.statistics.n_target_calls
-            out.statistics.n_target_gradient_calls += mcmc_output.statistics.n_target_gradient_calls
-            out.statistics.elapsed_time_seconds += mcmc_output.statistics.elapsed_time_seconds
-
+            out.statistics.update_counters(
+                n_accepted_trajectories=mcmc_output.statistics.n_accepted_trajectories,
+                n_attempted_trajectories=mcmc_output.statistics.n_attempted_trajectories,
+                n_divergences=mcmc_output.statistics.n_divergences,
+                n_target_calls=mcmc_output.statistics.n_target_calls,
+                n_target_gradient_calls=mcmc_output.statistics.n_target_gradient_calls,
+            )
+            out.statistics.update_elapsed_time(mcmc_output.statistics.elapsed_time_seconds)
             out.statistics.expectations.update(mcmc_output.samples)
-
-            t0 = time.time()
             out.running_samples.add(mcmc_output.samples)
 
+            t0 = time.time()
             # Fit flow
             if self.params.fit_nf and i >= self.params.n_jumps_before_training:
                 pbar.set_description_str(f'Jump MCMC (training)')
@@ -199,10 +207,10 @@ class JumpNFMC(Sampler):
             if self.params.adjusted_jumps:
                 try:
                     u_x = self.target(x)
-                    out.statistics.n_target_calls += n_chains
-
                     u_x_prime = self.target(x_prime)
-                    out.statistics.n_target_calls += n_chains
+                    out.statistics.update_counters(
+                        n_target_calls=2 * n_chains,
+                    )
 
                     f_x = self.kernel.flow.log_prob(x)
                     log_alpha = metropolis_acceptance_log_ratio(
@@ -220,9 +228,12 @@ class JumpNFMC(Sampler):
             x[mask] = x_prime[mask].to(x)
             t1 = time.time()
 
-            out.statistics.elapsed_time_seconds += t1 - t0
-            out.statistics.n_attempted_jumps += n_chains
-            out.statistics.n_accepted_jumps += int(torch.sum(mask))
+            # Update output
+            out.statistics.update_elapsed_time(t1 - t0)
+            out.statistics.update_counters(
+                n_attempted_jumps=n_chains,
+                n_accepted_jumps=int(torch.sum(mask)),
+            )
             out.statistics.expectations.update(x)
             pbar.set_postfix_str(f'{out.statistics}')
 
