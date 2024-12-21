@@ -1,93 +1,287 @@
-from nfmc.sampling_implementations import nf_imh, nf_ula, nf_mala, tess, neutra_hmc, dlmc
 import torch
 import pytest
 
-from nfmc.util import get_supported_normalizing_flows
+from nfmc import sample
+from nfmc.algorithms.sampling.mcmc import (
+    MH,
+    RandomWalk,
+    HMC,
+    UHMC,
+    NUTS,
+    MALA,
+    ULA,
+    ESS
+)
+from nfmc.algorithms.sampling.nfmc import (
+    JumpMALA,
+    JumpMH,
+    JumpHMC,
+    JumpUHMC,
+    JumpULA,
+    JumpESS,
+    JumpNUTS,
+    TESS,
+    DLMC,
+    NeuTraHMC,
+    FixedIMH,
+    AdaptiveIMH
+)
 from potentials.synthetic.gaussian.unit import StandardGaussian
-
-all_event_shapes = [(2,), (5,), (2, 3, 7)]
-all_n_chains = [1, 5, 50]
-all_n_iterations = [5, 1, 50]
-all_flows = get_supported_normalizing_flows()
-all_jump_periods = [10, 50]
+from nfmc.algorithms.sampling.base import MCMCOutput
 
 
-@pytest.mark.parametrize('event_shape', all_event_shapes)
-@pytest.mark.parametrize('n_chains', all_n_chains)
-@pytest.mark.parametrize('flow', all_flows)
-@pytest.mark.parametrize('n_iterations', all_n_iterations)
-def test_imh(event_shape, flow, n_chains, n_iterations):
+@pytest.mark.parametrize('sampler_class', [
+    MH,
+    RandomWalk,
+    HMC,
+    UHMC,
+    # NUTS,  # only supports one chain at the moment
+    MALA,
+    ULA
+])
+def test_mcmc(sampler_class):
     torch.manual_seed(0)
-    target = StandardGaussian(event_shape)
-    draws = nf_imh(target, flow, n_chains, n_iterations)
-    assert draws.shape == (n_iterations, n_chains, *event_shape)
-    assert torch.all(~torch.isnan(draws))
-    assert torch.all(torch.isfinite(draws))
+    n_iterations = 3
+    n_chains = 4
+    event_shape = (5,)
+    sampler = sampler_class(event_shape=event_shape, target=StandardGaussian(event_shape))
+    sampler.params.n_iterations = n_iterations
+    x0 = torch.randn(size=(n_chains, *event_shape))
+    output = sampler.sample(x0=x0, show_progress=False)
+
+    assert isinstance(output, MCMCOutput)
+    assert output.samples.shape == (n_iterations, n_chains, *event_shape)
+    assert torch.isfinite(output.samples).all()
 
 
-@pytest.mark.parametrize('event_shape', all_event_shapes)
-@pytest.mark.parametrize('n_chains', all_n_chains)
-@pytest.mark.parametrize('flow', all_flows)
-@pytest.mark.parametrize('n_iterations', all_n_iterations)
-@pytest.mark.parametrize('jump_period', all_jump_periods)
-def test_ula(event_shape, flow, n_chains, n_iterations, jump_period):
+def test_nuts():
     torch.manual_seed(0)
-    target = StandardGaussian(event_shape)
-    draws = nf_ula(target, flow, n_chains, n_iterations, jump_period)
-    assert draws.shape == (n_iterations * jump_period, n_chains, *event_shape)
-    assert torch.all(~torch.isnan(draws))
-    assert torch.all(torch.isfinite(draws))
+    n_iterations = 3
+    n_chains = 1
+    event_shape = (5,)
+    sampler = NUTS(event_shape=event_shape, target=StandardGaussian(event_shape))
+    sampler.params.n_iterations = n_iterations
+    x0 = torch.randn(size=(n_chains, *event_shape))
+    output = sampler.sample(x0=x0, show_progress=False)
+
+    assert isinstance(output, MCMCOutput)
+    assert output.samples.shape == (n_iterations, n_chains, *event_shape)
+    assert torch.isfinite(output.samples).all()
 
 
-@pytest.mark.parametrize('event_shape', all_event_shapes)
-@pytest.mark.parametrize('n_chains', all_n_chains)
-@pytest.mark.parametrize('flow', all_flows)
-@pytest.mark.parametrize('n_iterations', all_n_iterations)
-@pytest.mark.parametrize('jump_period', all_jump_periods)
-def test_mala(event_shape, flow, n_chains, n_iterations, jump_period):
+def test_ess():
     torch.manual_seed(0)
-    target = StandardGaussian(event_shape)
-    draws = nf_mala(target, flow, n_chains, n_iterations, jump_period)
-    assert draws.shape == (n_iterations * jump_period, n_chains, *event_shape)
-    assert torch.all(~torch.isnan(draws))
-    assert torch.all(torch.isfinite(draws))
+    n_iterations = 3
+    n_chains = 4
+    event_shape = (5,)
+    sampler = ESS(
+        event_shape=event_shape,
+        target=StandardGaussian(event_shape),
+        negative_log_likelihood=StandardGaussian(event_shape)
+    )
+    sampler.params.n_iterations = n_iterations
+    x0 = torch.randn(size=(n_chains, *event_shape))
+    output = sampler.sample(x0=x0, show_progress=False)
+
+    assert isinstance(output, MCMCOutput)
+    assert output.samples.shape == (n_iterations, n_chains, *event_shape)
+    assert torch.isfinite(output.samples).all()
 
 
-@pytest.mark.parametrize('event_shape', all_event_shapes)
-@pytest.mark.parametrize('n_chains', all_n_chains)
-@pytest.mark.parametrize('flow', all_flows)
-@pytest.mark.parametrize('n_iterations', all_n_iterations)
-def test_tess(event_shape, flow, n_chains, n_iterations):
+def test_jump_ess():
     torch.manual_seed(0)
-    target = StandardGaussian(event_shape)
-    draws = tess(target, flow, n_chains, n_iterations)
-    assert draws.shape == (n_iterations, n_chains, *event_shape)
-    assert torch.all(~torch.isnan(draws))
-    assert torch.all(torch.isfinite(draws))
+    n_iterations = 3
+    n_chains = 4
+    event_shape = (5,)
+    sampler = JumpESS(
+        event_shape=event_shape,
+        target=StandardGaussian(event_shape),
+        negative_log_likelihood=StandardGaussian(event_shape)
+    )
+    sampler.params.n_iterations = n_iterations
+    x0 = torch.randn(size=(n_chains, *event_shape))
+    output = sampler.sample(x0=x0, show_progress=False)
+
+    assert isinstance(output, MCMCOutput)
+    assert output.samples.shape == (
+        n_iterations * (sampler.inner_sampler.params.n_iterations + 1), n_chains, *event_shape)
+    assert torch.isfinite(output.samples).all()
 
 
-@pytest.mark.parametrize('event_shape', all_event_shapes)
-@pytest.mark.parametrize('n_chains', all_n_chains)
-@pytest.mark.parametrize('flow', all_flows)
-@pytest.mark.parametrize('n_iterations', all_n_iterations)
-def test_neutra(event_shape, flow, n_chains, n_iterations):
+@pytest.mark.parametrize('sampler_class', [TESS, DLMC])
+def test_nfmc_with_nll(sampler_class):
     torch.manual_seed(0)
-    target = StandardGaussian(event_shape)
-    draws = neutra_hmc(target, flow, n_chains, n_iterations)
-    assert draws.shape == (n_iterations, n_chains, *event_shape)
-    assert torch.all(~torch.isnan(draws))
-    assert torch.all(torch.isfinite(draws))
+    n_iterations = 3
+    n_chains = 4
+    event_shape = (5,)
+    sampler = sampler_class(
+        event_shape=event_shape,
+        target=StandardGaussian(event_shape),
+        negative_log_likelihood=StandardGaussian(event_shape)
+    )
+    sampler.params.n_iterations = n_iterations
+    x0 = torch.randn(size=(n_chains, *event_shape))
+    output = sampler.sample(x0=x0, show_progress=False)
+
+    assert isinstance(output, MCMCOutput)
+    assert output.samples.shape == (
+        n_iterations,
+        n_chains,
+        *event_shape
+    )
+    assert torch.isfinite(output.samples).all()
 
 
-@pytest.mark.parametrize('event_shape', all_event_shapes)
-@pytest.mark.parametrize('n_chains', all_n_chains)
-@pytest.mark.parametrize('flow', all_flows)
-@pytest.mark.parametrize('n_iterations', all_n_iterations)
-def test_dlmc(event_shape, n_chains, flow, n_iterations):
+@pytest.mark.parametrize('sampler_class', [
+    JumpMALA,
+    JumpMH,
+    JumpHMC,
+    JumpUHMC,
+    JumpULA,
+    # JumpNUTS,  # does not work with multiple chains
+])
+def test_jump_nfmc(sampler_class):
     torch.manual_seed(0)
-    prior = StandardGaussian(event_shape)
-    target = StandardGaussian(event_shape)
-    draws = dlmc(prior, target, flow, n_chains, n_iterations)
-    assert draws.shape == (n_iterations, n_chains, *event_shape)
-    assert torch.all(~torch.isnan(draws))
-    assert torch.all(torch.isfinite(draws))
+    n_iterations = 3
+    n_chains = 4
+    event_shape = (5,)
+    sampler = sampler_class(event_shape=event_shape, target=StandardGaussian(event_shape))
+    sampler.params.n_iterations = n_iterations
+    x0 = torch.randn(size=(n_chains, *event_shape))
+    output = sampler.sample(x0=x0, show_progress=False)
+
+    assert isinstance(output, MCMCOutput)
+    assert output.samples.shape == (
+        n_iterations * (sampler.inner_sampler.params.n_iterations + 1),
+        n_chains,
+        *event_shape
+    )
+    assert torch.isfinite(output.samples).all()
+
+
+@pytest.mark.parametrize('sampler_class', [
+    NeuTraHMC,
+    FixedIMH,
+    AdaptiveIMH
+])
+def test_other_nfmc(sampler_class):
+    torch.manual_seed(0)
+    n_iterations = 3
+    n_chains = 4
+    event_shape = (5,)
+    sampler = sampler_class(
+        event_shape=event_shape,
+        target=StandardGaussian(event_shape),
+    )
+    sampler.params.n_iterations = n_iterations
+    x0 = torch.randn(size=(n_chains, *event_shape))
+    output = sampler.sample(x0=x0, show_progress=False)
+
+    assert isinstance(output, MCMCOutput)
+    assert output.samples.shape == (
+        n_iterations,
+        n_chains,
+        *event_shape
+    )
+    assert torch.isfinite(output.samples).all()
+
+
+@pytest.mark.parametrize('strategy', [
+    'hmc',
+    'uhmc',
+    'ula',
+    'mala',
+    'mh',
+    "imh",
+    "neutra_hmc"
+])
+@pytest.mark.parametrize('device', ['cuda', 'cpu'])
+def test_sample_wrapper_no_jump(strategy: str, device: str):
+    if not torch.cuda.is_available() and device == "cuda":
+        pytest.skip("CUDA not available")
+    torch.manual_seed(0)
+    n_iterations, n_chains, n_dim = 3, 4, 5
+
+    target = StandardGaussian((n_dim,))
+    output = sample(
+        target,
+        event_shape=target.event_shape,
+        strategy=strategy,
+        n_chains=n_chains,
+        n_iterations=n_iterations,
+        device=torch.device(device),
+    )
+    assert isinstance(output, MCMCOutput)
+    assert output.samples.shape == (n_iterations, n_chains, n_dim)
+    assert torch.isfinite(output.samples).all()
+
+
+@pytest.mark.parametrize('strategy', ['dlmc', 'tess', "ess"])
+@pytest.mark.parametrize('device', ['cuda', 'cpu'])
+def test_sample_wrapper_nll(strategy: str, device: str):
+    if not torch.cuda.is_available() and device == "cuda":
+        pytest.skip("CUDA not available")
+    torch.manual_seed(0)
+    n_iterations, n_chains, n_dim = 3, 4, 5
+
+    target = StandardGaussian((n_dim,))
+    output = sample(
+        target,
+        event_shape=target.event_shape,
+        strategy=strategy,
+        negative_log_likelihood=StandardGaussian((n_dim,)),
+        n_chains=n_chains,
+        n_iterations=n_iterations,
+        device=torch.device(device)
+    )
+    assert isinstance(output, MCMCOutput)
+    assert output.samples.shape == (n_iterations, n_chains, n_dim)
+    assert torch.isfinite(output.samples).all()
+
+
+@pytest.mark.parametrize('strategy', ["jump_mala", "jump_ula", "jump_hmc", "jump_uhmc", "jump_mh"])
+@pytest.mark.parametrize('device', ['cuda', 'cpu'])
+def test_sample_wrapper_jump(strategy: str, device: str):
+    if not torch.cuda.is_available() and device == "cuda":
+        pytest.skip("CUDA not available")
+    torch.manual_seed(0)
+    n_iterations, n_chains, n_dim = 3, 4, 5
+    n_trajectories_per_jump = 7
+
+    target = StandardGaussian((n_dim,))
+    output = sample(
+        target,
+        event_shape=target.event_shape,
+        strategy=strategy,
+        n_chains=n_chains,
+        n_iterations=n_iterations,
+        inner_param_kwargs={'n_iterations': n_trajectories_per_jump},
+        device=torch.device(device)
+    )
+    assert isinstance(output, MCMCOutput)
+    assert output.samples.shape == (n_iterations * (n_trajectories_per_jump + 1), n_chains, n_dim)
+    assert torch.isfinite(output.samples).all()
+
+
+@pytest.mark.parametrize('device', ['cuda', 'cpu'])
+def test_sample_wrapper_jump_ess(device: str):
+    if not torch.cuda.is_available() and device == "cuda":
+        pytest.skip("CUDA not available")
+    torch.manual_seed(0)
+    n_iterations, n_chains, n_dim = 3, 4, 5
+    n_trajectories_per_jump = 7
+
+    target = StandardGaussian((n_dim,))
+    output = sample(
+        target,
+        event_shape=target.event_shape,
+        strategy='jump_ess',
+        n_chains=n_chains,
+        n_iterations=n_iterations,
+        negative_log_likelihood=StandardGaussian((n_dim,)),
+        inner_param_kwargs={'n_iterations': n_trajectories_per_jump},
+        device=torch.device(device)
+    )
+    assert isinstance(output, MCMCOutput)
+    assert output.samples.shape == (n_iterations * (n_trajectories_per_jump + 1), n_chains, n_dim)
+    assert torch.isfinite(output.samples).all()

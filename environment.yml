@@ -1,0 +1,5 @@
+name: nfmc-dev
+dependencies:
+  - pytest
+  - pip:
+    - torchflows
