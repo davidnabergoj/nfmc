@@ -20,8 +20,6 @@ The following algorithms are yet to be added:
 
 We term such NF-based MCMC algorithms as NFMC.
 
----
-
 ## Usage instructions
 
 NFMC algorithms require a target potential and an NF object.
@@ -121,8 +119,6 @@ from nfmc.util import get_supported_normalizing_flows
 print(get_supported_normalizing_flows())
 ```
 
----
-
 ## Setup
 
 This package was tested with Python version 3.10, however we expect Python versions 3.7+ to also work.
@@ -134,8 +130,6 @@ Clone the package and install dependencies:
 git clone git@github.com:davidnabergoj/nfmc.git
 pip install torchflows
 ```
-
----
 
 ## Contributing
 
