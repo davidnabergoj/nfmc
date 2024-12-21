@@ -5,7 +5,7 @@ from typing import Union, Tuple, Type
 import torch
 
 from nfmc.algorithms.sampling.base import Sampler, NFMCKernel, NFMCParameters, MCMCOutput
-from nfmc.algorithms.sampling.mcmc import HMC
+from nfmc.algorithms.sampling.mcmc.hmc import HMC
 from nfmc.algorithms.sampling.mcmc.base import MetropolisKernel, MetropolisParameters, MetropolisSampler
 from nfmc.algorithms.sampling.mcmc.hmc import HMCKernel, HMCParameters
 from nfmc.algorithms.sampling.mcmc.mh import MHKernel, MHParameters, MH

@@ -2,32 +2,18 @@ import torch
 import pytest
 
 from nfmc import sample
-from nfmc.algorithms.sampling.mcmc import (
-    MH,
-    RandomWalk,
-    HMC,
-    UHMC,
-    NUTS,
-    MALA,
-    ULA,
-    ESS
-)
-from nfmc.algorithms.sampling.nfmc import (
-    JumpMALA,
-    JumpMH,
-    JumpHMC,
-    JumpUHMC,
-    JumpULA,
-    JumpESS,
-    JumpNUTS,
-    TESS,
-    DLMC,
-    NeuTraHMC,
-    FixedIMH,
-    AdaptiveIMH
-)
-from potentials.synthetic.gaussian.unit import StandardGaussian
 from nfmc.algorithms.sampling.base import MCMCOutput
+from nfmc.algorithms.sampling.mcmc.ess import ESS
+from nfmc.algorithms.sampling.mcmc.hmc import HMC, UHMC
+from nfmc.algorithms.sampling.mcmc.langevin import MALA, ULA
+from nfmc.algorithms.sampling.mcmc.mh import MH, RandomWalk
+from nfmc.algorithms.sampling.mcmc.nuts import NUTS
+from nfmc.algorithms.sampling.nfmc.dlmc import DLMC
+from nfmc.algorithms.sampling.nfmc.imh import FixedIMH, AdaptiveIMH
+from nfmc.algorithms.sampling.nfmc.jump import JumpESS, JumpMALA, JumpMH, JumpHMC, JumpUHMC, JumpULA
+from nfmc.algorithms.sampling.nfmc.neutra import NeuTraHMC
+from nfmc.algorithms.sampling.nfmc.tess import TESS
+from test.util import standard_gaussian_potential
 
 
 @pytest.mark.parametrize('sampler_class', [
@@ -44,7 +30,7 @@ def test_mcmc(sampler_class):
     n_iterations = 3
     n_chains = 4
     event_shape = (5,)
-    sampler = sampler_class(event_shape=event_shape, target=StandardGaussian(event_shape))
+    sampler = sampler_class(event_shape=event_shape, target=standard_gaussian_potential)
     sampler.params.n_iterations = n_iterations
     x0 = torch.randn(size=(n_chains, *event_shape))
     output = sampler.sample(x0=x0, show_progress=False)
@@ -59,7 +45,7 @@ def test_nuts():
     n_iterations = 3
     n_chains = 1
     event_shape = (5,)
-    sampler = NUTS(event_shape=event_shape, target=StandardGaussian(event_shape))
+    sampler = NUTS(event_shape=event_shape, target=standard_gaussian_potential)
     sampler.params.n_iterations = n_iterations
     x0 = torch.randn(size=(n_chains, *event_shape))
     output = sampler.sample(x0=x0, show_progress=False)
@@ -76,8 +62,8 @@ def test_ess():
     event_shape = (5,)
     sampler = ESS(
         event_shape=event_shape,
-        target=StandardGaussian(event_shape),
-        negative_log_likelihood=StandardGaussian(event_shape)
+        target=standard_gaussian_potential,
+        negative_log_likelihood=standard_gaussian_potential
     )
     sampler.params.n_iterations = n_iterations
     x0 = torch.randn(size=(n_chains, *event_shape))
@@ -95,8 +81,8 @@ def test_jump_ess():
     event_shape = (5,)
     sampler = JumpESS(
         event_shape=event_shape,
-        target=StandardGaussian(event_shape),
-        negative_log_likelihood=StandardGaussian(event_shape)
+        target=standard_gaussian_potential,
+        negative_log_likelihood=standard_gaussian_potential
     )
     sampler.params.n_iterations = n_iterations
     x0 = torch.randn(size=(n_chains, *event_shape))
@@ -116,8 +102,8 @@ def test_nfmc_with_nll(sampler_class):
     event_shape = (5,)
     sampler = sampler_class(
         event_shape=event_shape,
-        target=StandardGaussian(event_shape),
-        negative_log_likelihood=StandardGaussian(event_shape)
+        target=standard_gaussian_potential,
+        negative_log_likelihood=standard_gaussian_potential
     )
     sampler.params.n_iterations = n_iterations
     x0 = torch.randn(size=(n_chains, *event_shape))
@@ -145,7 +131,7 @@ def test_jump_nfmc(sampler_class):
     n_iterations = 3
     n_chains = 4
     event_shape = (5,)
-    sampler = sampler_class(event_shape=event_shape, target=StandardGaussian(event_shape))
+    sampler = sampler_class(event_shape=event_shape, target=standard_gaussian_potential)
     sampler.params.n_iterations = n_iterations
     x0 = torch.randn(size=(n_chains, *event_shape))
     output = sampler.sample(x0=x0, show_progress=False)
@@ -171,7 +157,7 @@ def test_other_nfmc(sampler_class):
     event_shape = (5,)
     sampler = sampler_class(
         event_shape=event_shape,
-        target=StandardGaussian(event_shape),
+        target=standard_gaussian_potential,
     )
     sampler.params.n_iterations = n_iterations
     x0 = torch.randn(size=(n_chains, *event_shape))
@@ -202,10 +188,10 @@ def test_sample_wrapper_no_jump(strategy: str, device: str):
     torch.manual_seed(0)
     n_iterations, n_chains, n_dim = 3, 4, 5
 
-    target = StandardGaussian((n_dim,))
+    target = standard_gaussian_potential
     output = sample(
         target,
-        event_shape=target.event_shape,
+        event_shape=(n_dim,),
         strategy=strategy,
         n_chains=n_chains,
         n_iterations=n_iterations,
@@ -224,12 +210,12 @@ def test_sample_wrapper_nll(strategy: str, device: str):
     torch.manual_seed(0)
     n_iterations, n_chains, n_dim = 3, 4, 5
 
-    target = StandardGaussian((n_dim,))
+    target = standard_gaussian_potential
     output = sample(
         target,
-        event_shape=target.event_shape,
+        event_shape=(n_dim,),
         strategy=strategy,
-        negative_log_likelihood=StandardGaussian((n_dim,)),
+        negative_log_likelihood=standard_gaussian_potential,
         n_chains=n_chains,
         n_iterations=n_iterations,
         device=torch.device(device)
@@ -248,10 +234,10 @@ def test_sample_wrapper_jump(strategy: str, device: str):
     n_iterations, n_chains, n_dim = 3, 4, 5
     n_trajectories_per_jump = 7
 
-    target = StandardGaussian((n_dim,))
+    target = standard_gaussian_potential
     output = sample(
         target,
-        event_shape=target.event_shape,
+        event_shape=(n_dim,),
         strategy=strategy,
         n_chains=n_chains,
         n_iterations=n_iterations,
@@ -271,14 +257,14 @@ def test_sample_wrapper_jump_ess(device: str):
     n_iterations, n_chains, n_dim = 3, 4, 5
     n_trajectories_per_jump = 7
 
-    target = StandardGaussian((n_dim,))
+    target = standard_gaussian_potential
     output = sample(
         target,
-        event_shape=target.event_shape,
+        event_shape=(n_dim,),
         strategy='jump_ess',
         n_chains=n_chains,
         n_iterations=n_iterations,
-        negative_log_likelihood=StandardGaussian((n_dim,)),
+        negative_log_likelihood=standard_gaussian_potential,
         inner_param_kwargs={'n_iterations': n_trajectories_per_jump},
         device=torch.device(device)
     )

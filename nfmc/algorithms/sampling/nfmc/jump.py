@@ -9,7 +9,10 @@ from nfmc.algorithms.sampling.base import Sampler, MCMCOutput, NFMCParameters, N
     MCMCParameters
 from tqdm import tqdm
 
-from nfmc.algorithms.sampling.mcmc import HMC, UHMC, MALA, ULA, MH, NUTS
+from nfmc.algorithms.sampling.mcmc.hmc import HMC, UHMC
+from nfmc.algorithms.sampling.mcmc.langevin import MALA, ULA
+from nfmc.algorithms.sampling.mcmc.mh import MH
+from nfmc.algorithms.sampling.mcmc.nuts import NUTS
 from nfmc.algorithms.sampling.mcmc.ess import ESS
 from nfmc.algorithms.sampling.tuning import train_val_split
 from nfmc.util import metropolis_acceptance_log_ratio
