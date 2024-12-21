@@ -5,10 +5,9 @@ from typing import Sized, Optional, Union
 import torch
 from tqdm import tqdm
 
-from nfmc.algorithms.sampling.base import Sampler, NFMCParameters, MCMCStatistics, NFMCKernel, MCMCOutput
+from nfmc.algorithms.sampling.base import Sampler, NFMCParameters, NFMCKernel, MCMCOutput
 from nfmc.algorithms.sampling.mcmc.ess import ESSKernel, ESSParameters
 from nfmc.util import multivariate_normal_sample
-from potentials.base import Potential
 from torchflows.flows import Flow
 from torchflows.utils import get_batch_shape
 
@@ -17,7 +16,7 @@ from torchflows.utils import get_batch_shape
 def transport_elliptical_slice_sampling_step(
         u: torch.Tensor,
         flow: Flow,
-        potential: Potential,
+        potential: callable,
         cov: torch.Tensor = None,
         max_iterations: int = 5
 ):

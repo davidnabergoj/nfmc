@@ -1,11 +1,9 @@
-import time
 from dataclasses import dataclass
 from typing import Sized, Union, Tuple, Dict, Any
 
 import torch
-from tqdm import tqdm
 
-from nfmc.algorithms.sampling.base import Sampler, MCMCKernel, MCMCParameters, MCMCStatistics, MCMCOutput, MCMCSamples
+from nfmc.algorithms.sampling.base import MCMCKernel, MCMCParameters, MCMCOutput
 from nfmc.algorithms.sampling.mcmc.base import MCMCSampler
 from nfmc.util import multivariate_normal_sample
 from torchflows.utils import get_batch_shape

@@ -1,16 +1,9 @@
 import math
-import time
-from copy import deepcopy
-from typing import Sized, Optional, Tuple, Union, Dict, Any
-
+from typing import Optional, Tuple, Union
 import torch
-
-from nfmc.algorithms.sampling.base import Sampler, MCMCOutput, MCMCKernel, MCMCParameters, MCMCStatistics
 from dataclasses import dataclass
-from tqdm import tqdm
 
-from nfmc.algorithms.sampling.mcmc.base import MCMCSampler, MetropolisSampler, MetropolisParameters, MetropolisKernel
-from nfmc.algorithms.sampling.tuning import DualAveragingParams, DualAveraging
+from nfmc.algorithms.sampling.mcmc.base import MetropolisSampler, MetropolisParameters, MetropolisKernel
 from nfmc.util import metropolis_acceptance_log_ratio
 
 

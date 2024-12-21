@@ -1,1 +1,1 @@
-
+from nfmc.algorithms.flow_training.flow_annealed_bootstrap import flow_annealed_importance_sampling_bootstrap_base

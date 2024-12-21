@@ -6,11 +6,10 @@ from tqdm import tqdm
 import torch
 import torch.optim as optim
 
-from normalizing_flows import Flow
-from normalizing_flows.bijections.base import Bijection
-from potentials.base import Potential
+from torchflows import Flow
+from torchflows.bijections.base import Bijection
 
-from nfmc.mcmc.mh import mh
+from nfmc.algorithms.sampling.mcmc import mh
 
 
 def compute_smc_flow_step_quantities(x: torch.Tensor,
@@ -150,8 +149,10 @@ def smc_flow_step(x_base: torch.Tensor,
     }
 
 
-def annealed_flow_transport_base(prior_potential: Potential,
-                                 target_potential: Potential,
+def annealed_flow_transport_base(prior_potential: callable,
+                                 target_potential: callable,
+                                 prior_potential_sample: callable,
+                                 target_potential_sample: callable,
                                  flow: Flow,
                                  n_particles: int = 100,
                                  n_train_particles: int = 100,
@@ -193,9 +194,9 @@ def annealed_flow_transport_base(prior_potential: Potential,
             sampling_threshold = 1 / n_base_particles
     assert 1 / n_base_particles <= sampling_threshold < 1
 
-    x_base = prior_potential.sample(batch_shape=(n_base_particles,))
-    x_train = prior_potential.sample(batch_shape=(n_train_particles,))
-    x_val = prior_potential.sample(batch_shape=(n_val_particles,))
+    x_base = prior_potential_sample(batch_shape=(n_base_particles,))
+    x_train = prior_potential_sample(batch_shape=(n_train_particles,))
+    x_val = prior_potential_sample(batch_shape=(n_val_particles,))
     log_W_base = torch.full(size=(n_base_particles,), fill_value=math.log(1 / n_base_particles))
     log_W_train = torch.full(size=(n_train_particles,), fill_value=math.log(1 / n_train_particles))
     log_W_val = torch.full(size=(n_val_particles,), fill_value=math.log(1 / n_val_particles))
@@ -292,8 +293,10 @@ def annealed_flow_transport_base(prior_potential: Potential,
     return x_base
 
 
-def continual_repeated_annealed_flow_transport_base(prior_potential: Potential,
-                                                    target_potential: Potential,
+def continual_repeated_annealed_flow_transport_base(prior_potential: callable,
+                                                    target_potential: callable,
+                                                    prior_potential_sample: callable,
+                                                    target_potential_sample: callable,
                                                     bijections: List[Bijection],
                                                     n_particles: int = 100,
                                                     n_training_steps: int = 100,
@@ -332,7 +335,7 @@ def continual_repeated_annealed_flow_transport_base(prior_potential: Potential,
 
     # Train
     for j in iterator:
-        x = prior_potential.sample(batch_shape=(n_particles,))
+        x = prior_potential_sample(batch_shape=(n_particles,))
         log_W = torch.full(size=(n_particles,), fill_value=-math.log(n_particles))
         log_Z = 0.0
         for k in range(1, n_annealing_steps + 1):
@@ -362,7 +365,7 @@ def continual_repeated_annealed_flow_transport_base(prior_potential: Potential,
     # Sample
     particle_history = []
     with torch.no_grad():
-        x = prior_potential.sample(batch_shape=(n_particles,))
+        x = prior_potential_sample(batch_shape=(n_particles,))
         particle_history.append(x)
         log_W = torch.full(size=(n_particles,), fill_value=-math.log(n_particles))
         log_Z = 0.0

@@ -2,7 +2,7 @@ from typing import Sized, Optional
 
 import torch
 
-from nfmc.algorithms.sampling.base import Sampler, MCMCOutput, MCMCParameters, MCMCKernel, MCMCStatistics
+from nfmc.algorithms.sampling.base import Sampler, MCMCOutput, MCMCParameters, MCMCKernel
 from dataclasses import dataclass
 
 

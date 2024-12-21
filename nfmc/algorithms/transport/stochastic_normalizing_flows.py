@@ -6,12 +6,11 @@ import torch
 import torch.nn as nn
 import torch.optim as optim
 
-from nfmc.mcmc.mh import mh
-from normalizing_flows.bijections import RealNVP
-from normalizing_flows.bijections.base import Bijection
-from potentials.base import Potential
-from nfmc.mcmc.hmc import hmc
-from normalizing_flows.utils import sum_except_batch
+from nfmc.algorithms.sampling.mcmc import mh
+from torchflows.architectures import RealNVP
+from torchflows.bijections.base import Bijection
+from nfmc.algorithms.sampling.mcmc import hmc
+from torchflows.utils import sum_except_batch
 
 
 class SNFLayer(nn.Module):
@@ -103,7 +102,7 @@ class FlowLayer(SNFLayer):
 
 
 class SNF(nn.Module):
-    def __init__(self, layers: Sequence[SNFLayer], target_potential: Potential, prior_potential: Potential):
+    def __init__(self, layers: Sequence[SNFLayer], target_potential: callable, prior_potential: callable):
         super().__init__()
         assert len(layers) >= 1
         self.layers: nn.ModuleList[SNFLayer] = nn.ModuleList(layers)
@@ -165,14 +164,13 @@ def _snf_base(z: torch.Tensor, flow: SNF, **kwargs):
 
 
 def stochastic_normalizing_flow_hmc_base(prior_samples: torch.Tensor,
-                                         prior_potential: Potential,
-                                         target_potential: Potential,
+                                         prior_potential: callable,
+                                         target_potential: callable,
                                          flow_name: str,
+                                         event_shape,
                                          **kwargs):
     if flow_name is None:
         return snf_hmc_real_nvp(prior_samples, prior_potential, target_potential, **kwargs)
-
-    event_shape = prior_potential.event_shape
 
     # Reasonable default SNF
     if flow_name == "realnvp":
@@ -194,10 +192,10 @@ def stochastic_normalizing_flow_hmc_base(prior_samples: torch.Tensor,
 
 
 def snf_hmc_real_nvp(prior_samples: torch.Tensor,
-                     prior_potential: Potential,
-                     target_potential: Potential,
+                     prior_potential: callable,
+                     target_potential: callable,
+                     event_shape,
                      **kwargs):
-    event_shape = prior_potential.event_shape
 
     # Reasonable default SNF
     flow = SNF(

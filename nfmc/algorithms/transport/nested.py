@@ -2,7 +2,7 @@ from typing import Any
 
 import torch
 
-from normalizing_flows import Flow
+from torchflows import Flow
 
 
 def nested_sampling_base(n_live_points: int,

@@ -2,7 +2,7 @@ import torch
 import torch.optim as optim
 
 from nfmc.mcmc.ais import ais, ais_base
-from normalizing_flows import Flow
+from torchflows import Flow
 from potentials.base import Potential
 
 
