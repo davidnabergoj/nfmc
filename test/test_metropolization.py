@@ -1,16 +1,15 @@
 import torch
 
 from nfmc.util import metropolis_acceptance_log_ratio
-from potentials.synthetic.gaussian.unit import StandardGaussian
-from potentials.synthetic.gaussian.diagonal import DiagonalGaussian
+from test.util import standard_gaussian_potential, diagonal_gaussian_potential
 
 
 def test_log_ratio():
     x0 = torch.tensor([[-100.0, -100.0]])
     x1 = torch.tensor([[0.0, 0.0]])
 
-    target = StandardGaussian(2)
-    proposal = DiagonalGaussian(mu=torch.zeros(2), sigma=torch.ones(2) * 100)
+    target = standard_gaussian_potential
+    proposal = diagonal_gaussian_potential
 
     # Move from x0 to x1
     forward = metropolis_acceptance_log_ratio(
