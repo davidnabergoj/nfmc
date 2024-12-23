@@ -1,0 +1,28 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "nfmc"
+dynamic = ["version"]
+authors = [
+    { name = "David Nabergoj", email = "david.nabergoj@fri.uni-lj.si" },
+]
+description = "Flow-based MCMC in Python"
+readme = "README.md"
+requires-python = ">=3.7"
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+]
+dependencies = [
+    'torch>=2.0.1',
+    'numpy>=1.26.0, < 2',
+    'tqdm>=4.65.0',
+    'torchflows'
+]
+
+[project.urls]
+Homepage = "https://github.com/davidnabergoj/nfmc"
+Issues = "https://github.com/davidnabergoj/nfmc/issues"
