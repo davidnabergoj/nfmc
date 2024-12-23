@@ -119,18 +119,22 @@ from nfmc.util import get_supported_normalizing_flows
 print(get_supported_normalizing_flows())
 ```
 
-## Setup
+## Installation
 
 This package was tested with Python version 3.10, however we expect Python versions 3.7+ to also work.
 This package depends on [torchflows](https://github.com/davidnabergoj/torchflows).
 
-Clone the package and install dependencies:
+Install the package directly from Github:
+```
+pip install git+https://github.com/davidnabergoj/nfmc.git
+```
+
+To alternatively configure the package for local development, clone the repository and install dependencies:
 
 ```
 git clone git@github.com:davidnabergoj/nfmc.git
 pip install torchflows
 ```
-
 ## Contributing
 
 We warmly welcome any contributions or comments.
