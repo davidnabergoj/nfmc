@@ -13,13 +13,13 @@ from nfmc.algorithms.sampling.nfmc.jump import JumpNFMCParameters, JumpULA, Jump
 from nfmc.algorithms.sampling.nfmc.neutra import NeuTraKernel, NeuTraParameters, NeuTraHMC, NeuTraMH
 from nfmc.algorithms.sampling.nfmc.tess import TESSKernel, TESSParameters, TESS
 from nfmc.util import create_flow_object
-from torchflows.flows import Flow
+from torchflows.flows import BaseFlow
 from potentials.base import Potential
 
 
 def create_sampler(target: callable,
                    event_shape: Optional[Union[torch.Size, Tuple[int]]] = None,
-                   flow: Optional[Union[str, Flow]] = 'realnvp',
+                   flow: Optional[Union[str, BaseFlow]] = 'realnvp',
                    strategy: str = "imh",
                    negative_log_likelihood: callable = None,
                    kernel_kwargs: Optional[dict] = None,
@@ -116,7 +116,7 @@ def create_sampler(target: callable,
             raise ValueError("Flow object must be provided")
         if isinstance(flow, str):
             flow_object = create_flow_object(flow_string=flow, event_shape=event_shape, **flow_kwargs).to(device)
-        elif isinstance(flow, Flow):
+        elif isinstance(flow, BaseFlow):
             flow_object = flow.to(device)
         else:
             raise ValueError(f"Unknown type for normalizing flow: {type(flow)}")
@@ -242,7 +242,7 @@ def create_sampler(target: callable,
 
 def sample(target: Union[callable, Potential],
            event_shape: Optional[Union[torch.Size, Tuple[int, ...]]] = None,
-           flow: Optional[Union[str, Flow]] = 'realnvp',
+           flow: Optional[Union[str, BaseFlow]] = 'realnvp',
            strategy: str = "imh",  # todo rename to 'sampler'
            n_iterations: int = 100,
            n_warmup_iterations: int = 100,
