@@ -67,6 +67,39 @@ class NeuTra(Sampler):
         else:
             return adjusted_potential
 
+    def warmup_nf(self,
+                  show_progress: bool = True,
+                  time_limit_seconds: Union[float, int] = None):
+        self.kernel: NeuTraKernel
+        self.params: NeuTraParameters
+
+        # Fit flow to target via variational inference
+        self.kernel.flow.variational_fit(
+            lambda v: -self.target(v),
+            **{
+                **dict(time_limit_seconds=time_limit_seconds),
+                **self.params.warmup_fit_kwargs,
+            },
+            show_progress=show_progress
+        )
+
+    def warmup_mcmc(self,
+                    x0: torch.Tensor,
+                    show_progress: bool = True,
+                    time_limit_seconds: Union[float, int] = None):
+        self.kernel: NeuTraKernel
+        self.params: NeuTraParameters
+
+        # Tune MCMC
+        self.inner_sampler.params.tuning_mode()
+        self.inner_sampler.params.store_samples = self.params.store_samples
+        self.inner_sampler.params.n_warmup_iterations = self.params.n_warmup_iterations
+        return self.inner_sampler.warmup(
+            x0,
+            show_progress=show_progress,
+            time_limit_seconds=time_limit_seconds
+        )
+
     def warmup(self,
                x0: torch.Tensor,
                show_progress: bool = True,
@@ -81,14 +114,7 @@ class NeuTra(Sampler):
 
         # Fit flow to target via variational inference
         t0 = time.time()
-        self.kernel.flow.variational_fit(
-            lambda v: -self.target(v),
-            **{
-                **dict(time_limit_seconds=flow_fit_time_limit),
-                **self.params.warmup_fit_kwargs,
-            },
-            show_progress=show_progress
-        )
+        self.warmup_nf(show_progress=show_progress, time_limit_seconds=flow_fit_time_limit)
         elapsed_time = time.time() - t0
 
         if time_limit_seconds is not None:
@@ -97,10 +123,7 @@ class NeuTra(Sampler):
             inner_sampler_warmup_time_limit = None
 
         # Tune MCMC
-        self.inner_sampler.params.tuning_mode()
-        self.inner_sampler.params.store_samples = self.params.store_samples
-        self.inner_sampler.params.n_warmup_iterations = self.params.n_warmup_iterations
-        return self.inner_sampler.warmup(
+        return self.warmup_mcmc(
             x0,
             show_progress=show_progress,
             time_limit_seconds=inner_sampler_warmup_time_limit
