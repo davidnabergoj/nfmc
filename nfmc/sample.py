@@ -253,6 +253,7 @@ def sample(target: Union[callable, Potential],
            show_progress: bool = True,
            sampling_time_limit_seconds: Union[float, int] = None,
            warmup_time_limit_seconds: Union[float, int] = None,
+           return_warmup_output: bool = False,
            **kwargs) -> MCMCOutput:
     """
     Sample from a target distributions.
@@ -312,4 +313,8 @@ def sample(target: Union[callable, Potential],
             x0 = x0[torch.randperm(len(x0))][:n_chains]
         else:
             x0 = warmup_output.running_samples.last_sample
-    return sampler.sample(x0=x0, show_progress=show_progress, time_limit_seconds=sampling_time_limit_seconds)
+
+    sampling_output = sampler.sample(x0=x0, show_progress=show_progress, time_limit_seconds=sampling_time_limit_seconds)
+    if return_warmup_output:
+        return sampling_output, warmup_output
+    return sampling_output
