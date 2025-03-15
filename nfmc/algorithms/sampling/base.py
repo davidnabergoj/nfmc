@@ -32,6 +32,7 @@ class MCMCParameters:
     n_warmup_iterations: int = 100
     tuning: bool = False
     store_samples: bool = True
+    max_samples: int = None
 
     def __post_init__(self):
         pass

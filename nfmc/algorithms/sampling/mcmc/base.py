@@ -59,7 +59,7 @@ class MCMCSampler(Sampler):
                time_limit_seconds: Union[float, int] = None) -> MCMCOutput:
         n_chains, *event_shape = x0.shape
         event_shape = tuple(event_shape)
-        out = MCMCOutput(event_shape, store_samples=self.params.store_samples)
+        out = MCMCOutput(event_shape, store_samples=self.params.store_samples, max_samples=self.params.max_samples)
         out.statistics.data_transform = self.data_transform
         x = torch.clone(x0).detach()
 
