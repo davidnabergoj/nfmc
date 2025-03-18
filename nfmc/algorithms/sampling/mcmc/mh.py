@@ -52,7 +52,7 @@ class MH(MetropolisSampler):
                 torch.randn(size=(*batch_shape, self.event_size)),
                 self.kernel.inv_mass_diag[[None] * len(batch_shape)]
             ).view_as(x)
-            x_prime = x + noise
+            x_prime = x + self.kernel.step_size * noise
 
             if self.params.adjustment:
                 log_ratio = metropolis_acceptance_log_ratio(-self.target(x), -self.target(x_prime), 0, 0)
