@@ -45,6 +45,7 @@ class MCMCSampler(Sampler):
         warmup_copy.params.tuning_mode()
         warmup_copy.params.n_iterations = self.params.n_warmup_iterations
         warmup_output = warmup_copy.sample(x0, show_progress=show_progress, time_limit_seconds=time_limit_seconds)
+        warmup_copy.params.sampling_mode()
 
         self.kernel = warmup_copy.kernel
         new_params = warmup_copy.params

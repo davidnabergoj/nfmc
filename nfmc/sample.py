@@ -308,11 +308,7 @@ def sample(target: Union[callable, Potential],
 
     if warmup:
         warmup_output = sampler.warmup(x0=x0, show_progress=show_progress, time_limit_seconds=warmup_time_limit_seconds)
-        if warmup_output.samples is not None:
-            x0 = warmup_output.samples.flatten(0, 1)
-            x0 = x0[torch.randperm(len(x0))][:n_chains]
-        else:
-            x0 = warmup_output.running_samples.last_sample
+        x0 = warmup_output.running_samples.last_sample
     else:
         warmup_output = None
 

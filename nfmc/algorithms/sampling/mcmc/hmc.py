@@ -37,20 +37,28 @@ def mass_matrix_multiply(x: torch.Tensor, inverse_mass_matrix_diagonal: torch.Te
     return x_multiplied
 
 
-def grad_potential(x: torch.Tensor, potential: callable):
+def grad_potential(x: torch.Tensor, potential: callable, event_shape):
+    grad_value = torch.full(size=x.shape, fill_value=torch.nan).to(x)
+    finite_mask = sum_except_batch((~torch.isfinite(x)).long(), event_shape) == 0
+
     with torch.enable_grad():
-        x.requires_grad_(True)
-        grad = torch.autograd.grad(potential(x).sum(), x)[0]
-        x = x.detach()
-        x.requires_grad_(False)
-        grad = grad.detach()
-        grad.requires_grad_(False)
-    return grad
+        x_finite = x[finite_mask]
+        x_finite.requires_grad_(True)
+
+        grad_value[finite_mask] = torch.autograd.grad(potential(x_finite).sum(), x_finite)[0]
+
+        x_finite = x_finite.detach()
+        x_finite.requires_grad_(False)
+
+        grad_value = grad_value.detach()
+        grad_value.requires_grad_(False)
+
+    return grad_value
 
 
-def hmc_step_b(x: torch.Tensor, momentum: torch.Tensor, step_size: float, potential: callable):
+def hmc_step_b(x: torch.Tensor, momentum: torch.Tensor, step_size: float, potential: callable, event_shape):
     # momentum update
-    return momentum - step_size / 2 * grad_potential(x, potential)
+    return momentum - step_size / 2 * grad_potential(x, potential, event_shape)
 
 
 def hmc_step_a(x: torch.Tensor, momentum: torch.Tensor, inv_mass_diag, step_size: float, event_shape):
@@ -66,9 +74,9 @@ def hmc_trajectory(x: torch.Tensor,
                    full_output: bool = False):
     xs = []
     for j in range(kernel.n_leapfrog_steps):
-        momentum = hmc_step_b(x, momentum, kernel.step_size, potential)
+        momentum = hmc_step_b(x, momentum, kernel.step_size, potential, event_shape)
         x = hmc_step_a(x, momentum, kernel.inv_mass_diag, kernel.step_size, event_shape)
-        momentum = hmc_step_b(x, momentum, kernel.step_size, potential)
+        momentum = hmc_step_b(x, momentum, kernel.step_size, potential, event_shape)
         if full_output:
             xs.append(x)
 
@@ -95,35 +103,37 @@ class HMC(MetropolisSampler):
 
     def propose(self, x: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor, int, int, int]:
         n_chains = x.shape[0]
+        p = mass_matrix_multiply(torch.randn_like(x), 1 / self.kernel.inv_mass_diag.sqrt().to(x), self.event_shape)
+        x_prime, p_prime = hmc_trajectory(x, p, self.event_shape, self.kernel, potential=self.target)
 
-        try:
-            p = mass_matrix_multiply(torch.randn_like(x), 1 / self.kernel.inv_mass_diag.sqrt().to(x), self.event_shape)
-            x_prime, p_prime = hmc_trajectory(x, p, self.event_shape, self.kernel, potential=self.target)
-            if self.params.adjustment:
-                hamiltonian_start = self.target(x) + 0.5 * sum_except_batch(
-                    mass_matrix_multiply(p ** 2, self.kernel.inv_mass_diag, self.event_shape),
-                    self.event_shape
-                )
-                hamiltonian_end = self.target(x_prime) + 0.5 * sum_except_batch(
-                    mass_matrix_multiply(p_prime ** 2, self.kernel.inv_mass_diag, self.event_shape),
-                    self.event_shape
-                )
-                log_prob_accept = -hamiltonian_end - (-hamiltonian_start)
-                log_u = torch.rand_like(log_prob_accept).log()  # n_chains
-                mask = (log_u < log_prob_accept)  # n_chains
-            else:
-                mask = torch.ones(size=(n_chains,), dtype=torch.bool)
-            n_divergences = 0
-        except ValueError:
-            x_prime = x
-            mask = torch.zeros(size=(n_chains,), dtype=torch.bool)
-            n_divergences = 1
+        # Divergence occurs if an element of x_prime of p_prime is not finite
+        divergence_mask_x = sum_except_batch((~torch.isfinite(x_prime)).long(), self.event_shape) > 0
+        divergence_mask_p = sum_except_batch((~torch.isfinite(p_prime)).long(), self.event_shape) > 0
+        divergence_mask = divergence_mask_x | divergence_mask_p
 
+        acceptance_mask = torch.zeros_like(divergence_mask)
+
+        if self.params.adjustment:
+            hamiltonian_start: torch.Tensor = self.target(x[~divergence_mask]) + 0.5 * sum_except_batch(
+                mass_matrix_multiply(p[~divergence_mask] ** 2, self.kernel.inv_mass_diag, self.event_shape),
+                self.event_shape
+            )
+            hamiltonian_end: torch.Tensor = self.target(x_prime[~divergence_mask]) + 0.5 * sum_except_batch(
+                mass_matrix_multiply(p_prime[~divergence_mask] ** 2, self.kernel.inv_mass_diag, self.event_shape),
+                self.event_shape
+            )
+            log_prob_accept = -hamiltonian_end - (-hamiltonian_start)
+            log_u = torch.rand_like(log_prob_accept).log()  # n_chains
+            acceptance_mask[~divergence_mask] = (log_u < log_prob_accept)  # n_chains
+        else:
+            acceptance_mask[~divergence_mask] = True
+
+        n_divergences = int(divergence_mask.long().sum())
         n_calls = 2 * self.kernel.n_leapfrog_steps * n_chains
         n_grads = 2 * self.kernel.n_leapfrog_steps * n_chains
         if self.params.adjustment:
             n_calls += 2 * n_chains
-        return x_prime.detach(), mask, n_calls, n_grads, n_divergences
+        return x_prime.detach(), acceptance_mask, n_calls, n_grads, n_divergences
 
 
 class UHMC(HMC):
