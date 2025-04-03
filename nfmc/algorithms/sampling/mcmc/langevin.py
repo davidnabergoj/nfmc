@@ -16,7 +16,9 @@ class LangevinKernel(MetropolisKernel):
     def __post_init__(self):
         # Set initial step size
         if self.step_size is None:
-            self.step_size = self.event_size ** (-1 / 3)
+            # self.step_size = self.event_size ** (-1 / 3)
+            # self.step_size = self.event_size ** (-1 / 3)
+            self.step_size = 0.01
         super().__post_init__()
 
     def __repr__(self):
@@ -33,14 +35,15 @@ class LangevinParameters(MetropolisParameters):
 def proposal_potential(x_prime: torch.Tensor,
                        x: torch.Tensor,
                        grad_u_x: torch.Tensor,
-                       a_diag: torch.Tensor,
+                       inv_mass_diag: torch.Tensor,
                        tau: float):
     """
     Compute the Langevin algorithm proposal potential q(x_prime | x).
     """
+    imd = inv_mass_diag.view(1, -1)
     assert x_prime.shape == x.shape == grad_u_x.shape
-    term = x_prime - x + tau * a_diag.view(1, -1) * grad_u_x
-    return (term * (1 / a_diag.view(1, -1)) * term).sum(dim=-1) / (4 * tau)
+    term = x_prime - (x - tau * imd * grad_u_x)
+    return (term ** 2 / imd).sum(dim=-1) / (4 * tau)
 
 
 class Langevin(MetropolisSampler):
@@ -59,27 +62,29 @@ class Langevin(MetropolisSampler):
     def name(self):
         return 'LMC'
 
-    def potential_and_grad(self, x:torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
-        finite_mask = sum_except_batch((~torch.isfinite(x)).long(), self.event_shape) > 0
+    def potential_and_grad(self, x: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
+        infinite_elements = ~torch.isfinite(x)
+        finite_mask = sum_except_batch(infinite_elements.long(), self.event_shape) == 0
         u_value = torch.full(size=get_batch_shape(x, self.event_shape), fill_value=torch.nan).to(x)
-        grad_value = torch.full(size=x.shape, fill_value=torch.nan).to(x)
+        grad_u_value = torch.full(size=x.shape, fill_value=torch.nan).to(x)
 
         with torch.enable_grad():
             # Compute potential and gradient at current state
             x_finite = x[finite_mask]
             x_finite.requires_grad_(True)
 
-            u_value[finite_mask] = self.target(x_finite)
-            grad_value[finite_mask] = torch.autograd.grad(u_value[finite_mask].sum(), x_finite)[0]
+            u_finite = self.target(x_finite)
+            u_value[finite_mask] = u_finite
+            grad_u_value[finite_mask] = torch.autograd.grad(u_finite.sum(), x_finite, create_graph=False)[0]
 
             x_finite = x_finite.detach()
             x_finite.grad = None  # Clear gradients
             u_value = u_value.detach()
             u_value.grad = None  # Clear gradients
-            grad_value = grad_value.detach()
-            grad_value.grad = None  # Clear gradients
+            grad_u_value = grad_u_value.detach()
+            grad_u_value.grad = None  # Clear gradients
 
-        return u_value, grad_value
+        return u_value, grad_u_value
 
     def langevin_dynamics_step(self, x: torch.Tensor):
         noise = torch.randn_like(x)
@@ -88,8 +93,8 @@ class Langevin(MetropolisSampler):
         u_x, grad_u_x = self.potential_and_grad(x)
 
         # Compute new state
-        grad_term = -self.kernel.step_size / self.kernel.inv_mass_diag[None].square() * grad_u_x
-        noise_term = math.sqrt(2 * self.kernel.step_size) / self.kernel.inv_mass_diag[None] * noise
+        grad_term = -self.kernel.step_size * self.kernel.inv_mass_diag[None] * grad_u_x
+        noise_term = torch.sqrt(2 * self.kernel.step_size * self.kernel.inv_mass_diag[None]) * noise
         x_prime = x + grad_term + noise_term
 
         return x_prime, u_x, grad_u_x
@@ -99,7 +104,7 @@ class Langevin(MetropolisSampler):
         x_prime, u_x, grad_u_x = self.langevin_dynamics_step(x)
 
         divergence_mask_x = sum_except_batch((~torch.isfinite(x_prime)).long(), self.event_shape) > 0
-        divergence_mask_u = sum_except_batch((~torch.isfinite(u_x)).long(), self.event_shape) > 0
+        divergence_mask_u = (~torch.isfinite(u_x)).long() > 0
         divergence_mask_grad_u = sum_except_batch((~torch.isfinite(grad_u_x)).long(), self.event_shape) > 0
         divergence_mask = divergence_mask_x | divergence_mask_u | divergence_mask_grad_u
 
@@ -117,18 +122,18 @@ class Langevin(MetropolisSampler):
                     x[~divergence_mask],
                     x_prime[~divergence_mask],
                     grad_u_x_prime,
-                    1 / self.kernel.inv_mass_diag ** 2,
+                    1 / self.kernel.inv_mass_diag,
                     self.kernel.step_size
                 ),
                 log_prob_proposal_prime=-proposal_potential(
                     x_prime[~divergence_mask],
                     x[~divergence_mask],
                     grad_u_x[~divergence_mask],
-                    1 / self.kernel.inv_mass_diag ** 2,
+                    1 / self.kernel.inv_mass_diag,
                     self.kernel.step_size
                 )
             )
-            log_u = torch.randn_like(log_prob_accept).log()
+            log_u = torch.rand_like(log_prob_accept).log()
             acceptance_mask[~divergence_mask] = log_u < log_prob_accept
         else:
             acceptance_mask[~divergence_mask] = True
