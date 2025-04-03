@@ -81,6 +81,7 @@ def get_flow_family(flow: str):
                 return FLOW_REFERENCE_DATA[key]['family']
     raise KeyError(f"Flow {flow} not found in reference data")
 
+
 COUPLING_FLOW_NAMES: Dict[str, List[str]] = {
     k: [k] + FLOW_REFERENCE_DATA[k]['alt'] for k in FLOW_REFERENCE_DATA.keys()
     if FLOW_REFERENCE_DATA[k]['family'][0] == 'autoregressive'
@@ -389,7 +390,12 @@ def metropolis_acceptance_log_ratio(
     # p = target
     # g(x_curr|x_prime) = log_proposal_curr
     # g(x_prime|x_curr) = log_proposal_prime
-    return log_prob_target_prime - log_prob_target_curr + log_prob_proposal_curr - log_prob_proposal_prime
+    return (
+            log_prob_target_prime
+            - log_prob_target_curr
+            + log_prob_proposal_curr
+            - log_prob_proposal_prime
+    )
 
 
 def compute_grad(fn_batched: callable, x):
