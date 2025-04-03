@@ -73,7 +73,7 @@ class Langevin(MetropolisSampler):
             x_finite = x[finite_mask]
             x_finite.requires_grad_(True)
 
-            u_finite = self.target(x_finite)
+            u_finite = self.target(x_finite).to(u_value)
             u_value[finite_mask] = u_finite
             grad_u_value[finite_mask] = torch.autograd.grad(u_finite.sum(), x_finite, create_graph=False)[0]
 
