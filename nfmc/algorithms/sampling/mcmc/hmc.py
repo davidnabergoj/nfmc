@@ -103,7 +103,7 @@ class HMC(MetropolisSampler):
 
     def propose(self, x: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor, int, int, int]:
         n_chains = x.shape[0]
-        p = torch.randn_like(x)
+        p = mass_matrix_multiply(torch.randn_like(x), 1 / self.kernel.inv_mass_diag.sqrt().to(x), self.event_shape)
         x_prime, p_prime = hmc_trajectory(x, p, self.event_shape, self.kernel, potential=self.target)
 
         # Divergence occurs if an element of x_prime of p_prime is not finite
