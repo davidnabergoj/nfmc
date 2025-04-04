@@ -41,17 +41,18 @@ def grad_potential(x: torch.Tensor, potential: callable, event_shape):
     grad_value = torch.full(size=x.shape, fill_value=torch.nan).to(x)
     finite_mask = sum_except_batch((~torch.isfinite(x)).long(), event_shape) == 0
 
-    with torch.enable_grad():
-        x_finite = x[finite_mask]
-        x_finite.requires_grad_(True)
+    if torch.any(torch.as_tensor(finite_mask, dtype=torch.bool)):
+        with torch.enable_grad():
+            x_finite = x[finite_mask]
+            x_finite.requires_grad_(True)
 
-        grad_value[finite_mask] = torch.autograd.grad(potential(x_finite).sum(), x_finite)[0]
+            grad_value[finite_mask] = torch.autograd.grad(potential(x_finite).sum(), x_finite)[0]
 
-        x_finite = x_finite.detach()
-        x_finite.requires_grad_(False)
+            x_finite = x_finite.detach()
+            x_finite.requires_grad_(False)
 
-        grad_value = grad_value.detach()
-        grad_value.requires_grad_(False)
+            grad_value = grad_value.detach()
+            grad_value.requires_grad_(False)
 
     return grad_value
 
