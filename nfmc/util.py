@@ -222,7 +222,7 @@ def create_flow_object(flow_string: str, event_shape, **kwargs):
     kwargs.update(flow_data['kwargs'])
 
     if isinstance(flow_name, str):
-        assert is_flow_supported(flow_name)
+        assert is_flow_supported(flow_name), f"Unsupported flow name '{flow_name}'"
     else:
         raise ValueError
 
