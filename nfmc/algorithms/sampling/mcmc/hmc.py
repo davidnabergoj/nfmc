@@ -115,17 +115,20 @@ class HMC(MetropolisSampler):
         acceptance_mask = torch.zeros_like(divergence_mask)
 
         if self.params.adjustment:
-            hamiltonian_start: torch.Tensor = self.target(x[~divergence_mask]) + 0.5 * sum_except_batch(
-                mass_matrix_multiply(p[~divergence_mask] ** 2, self.kernel.inv_mass_diag, self.event_shape),
-                self.event_shape
-            )
-            hamiltonian_end: torch.Tensor = self.target(x_prime[~divergence_mask]) + 0.5 * sum_except_batch(
-                mass_matrix_multiply(p_prime[~divergence_mask] ** 2, self.kernel.inv_mass_diag, self.event_shape),
-                self.event_shape
-            )
-            log_prob_accept = -hamiltonian_end - (-hamiltonian_start)
-            log_u = torch.rand_like(log_prob_accept).log()  # n_chains
-            acceptance_mask[~divergence_mask] = (log_u < log_prob_accept)  # n_chains
+            if torch.as_tensor(~divergence_mask).long().sum() > 0:
+                hamiltonian_start: torch.Tensor = self.target(x[~divergence_mask]) + 0.5 * sum_except_batch(
+                    mass_matrix_multiply(p[~divergence_mask] ** 2, self.kernel.inv_mass_diag, self.event_shape),
+                    self.event_shape
+                )
+                hamiltonian_end: torch.Tensor = self.target(x_prime[~divergence_mask]) + 0.5 * sum_except_batch(
+                    mass_matrix_multiply(p_prime[~divergence_mask] ** 2, self.kernel.inv_mass_diag, self.event_shape),
+                    self.event_shape
+                )
+                log_prob_accept = -hamiltonian_end - (-hamiltonian_start)
+                log_u = torch.rand_like(log_prob_accept).log()  # n_chains
+                acceptance_mask[~divergence_mask] = (log_u < log_prob_accept)  # n_chains
+            else:
+                pass  # The acceptance mask stays False in every element
         else:
             acceptance_mask[~divergence_mask] = True
 
