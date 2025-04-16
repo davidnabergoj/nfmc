@@ -4,8 +4,7 @@ from typing import Optional, Union, Tuple
 import torch
 
 from nfmc.algorithms.sampling.mcmc.base import MetropolisKernel, MetropolisParameters, MetropolisSampler
-from nfmc.util import metropolis_acceptance_log_ratio
-from torchflows.utils import sum_except_batch
+from nfmc.util import metropolis_acceptance_log_ratio, sum_except_batch
 
 
 @dataclass
@@ -21,12 +20,12 @@ class MHKernel(MetropolisKernel):
 class MHParameters(MetropolisParameters):
     imd_adjustment: float = 1e-5
 
-    def __post_init__(self):
-        self.tune_step_size = False
-        self.tune_inv_mass_diag = True
-
 
 class MH(MetropolisSampler):
+    """
+    Metropolis-Hastings sampler with a conditional diagonal Gaussian proposal distribution.
+    """
+
     def __init__(self,
                  event_shape: Union[torch.Size, Tuple[int, ...]],
                  target: callable,
