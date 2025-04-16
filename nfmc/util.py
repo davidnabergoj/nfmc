@@ -448,3 +448,6 @@ def get_supported_nfmc_samplers() -> List[str]:
 
 def get_supported_samplers() -> List[str]:
     return get_supported_mcmc_samplers() + get_supported_nfmc_samplers()
+
+def sum_except_batch(x, event_shape):
+    return torch.sum(x, dim=list(range(len(x.shape)))[-len(event_shape):])
