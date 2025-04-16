@@ -5,12 +5,12 @@ from nfmc import sample
 from nfmc.algorithms.sampling.mcmc.hmc import HMC
 from nfmc.algorithms.sampling.nfmc.neutra import NeuTraHMC
 from nfmc.algorithms.sampling.nfmc.jump import JumpHMC
-from nfmc.algorithms.sampling.nfmc.imh import AdaptiveIMH
+from nfmc.algorithms.sampling.nfmc.imh import AdaptiveFlowIMH
 from nfmc.util import get_supported_samplers
 from potentials.synthetic.gaussian.diagonal import DiagonalGaussian1
 
 
-@pytest.mark.parametrize('sampler_class', [HMC, NeuTraHMC, JumpHMC, AdaptiveIMH])
+@pytest.mark.parametrize('sampler_class', [HMC, NeuTraHMC, JumpHMC, AdaptiveFlowIMH])
 def test_basic(sampler_class):
     torch.manual_seed(0)
     target = DiagonalGaussian1()

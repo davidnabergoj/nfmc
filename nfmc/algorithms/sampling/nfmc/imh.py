@@ -11,12 +11,12 @@ from nfmc.util import metropolis_acceptance_log_ratio
 
 
 @dataclass
-class IMHKernel(NFMCKernel):
+class FlowIMHKernel(NFMCKernel):
     pass
 
 
 @dataclass
-class IMHParameters(NFMCParameters):
+class FlowIMHParameters(NFMCParameters):
     train_distribution: str = 'uniform'
     adaptation_dropoff: float = 0.9999
     warmup_fit_kwargs: dict = None
@@ -45,24 +45,24 @@ def sample_bounded_geom(p, max_val):
     return int(torch.searchsorted(cdf, u, right=True))
 
 
-class AbstractIMH(Sampler):
+class AbstractFlowIMH(Sampler):
     def __init__(self,
                  event_shape: Union[Tuple[int, ...], torch.Size],
                  target: callable,
-                 kernel: Optional[IMHKernel] = None,
-                 params: Optional[IMHParameters] = None):
+                 kernel: Optional[FlowIMHKernel] = None,
+                 params: Optional[FlowIMHParameters] = None):
         if kernel is None:
-            kernel = IMHKernel(event_shape)
+            kernel = FlowIMHKernel(event_shape)
         if params is None:
-            params = IMHParameters()
+            params = FlowIMHParameters()
         super().__init__(event_shape, target, kernel, params)
 
     def warmup(self,
                x0: torch.Tensor,
                show_progress: bool = True,
                time_limit_seconds: Union[float, int] = None) -> MCMCOutput:
-        self.kernel: IMHKernel
-        self.params: IMHParameters
+        self.kernel: FlowIMHKernel
+        self.params: FlowIMHParameters
 
         self.kernel.flow.variational_fit(
             lambda v: -self.target(v),
@@ -79,16 +79,16 @@ class AbstractIMH(Sampler):
         return "Abstract IMH"
 
 
-class AdaptiveIMH(AbstractIMH):
+class AdaptiveFlowIMH(AbstractFlowIMH):
     def __init__(self,
                  event_shape: Union[Tuple[int, ...], torch.Size],
                  target: callable,
-                 kernel: Optional[IMHKernel] = None,
-                 params: Optional[IMHParameters] = None):
+                 kernel: Optional[FlowIMHKernel] = None,
+                 params: Optional[FlowIMHParameters] = None):
         if kernel is None:
-            kernel = IMHKernel(event_shape)
+            kernel = FlowIMHKernel(event_shape)
         if params is None:
-            params = IMHParameters()
+            params = FlowIMHParameters()
         if not params.store_samples:
             print(f'Warning: params.store_samples is False')
             print(f'Warning: setting params.store_samples to True')
@@ -103,8 +103,8 @@ class AdaptiveIMH(AbstractIMH):
                x0: torch.Tensor,
                show_progress: bool = True,
                time_limit_seconds: Union[float, int] = None) -> MCMCOutput:
-        self.kernel: IMHKernel
-        self.params: IMHParameters
+        self.kernel: FlowIMHKernel
+        self.params: FlowIMHParameters
 
         if not self.params.store_samples:
             print("WARNING: params.store_samples is False")
@@ -181,16 +181,16 @@ class AdaptiveIMH(AbstractIMH):
         return out
 
 
-class FixedIMH(AbstractIMH):
+class FixedFlowIMH(AbstractFlowIMH):
     def __init__(self,
                  event_shape: Union[Tuple[int, ...], torch.Size],
                  target: callable,
-                 kernel: Optional[IMHKernel] = None,
-                 params: Optional[IMHParameters] = None):
+                 kernel: Optional[FlowIMHKernel] = None,
+                 params: Optional[FlowIMHParameters] = None):
         if kernel is None:
-            kernel = IMHKernel(event_shape)
+            kernel = FlowIMHKernel(event_shape)
         if params is None:
-            params = IMHParameters()
+            params = FlowIMHParameters()
         super().__init__(event_shape, target, kernel, params)
 
     @property
@@ -201,8 +201,8 @@ class FixedIMH(AbstractIMH):
                x0: torch.Tensor,
                show_progress: bool = True,
                time_limit_seconds: Union[float, int] = None) -> MCMCOutput:
-        self.kernel: IMHKernel
-        self.params: IMHParameters
+        self.kernel: FlowIMHKernel
+        self.params: FlowIMHParameters
 
         out = MCMCOutput(event_shape=x0.shape[1:], store_samples=self.params.store_samples)
 

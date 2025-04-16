@@ -9,7 +9,7 @@ from nfmc.algorithms.sampling.mcmc.langevin import MALA, ULA
 from nfmc.algorithms.sampling.mcmc.mh import MH, RandomWalk
 from nfmc.algorithms.sampling.mcmc.nuts import NUTS
 from nfmc.algorithms.sampling.nfmc.dlmc import DLMC
-from nfmc.algorithms.sampling.nfmc.imh import FixedIMH, AdaptiveIMH
+from nfmc.algorithms.sampling.nfmc.imh import FixedFlowIMH, AdaptiveFlowIMH
 from nfmc.algorithms.sampling.nfmc.jump import JumpESS, JumpMALA, JumpMH, JumpHMC, JumpUHMC, JumpULA
 from nfmc.algorithms.sampling.nfmc.neutra import NeuTraHMC
 from nfmc.algorithms.sampling.nfmc.tess import TESS
@@ -147,8 +147,8 @@ def test_jump_nfmc(sampler_class):
 
 @pytest.mark.parametrize('sampler_class', [
     NeuTraHMC,
-    FixedIMH,
-    AdaptiveIMH
+    FixedFlowIMH,
+    AdaptiveFlowIMH
 ])
 def test_other_nfmc(sampler_class):
     torch.manual_seed(0)

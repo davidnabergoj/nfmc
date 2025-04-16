@@ -5,7 +5,7 @@ from nfmc.algorithms.sampling.mcmc.ess import ESS
 from nfmc.algorithms.sampling.mcmc.hmc import UHMC, HMC
 from nfmc.algorithms.sampling.mcmc.langevin import MALA, ULA
 from nfmc.algorithms.sampling.mcmc.mh import MH, RandomWalk
-from nfmc.algorithms.sampling.nfmc.imh import FixedIMH, AdaptiveIMH
+from nfmc.algorithms.sampling.nfmc.imh import FixedFlowIMH, AdaptiveFlowIMH
 from nfmc.algorithms.sampling.nfmc.jump import JumpESS, JumpMALA, JumpUHMC, JumpHMC, JumpULA, JumpMH
 from nfmc.algorithms.sampling.nfmc.neutra import NeuTraHMC
 from test.util import standard_gaussian_potential
@@ -91,8 +91,8 @@ def test_warmup_jump_ess():
 
 
 @pytest.mark.parametrize('sampler_class', [
-    AdaptiveIMH,
-    FixedIMH,
+    AdaptiveFlowIMH,
+    FixedFlowIMH,
 ])
 def test_warmup_imh(sampler_class):
     torch.manual_seed(0)

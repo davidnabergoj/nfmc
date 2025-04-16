@@ -8,7 +8,7 @@ from nfmc.algorithms.sampling.mcmc.hmc import HMCKernel, HMCParameters, UHMC, HM
 from nfmc.algorithms.sampling.mcmc.langevin import LangevinKernel, LangevinParameters, ULA, MALA
 from nfmc.algorithms.sampling.mcmc.mh import MHKernel, MHParameters, MH
 from nfmc.algorithms.sampling.nfmc.dlmc import DLMCKernel, DLMCParameters, DLMC
-from nfmc.algorithms.sampling.nfmc.imh import IMHKernel, IMHParameters, FixedIMH, AdaptiveIMH
+from nfmc.algorithms.sampling.nfmc.imh import FlowIMHKernel, FlowIMHParameters, FixedFlowIMH, AdaptiveFlowIMH
 from nfmc.algorithms.sampling.nfmc.jump import JumpNFMCParameters, JumpULA, JumpHMC, JumpUHMC, JumpMALA, JumpMH, JumpESS
 from nfmc.algorithms.sampling.nfmc.neutra import NeuTraKernel, NeuTraParameters, NeuTraHMC, NeuTraMH
 from nfmc.algorithms.sampling.nfmc.tess import TESSKernel, TESSParameters, TESS
@@ -122,13 +122,13 @@ def create_sampler(target: callable,
         else:
             raise ValueError(f"Unknown type for normalizing flow: {type(flow)}")
         if strategy in ["imh", "fixed_imh"]:
-            kernel = IMHKernel(event_shape, flow=flow_object)
-            params = IMHParameters(**param_kwargs)
-            return FixedIMH(event_shape, target, kernel, params)
+            kernel = FlowIMHKernel(event_shape, flow=flow_object)
+            params = FlowIMHParameters(**param_kwargs)
+            return FixedFlowIMH(event_shape, target, kernel, params)
         if strategy == "adaptive_imh":
-            kernel = IMHKernel(event_shape, flow=flow_object)
-            params = IMHParameters()
-            return AdaptiveIMH(event_shape, target, kernel, params)
+            kernel = FlowIMHKernel(event_shape, flow=flow_object)
+            params = FlowIMHParameters()
+            return AdaptiveFlowIMH(event_shape, target, kernel, params)
         elif strategy == 'jump_mala':
             kernel = NFMCKernel(event_shape, flow=flow_object)
             params = JumpNFMCParameters(**param_kwargs)
