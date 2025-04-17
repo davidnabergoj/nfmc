@@ -104,11 +104,6 @@ class MCMCSampler(Sampler):
                         'x': x,
                         'mask': mask
                     })
-                    if out.store_kernel_history:
-                        if out.kernel_history is None:
-                            out.kernel_history = [deepcopy(self.kernel)]
-                        else:
-                            out.kernel_history.append(deepcopy(self.kernel))
 
             out.statistics.update_elapsed_time(time.time() - t0)
             pbar.set_postfix_str(f'{out.statistics} | {self.kernel}')
@@ -143,6 +138,7 @@ class MetropolisParameters(MCMCParameters):
     tune_step_size: bool = True
     adjustment: bool = True
     imd_adjustment: float = 1e-3  # ... 1 means only using the current covariance
+    store_dual_averaging_history: bool = False
 
 
 class MetropolisSampler(MCMCSampler):
@@ -150,13 +146,11 @@ class MetropolisSampler(MCMCSampler):
                  event_shape: Union[torch.Size, Tuple[int, ...]],
                  target: callable,
                  kernel: MetropolisKernel,
-                 params: MetropolisParameters,
-                 store_dual_averaging_history: bool = False):
+                 params: MetropolisParameters):
         super().__init__(event_shape, target, kernel, params)
 
         self._step_size_history = []
         self._acceptance_error_history = []
-        self.store_dual_averaging_history = store_dual_averaging_history
 
     def update_kernel(self, data: Dict[str, Any]):
         self.kernel: MetropolisKernel
@@ -181,6 +175,6 @@ class MetropolisSampler(MCMCSampler):
             self.kernel.da.step(error)
             self.kernel.step_size = self.kernel.da.value  # Step size adaptation
 
-            if self.store_dual_averaging_history:
+            if self.params.store_dual_averaging_history:
                 self._step_size_history.append(self.kernel.step_size)
                 self._acceptance_error_history.append(error)
