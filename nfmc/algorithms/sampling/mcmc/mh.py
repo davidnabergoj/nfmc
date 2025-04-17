@@ -64,12 +64,10 @@ class MH(MetropolisSampler):
                 0,
                 0
             )
-            log_u = torch.randn_like(log_prob_accept).log()
+            log_u = torch.rand_like(log_prob_accept).log()
             acceptance_mask[~divergence_mask] = log_u < log_prob_accept
         else:
             acceptance_mask[~divergence_mask] = True
-
-        x_prime = x
 
         n_divergences = int(divergence_mask.long().sum())
         n_grads = 0
