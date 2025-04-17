@@ -4,13 +4,22 @@ from dataclasses import dataclass
 import torch
 
 from nfmc.algorithms.sampling.mcmc.base import MetropolisParameters, MetropolisKernel, MetropolisSampler
-from torchflows.utils import sum_except_batch
+from nfmc.util import sum_except_batch
 
 
 @dataclass
 class HMCKernel(MetropolisKernel):
-    event_size: int
     n_leapfrog_steps: int = 20
+
+    def propose(self, extended_state: torch.Tensor) -> Tuple[torch.Tensor, Union[torch.Tensor, float], torch.Tensor]:
+        x, p = extended_state[0], extended_state[1]
+        x_prime, p_prime = hmc_trajectory(x, p, self.event_shape, self, potential=self.target)
+
+        divergence_mask_x = sum_except_batch((~torch.isfinite(x_prime)).long(), self.event_shape) > 0
+        divergence_mask_p = sum_except_batch((~torch.isfinite(p_prime)).long(), self.event_shape) > 0
+        divergence_mask = divergence_mask_x | divergence_mask_p
+
+        return torch.stack([x_prime, p_prime], dim=0), 0.0, divergence_mask
 
     def __repr__(self):
         return (f'log step: {math.log(self.step_size):.2f}, '
@@ -93,7 +102,7 @@ class HMC(MetropolisSampler):
                  kernel: Optional[HMCKernel] = None,
                  params: Optional[HMCParameters] = None):
         if kernel is None:
-            kernel = HMCKernel(event_size=int(torch.prod(torch.as_tensor(event_shape))))
+            kernel = HMCKernel(event_shape, target)
         if params is None:
             params = HMCParameters()
         super().__init__(event_shape, target, kernel, params)
@@ -104,14 +113,11 @@ class HMC(MetropolisSampler):
 
     def propose(self, x: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor, int, int, int]:
         n_chains = x.shape[0]
+
         p = mass_matrix_multiply(torch.randn_like(x), 1 / self.kernel.inv_mass_diag.sqrt().to(x), self.event_shape)
-        x_prime, p_prime = hmc_trajectory(x, p, self.event_shape, self.kernel, potential=self.target)
-
-        # Divergence occurs if an element of x_prime of p_prime is not finite
-        divergence_mask_x = sum_except_batch((~torch.isfinite(x_prime)).long(), self.event_shape) > 0
-        divergence_mask_p = sum_except_batch((~torch.isfinite(p_prime)).long(), self.event_shape) > 0
-        divergence_mask = divergence_mask_x | divergence_mask_p
-
+        extended_state = torch.stack([x, p])
+        extended_proposal, _, divergence_mask = self.kernel.propose(extended_state)
+        x_prime, p_prime = extended_proposal[0], extended_proposal[1]
         acceptance_mask = torch.zeros_like(divergence_mask)
 
         if self.params.adjustment:

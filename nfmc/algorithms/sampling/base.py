@@ -3,11 +3,33 @@ from typing import Optional, Any, Union, Tuple, List, Dict
 
 import torch
 
-from torchflows import Flow, RealNVP
-
 
 @dataclass
 class MCMCKernel:
+    event_shape: Union[Tuple[int, ...], torch.Size]
+    target: callable  # Target potential
+
+    @property
+    def event_size(self):
+        return int(torch.prod(torch.as_tensor(self.event_shape)))
+
+    def propose(self, x: torch.Tensor) -> Tuple[torch.Tensor, Union[torch.Tensor, float], torch.Tensor]:
+        """
+
+        :param x: input state.
+        :return: tuple with 1) the proposed state, 2) proposal potential of the proposed state, 3) divergence mask.
+        """
+        raise NotImplementedError
+
+    def adjustment(self):
+        """
+        :return: acceptance mask.
+        """
+        raise NotImplementedError
+
+    def update(self, data: Dict[str, Any]):
+        raise NotImplementedError
+
     def __repr__(self):
         raise NotImplementedError
 
@@ -17,10 +39,11 @@ class MCMCKernel:
 
 @dataclass
 class NFMCKernel(MCMCKernel):
-    event_shape: Union[Tuple[int, ...], torch.Size]
-    flow: Flow = None
+    flow: Any
 
     def __post_init__(self):
+        from torchflows import Flow, RealNVP
+
         super().__post_init__()
         if self.flow is None:
             self.flow = Flow(RealNVP(self.event_shape))

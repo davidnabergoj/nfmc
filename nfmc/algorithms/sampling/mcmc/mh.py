@@ -9,7 +9,15 @@ from nfmc.util import metropolis_acceptance_log_ratio, sum_except_batch
 
 @dataclass
 class MHKernel(MetropolisKernel):
-    event_size: int
+    def propose(self, x: torch.Tensor) -> Tuple[torch.Tensor, Union[torch.Tensor, float], torch.Tensor]:
+        batch_shape = x.shape[:-len(self.event_shape)]
+        noise = torch.multiply(
+            torch.randn(size=(*batch_shape, self.event_size)),
+            self.inv_mass_diag[[None] * len(batch_shape)]
+        ).view_as(x)
+        x_prime = x + self.step_size * noise
+        divergence_mask = sum_except_batch((~torch.isfinite(x_prime)).long(), self.event_shape) > 0
+        return x_prime, 0.0, divergence_mask
 
     def __repr__(self):
         return (f'log step: {math.log(self.step_size):.2f}, '
@@ -32,7 +40,7 @@ class MH(MetropolisSampler):
                  kernel: Optional[MHKernel] = None,
                  params: Optional[MHParameters] = None):
         if kernel is None:
-            kernel = MHKernel(event_size=int(torch.prod(torch.as_tensor(event_shape))))
+            kernel = MHKernel(event_shape, target)
         if params is None:
             params = MHParameters()
         super().__init__(event_shape, target, kernel, params)
@@ -46,17 +54,9 @@ class MH(MetropolisSampler):
         :param torch.Tensor x: current state with shape (*batch_shape, *event_shape).
         """
         batch_shape = x.shape[:-len(self.event_shape)]
+        x_prime, _, divergence_mask = self.kernel.propose(x)
 
-        noise = torch.multiply(
-            torch.randn(size=(*batch_shape, self.event_size)),
-            self.kernel.inv_mass_diag[[None] * len(batch_shape)]
-        ).view_as(x)
-        x_prime = x + self.kernel.step_size * noise
-
-        # Divergence occurs if an element of x_prime is not finite
-        divergence_mask = sum_except_batch((~torch.isfinite(x_prime)).long(), self.event_shape) > 0
         acceptance_mask = torch.zeros_like(divergence_mask)
-
         if self.params.adjustment:
             log_prob_accept = metropolis_acceptance_log_ratio(
                 -self.target(x[~divergence_mask]),

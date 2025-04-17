@@ -7,7 +7,7 @@ from tqdm import tqdm
 import torch
 
 from nfmc.algorithms.sampling.base import Sampler, NFMCKernel, NFMCParameters, MCMCOutput
-from nfmc.util import metropolis_acceptance_log_ratio
+from nfmc.util import metropolis_acceptance_log_ratio, create_flow_object
 
 
 @dataclass
@@ -35,7 +35,6 @@ class FlowIMHParameters(NFMCParameters):
                 'check_for_divergences': True
             }
 
-
 def sample_bounded_geom(p, max_val):
     v = torch.arange(0, max_val + 1)
     pdf = p * (1 - p) ** (max_val - v) / (1 - (1 - p) ** (max_val + 1))
@@ -52,7 +51,7 @@ class AbstractFlowIMH(Sampler):
                  kernel: Optional[FlowIMHKernel] = None,
                  params: Optional[FlowIMHParameters] = None):
         if kernel is None:
-            kernel = FlowIMHKernel(event_shape)
+            kernel = FlowIMHKernel(event_shape, target, create_flow_object('realnvp', event_shape))
         if params is None:
             params = FlowIMHParameters()
         super().__init__(event_shape, target, kernel, params)
@@ -86,13 +85,11 @@ class AdaptiveFlowIMH(AbstractFlowIMH):
                  kernel: Optional[FlowIMHKernel] = None,
                  params: Optional[FlowIMHParameters] = None):
         if kernel is None:
-            kernel = FlowIMHKernel(event_shape)
+            kernel = FlowIMHKernel(event_shape, target, create_flow_object('realnvp', event_shape))
         if params is None:
             params = FlowIMHParameters()
         if not params.store_samples:
-            print(f'Warning: params.store_samples is False')
-            print(f'Warning: setting params.store_samples to True')
-            self.params.store_samples = True
+            raise ValueError("params.store_samples is False, but should be True")
         super().__init__(event_shape, target, kernel, params)
 
     @property
@@ -107,10 +104,7 @@ class AdaptiveFlowIMH(AbstractFlowIMH):
         self.params: FlowIMHParameters
 
         if not self.params.store_samples:
-            print("WARNING: params.store_samples is False")
-            print("WARNING: cannot adapt IMH kernel without storing samples - params.store_samples")
-            print("WARNING: setting params.store_samples to True")
-            self.params.store_samples = True
+            raise ValueError("params.store_samples is False")
 
         out = MCMCOutput(event_shape=x0.shape[1:], store_samples=True)
 
@@ -188,7 +182,7 @@ class FixedFlowIMH(AbstractFlowIMH):
                  kernel: Optional[FlowIMHKernel] = None,
                  params: Optional[FlowIMHParameters] = None):
         if kernel is None:
-            kernel = FlowIMHKernel(event_shape)
+            kernel = FlowIMHKernel(event_shape, target, create_flow_object('realnvp', event_shape))
         if params is None:
             params = FlowIMHParameters()
         super().__init__(event_shape, target, kernel, params)
@@ -230,7 +224,7 @@ class FixedFlowIMH(AbstractFlowIMH):
                     accepted_mask = torch.less(log_u, log_alpha)
 
                     x[accepted_mask] = x_prime[accepted_mask].to(x)
-                    flow_log_prob_x[accepted_mask] = flow_log_prob_x_prime[accepted_mask].to(x)
+                    flow_log_prob_x[accepted_mask] = flow_log_prob_x_prime[accepted_mask].to(flow_log_prob_x)
 
                     x = x.detach()
                     flow_log_prob_x = flow_log_prob_x.detach()

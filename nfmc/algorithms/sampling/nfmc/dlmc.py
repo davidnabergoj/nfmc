@@ -5,7 +5,7 @@ from tqdm import tqdm
 import torch
 
 from nfmc.algorithms.sampling.base import Sampler, MCMCOutput, NFMCKernel, NFMCParameters
-from nfmc.util import metropolis_acceptance_log_ratio, compute_grad
+from nfmc.util import metropolis_acceptance_log_ratio, compute_grad, create_flow_object
 from dataclasses import dataclass
 
 
@@ -27,7 +27,7 @@ class DLMC(Sampler):
                  kernel: Optional[DLMCKernel] = None,
                  params: Optional[DLMCParameters] = None):
         if kernel is None:
-            kernel = DLMCKernel(event_shape)
+            kernel = DLMCKernel(event_shape, target, create_flow_object('realnvp', event_shape))
         if params is None:
             params = DLMCParameters()
         super().__init__(event_shape, target, kernel, params)

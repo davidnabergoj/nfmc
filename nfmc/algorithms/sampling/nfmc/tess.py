@@ -7,21 +7,19 @@ from tqdm import tqdm
 
 from nfmc.algorithms.sampling.base import Sampler, NFMCParameters, NFMCKernel, MCMCOutput
 from nfmc.algorithms.sampling.mcmc.ess import ESSKernel, ESSParameters
-from nfmc.util import multivariate_normal_sample
-from torchflows.flows import Flow
-from torchflows.utils import get_batch_shape
+from nfmc.util import multivariate_normal_sample, create_flow_object
 
 
 @torch.no_grad()
 def transport_elliptical_slice_sampling_step(
         u: torch.Tensor,
-        flow: Flow,
+        flow,
         potential: callable,
         cov: torch.Tensor = None,
         max_iterations: int = 5
 ):
     n_chains, *event_shape = u.shape
-    batch_shape = get_batch_shape(u, event_shape)
+    batch_shape = u.shape[:-len(event_shape)]
 
     def log_phi(inputs):
         return flow.base_log_prob(inputs.to(flow.get_device())).cpu()
@@ -93,7 +91,7 @@ class TESS(Sampler):
                  kernel: Optional[TESSKernel] = None,
                  params: Optional[TESSParameters] = None):
         if kernel is None:
-            kernel = TESSKernel(event_shape)
+            kernel = TESSKernel(event_shape, target, create_flow_object('realnvp', event_shape))
         if params is None:
             params = TESSParameters()
         super().__init__(event_shape, target, kernel, params)

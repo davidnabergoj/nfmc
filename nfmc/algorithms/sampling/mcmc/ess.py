@@ -6,7 +6,6 @@ import torch
 from nfmc.algorithms.sampling.base import MCMCKernel, MCMCParameters, MCMCOutput
 from nfmc.algorithms.sampling.mcmc.base import MCMCSampler
 from nfmc.util import multivariate_normal_sample
-from torchflows.utils import get_batch_shape
 
 
 @torch.no_grad()
@@ -26,7 +25,7 @@ def elliptical_slice_sampling_step(
         equal to the product of elements of event_shape. If None, the covariance is assumed to be identity.
     :param max_iterations: maximum number of iterations where the proposal bracket is shrunk.
     """
-    batch_shape = get_batch_shape(f, event_shape)
+    batch_shape = f.shape[:-len(event_shape)]
 
     # 1. Choose ellipse
     nu = multivariate_normal_sample(batch_shape, event_shape, cov)
@@ -83,7 +82,7 @@ class ESS(MCMCSampler):
                  kernel: ESSKernel = None,
                  params: ESSParameters = None):
         if kernel is None:
-            kernel = ESSKernel(event_shape)
+            kernel = ESSKernel(event_shape, target)
         if params is None:
             params = ESSParameters()
         super().__init__(event_shape, target, kernel, params)

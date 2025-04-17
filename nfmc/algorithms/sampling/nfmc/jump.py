@@ -15,7 +15,7 @@ from nfmc.algorithms.sampling.mcmc.mh import MH
 from nfmc.algorithms.sampling.mcmc.nuts import NUTS
 from nfmc.algorithms.sampling.mcmc.ess import ESS
 from nfmc.algorithms.sampling.tuning import train_val_split
-from nfmc.util import metropolis_acceptance_log_ratio
+from nfmc.util import metropolis_acceptance_log_ratio, create_flow_object
 
 
 @dataclass
@@ -95,7 +95,7 @@ class JumpNFMC(Sampler):
                  kernel: NFMCKernel = None,
                  params: JumpNFMCParameters = None):
         if kernel is None:
-            kernel = NFMCKernel(event_shape)
+            kernel = NFMCKernel(event_shape, target, create_flow_object('realnvp', event_shape))
         if params is None:
             params = JumpNFMCParameters()
         super().__init__(event_shape, target, kernel, params)

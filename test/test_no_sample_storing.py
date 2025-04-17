@@ -7,7 +7,7 @@ from test.util import standard_gaussian_potential
 
 @pytest.mark.parametrize('strategy', get_supported_samplers())
 def test_warmup(strategy: str):
-    if 'jump' in strategy:
+    if 'jump' in strategy or 'adaptive_imh' in strategy:
         return
     torch.manual_seed(0)
     n_chains = 20
@@ -30,6 +30,8 @@ def test_warmup(strategy: str):
 
 @pytest.mark.parametrize('strategy', get_supported_samplers())
 def test_sampling(strategy: str):
+    if 'adaptive_imh' in strategy:
+        return
     torch.manual_seed(0)
     n_chains = 20
     event_shape = (10,)

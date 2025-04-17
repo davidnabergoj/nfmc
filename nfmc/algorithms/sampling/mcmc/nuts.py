@@ -1,4 +1,4 @@
-from typing import Sized, Optional
+from typing import Optional, Union, Tuple
 
 import torch
 
@@ -8,8 +8,7 @@ from dataclasses import dataclass
 
 @dataclass
 class NUTSKernel(MCMCKernel):
-    event_size: int
-
+    pass
 
 @dataclass
 class NUTSParameters(MCMCParameters):
@@ -18,17 +17,19 @@ class NUTSParameters(MCMCParameters):
 
 class NUTS(Sampler):
     def __init__(self,
-                 event_shape: Sized,
+                 event_shape: Union[torch.Size, Tuple[int, ...]],
                  target: callable,
                  kernel: Optional[NUTSKernel] = None,
                  params: Optional[NUTSParameters] = None):
         if kernel is None:
-            kernel = NUTSKernel(event_size=int(torch.prod(torch.as_tensor(event_shape))))
+            kernel = NUTSKernel(event_shape, target)
         if params is None:
             params = NUTSParameters()
         super().__init__(event_shape, target, kernel, params)
 
-    def sample(self, x0: torch.Tensor, show_progress: bool = True) -> MCMCOutput:
+    def sample(self, x0: torch.Tensor,
+               show_progress: bool = True,
+               time_limit_seconds: Union[float, int] = None) -> MCMCOutput:
         self.kernel: NUTSKernel
         self.params: NUTSParameters
 

@@ -39,7 +39,8 @@ class MCMCSampler(Sampler):
     def warmup(self,
                x0: torch.Tensor,
                show_progress: bool = True,
-               time_limit_seconds: Union[float, int] = None) -> MCMCOutput:
+               time_limit_seconds: Union[float, int] = None,
+               return_warmup_copy: bool = False) -> Union[MCMCOutput, Tuple[MCMCOutput, Sampler]]:
         with torch.no_grad():
             warmup_copy = deepcopy(self)
         warmup_copy.params.tuning_mode()
@@ -52,7 +53,11 @@ class MCMCSampler(Sampler):
         new_params.n_iterations = self.params.n_iterations
         self.params = new_params
         self.params.sampling_mode()
-        return warmup_output
+
+        if return_warmup_copy:
+            return warmup_output, warmup_copy
+        else:
+            return warmup_output
 
     def sample(self,
                x0: torch.Tensor,
@@ -60,7 +65,11 @@ class MCMCSampler(Sampler):
                time_limit_seconds: Union[float, int] = None) -> MCMCOutput:
         n_chains, *event_shape = x0.shape
         event_shape = tuple(event_shape)
-        out = MCMCOutput(event_shape, store_samples=self.params.store_samples, max_samples=self.params.max_samples)
+        out = MCMCOutput(
+            event_shape,
+            store_samples=self.params.store_samples,
+            max_samples=self.params.max_samples
+        )
         out.statistics.data_transform = self.data_transform
         x = torch.clone(x0).detach()
 
@@ -95,6 +104,11 @@ class MCMCSampler(Sampler):
                         'x': x,
                         'mask': mask
                     })
+                    if out.store_kernel_history:
+                        if out.kernel_history is None:
+                            out.kernel_history = [deepcopy(self.kernel)]
+                        else:
+                            out.kernel_history.append(deepcopy(self.kernel))
 
             out.statistics.update_elapsed_time(time.time() - t0)
             pbar.set_postfix_str(f'{out.statistics} | {self.kernel}')
@@ -105,7 +119,6 @@ class MCMCSampler(Sampler):
 
 @dataclass
 class MetropolisKernel(MCMCKernel):
-    event_size: int
     inv_mass_diag: torch.Tensor = None
     step_size: float = 0.01
     da: DualAveraging = None
@@ -126,10 +139,10 @@ class MetropolisKernel(MCMCKernel):
 
 @dataclass
 class MetropolisParameters(MCMCParameters):
-    tune_inv_mass_diag: bool = True
+    tune_inv_mass_diag: bool = False
     tune_step_size: bool = True
     adjustment: bool = True
-    imd_adjustment: float = 1e-3
+    imd_adjustment: float = 1e-3  # ... 1 means only using the current covariance
 
 
 class MetropolisSampler(MCMCSampler):
@@ -137,8 +150,13 @@ class MetropolisSampler(MCMCSampler):
                  event_shape: Union[torch.Size, Tuple[int, ...]],
                  target: callable,
                  kernel: MetropolisKernel,
-                 params: MetropolisParameters):
+                 params: MetropolisParameters,
+                 store_dual_averaging_history: bool = False):
         super().__init__(event_shape, target, kernel, params)
+
+        self._step_size_history = []
+        self._acceptance_error_history = []
+        self.store_dual_averaging_history = store_dual_averaging_history
 
     def update_kernel(self, data: Dict[str, Any]):
         self.kernel: MetropolisKernel
@@ -150,9 +168,11 @@ class MetropolisSampler(MCMCSampler):
         # Update the inverse mass diagonal
         if n_chains > 1 and self.params.tune_inv_mass_diag:
             # self.kernel.inv_mass_diag = torch.std(x, dim=0)  # root of the preconditioning matrix diagonal
+            curr_var = torch.var(x.flatten(1, -1), dim=0)
+            # self.kernel.inv_mass_diag = curr_var
             self.kernel.inv_mass_diag = (
-                    self.params.imd_adjustment * torch.var(x.flatten(1, -1), dim=0) +
-                    (1 - self.params.imd_adjustment) * self.kernel.inv_mass_diag
+                    self.params.imd_adjustment * curr_var
+                    + (1 - self.params.imd_adjustment) * self.kernel.inv_mass_diag
             )
         if self.params.tune_step_size and self.params.adjustment:
             # Step size tuning is only possible with adjustment right now
@@ -160,3 +180,7 @@ class MetropolisSampler(MCMCSampler):
             error = self.kernel.da_params.target_acceptance_rate - acc_rate
             self.kernel.da.step(error)
             self.kernel.step_size = self.kernel.da.value  # Step size adaptation
+
+            if self.store_dual_averaging_history:
+                self._step_size_history.append(self.kernel.step_size)
+                self._acceptance_error_history.append(error)
