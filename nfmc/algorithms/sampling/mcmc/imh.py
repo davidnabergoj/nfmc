@@ -1,11 +1,20 @@
+import math
+
 from typing import Union, Tuple, Optional, Dict, Any
 from dataclasses import dataclass
 
 import torch
 
 from nfmc.algorithms.sampling.base import MCMCKernel
-from nfmc.algorithms.sampling.mcmc.base import MetropolisSampler, MetropolisParameters, MetropolisKernel, MCMCSampler
+from nfmc.algorithms.sampling.mcmc.base import MetropolisParameters, MCMCSampler
+from nfmc.algorithms.sampling.tuning import DualAveraging, DualAveragingParams
 from nfmc.util import sum_except_batch, metropolis_acceptance_log_ratio
+from potentials.synthetic.gaussian.diagonal import gaussian_potential
+
+
+@dataclass
+class GaussianIMHParameters(MetropolisParameters):
+    pass
 
 
 @dataclass
@@ -25,6 +34,19 @@ class GaussianIMHKernel(MCMCKernel):
             if self.proposal_sqrt_cov_flat <= 0:
                 raise ValueError("proposal_sqrt_cov_flat must be positive if provided as float")
 
+    def __repr__(self):
+        return ""
+
+    def proposal_potential(self, x: torch.Tensor) -> Union[torch.Tensor, float]:
+        sigma = self.proposal_sqrt_cov_flat
+        mu = self.proposal_mean_flat
+
+        batch_shape = x.shape[:-len(self.event_shape)]
+
+        x_flat = x.view(*batch_shape, -1)
+        u_x = gaussian_potential(x_flat, torch.as_tensor(mu), torch.as_tensor(sigma)).sum(dim=-1)
+        return u_x
+
     def propose(self, x: torch.Tensor) -> Tuple[torch.Tensor, Union[torch.Tensor, float]]:
         """
 
@@ -43,12 +65,12 @@ class GaussianIMHKernel(MCMCKernel):
 
         x_prime_flat = multiplied_noise + mu
         x_prime = x_prime_flat.view_as(x)
-        return x_prime, 0.0
 
+        u_x_prime = self.proposal_potential(x_prime)
+        return x_prime, u_x_prime
 
-@dataclass
-class GaussianIMHParameters(MetropolisParameters):
-    pass
+    def update(self, data: Dict[str, Any]):
+        raise NotImplementedError
 
 
 class GaussianIMH(MCMCSampler):
@@ -65,13 +87,13 @@ class GaussianIMH(MCMCSampler):
             n_dim = int(torch.prod(torch.as_tensor(event_shape)))
             kernel = GaussianIMHKernel(
                 event_shape=event_shape,
+                target=target,
                 proposal_mean_flat=torch.zeros(size=(n_dim,)),
                 proposal_sqrt_cov_flat=torch.eye(n_dim),
             )
         if params is None:
             params = GaussianIMHParameters()
         super().__init__(event_shape, target, kernel, params)
-        self.u_x = None
 
     def propose(self, x: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor, int, int, int]:
         """
@@ -81,7 +103,8 @@ class GaussianIMH(MCMCSampler):
 
         batch_shape = x.shape[:-len(self.event_shape)]
 
-        x_prime, _ = self.kernel.propose(x)
+        x_prime, u_x_prime = self.kernel.propose(x)
+        u_x = self.kernel.proposal_potential(x)
 
         # Divergence occurs if an element of x_prime is not finite
         divergence_mask = sum_except_batch((~torch.isfinite(x_prime)).long(), self.event_shape) > 0
@@ -91,15 +114,13 @@ class GaussianIMH(MCMCSampler):
             log_prob_accept = metropolis_acceptance_log_ratio(
                 -self.target(x[~divergence_mask]),
                 -self.target(x_prime[~divergence_mask]),
-                0.0,
-                0.0,
+                -u_x,
+                -u_x_prime,
             )
-            log_u = torch.randn_like(log_prob_accept).log()
+            log_u = torch.rand_like(log_prob_accept).log()
             acceptance_mask[~divergence_mask] = log_u < log_prob_accept
         else:
             acceptance_mask[~divergence_mask] = True
-
-        x_prime = x
 
         n_divergences = int(divergence_mask.long().sum())
         n_grads = 0
@@ -109,5 +130,95 @@ class GaussianIMH(MCMCSampler):
 
         return x_prime.detach(), acceptance_mask, n_calls, n_grads, n_divergences
 
+
+@dataclass
+class IsotropicGaussianIMHParameters(GaussianIMHParameters):
+    tune_proposal_scale: bool = True
+    dual_averaging: Optional[DualAveraging] = None
+
+    def __post_init__(self):
+        if self.tune_proposal_scale and self.dual_averaging is None:
+            self.dual_averaging = DualAveraging(
+                1.0,
+                params=DualAveragingParams(
+                    target_acceptance_rate=0.4,
+                )
+            )
+
+
+@dataclass
+class IsotropicGaussianIMHKernel(GaussianIMHKernel):
+    proposal_sqrt_cov_flat: float = 1.0
+
+    def __repr__(self):
+        return f"Proposal log scale: {math.log(self.proposal_sqrt_cov_flat):.3f}"
+
+
+class IsotropicGaussianIMH(GaussianIMH):
+    def __init__(self,
+                 event_shape: Union[torch.Size, Tuple[int, ...]],
+                 target: callable,
+                 kernel: Optional[IsotropicGaussianIMHKernel] = None,
+                 params: Optional[IsotropicGaussianIMHParameters] = None):
+        if kernel is None:
+            kernel = IsotropicGaussianIMHKernel(event_shape=event_shape, target=target)
+        if params is None:
+            params = IsotropicGaussianIMHParameters()
+        super().__init__(event_shape, target, kernel, params)
+
     def update_kernel(self, data: Dict[str, Any]):
-        raise NotImplementedError
+        self.kernel: IsotropicGaussianIMHKernel
+        self.params: IsotropicGaussianIMHParameters
+
+        if self.params.tune_proposal_scale:
+            acceptance_rate = torch.mean(data['mask'].float())
+            error = self.params.dual_averaging.p.target_acceptance_rate - acceptance_rate
+            self.params.dual_averaging.step(error)
+            self.kernel.proposal_sqrt_cov_flat = self.params.dual_averaging.value
+
+
+if __name__ == '__main__':
+    torch.manual_seed(0)
+    _event_shape = (2,)
+
+    target_mu = 0.1
+    target_std = 1.0
+    _target_callable = lambda x: torch.sum((x - target_mu) ** 2 / (2 * target_std ** 2), dim=1)
+
+    _params = IsotropicGaussianIMHParameters(
+        n_iterations=1000,
+        n_warmup_iterations=1000,
+        tune_proposal_scale=True,
+    )
+    _kernel = IsotropicGaussianIMHKernel(
+        _event_shape,
+        _target_callable,
+        proposal_sqrt_cov_flat=1.0
+    )
+
+    _sampler = IsotropicGaussianIMH(
+        _event_shape,
+        _target_callable,
+        params=_params,
+        kernel=_kernel,
+    )
+    _warmup_out = _sampler.warmup(x0=torch.randn(size=(10, *_event_shape)))
+    _sampling_out = _sampler.sample(x0=torch.randn(size=(10, *_event_shape)))
+
+    import matplotlib.pyplot as plt
+
+    _x = _sampling_out.samples.flatten(0, 1)
+    _x = _x[torch.randperm(len(_x))[:10000]]
+    _x_true = torch.randn(size=(10000, 2))
+
+    print(f'{_x.mean():.3f}')
+    print(f'{_x_true.mean():.3f}')
+
+    print(f'{_x.var():.3f}')
+    print(f'{_x_true.var():.3f}')
+
+    fig, ax = plt.subplots()
+    ax.scatter(_x_true[:, 0], _x_true[:, 1], s=3, label='True')
+    ax.scatter(_x[:, 0], _x[:, 1], s=3, label='IMH')
+    ax.legend()
+    plt.show()
