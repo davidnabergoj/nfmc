@@ -193,7 +193,7 @@ if __name__ == '__main__':
     _kernel = IsotropicGaussianIMHKernel(
         _event_shape,
         _target_callable,
-        proposal_sqrt_cov_flat=1.0
+        proposal_sqrt_cov_flat=2.0
     )
 
     _sampler = IsotropicGaussianIMH(
