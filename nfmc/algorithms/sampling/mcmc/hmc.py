@@ -55,7 +55,16 @@ def grad_potential(x: torch.Tensor, potential: callable, event_shape):
             x_finite = x[finite_mask]
             x_finite.requires_grad_(True)
 
-            grad_value[finite_mask] = torch.autograd.grad(potential(x_finite).sum(), x_finite)[0]
+            try:
+                u_x = potential(x_finite)
+            except ValueError as e:
+                # print('Error in potential computation (all chain transitions terminated)')
+                return grad_value  # All returned grads are nan
+
+            with torch.no_grad():
+                u_x[~torch.isfinite(u_x)] = torch.nan
+
+            grad_value[finite_mask] = torch.autograd.grad(u_x.sum(), x_finite)[0]
 
             x_finite = x_finite.detach()
             x_finite.requires_grad_(False)
@@ -82,6 +91,12 @@ def hmc_trajectory(x: torch.Tensor,
                    kernel: HMCKernel,
                    potential: callable,
                    full_output: bool = False):
+    """
+    Simulates a HMC trajectory
+
+    :returns: final state and final momentum. If full_output = True, returns the entire trajectory, final state, and final momentum.
+
+    """
     xs = []
     for j in range(kernel.n_leapfrog_steps):
         momentum = hmc_step_b(x, momentum, kernel.step_size, potential, event_shape)
