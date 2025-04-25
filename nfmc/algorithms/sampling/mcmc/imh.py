@@ -38,14 +38,16 @@ class GaussianIMHKernel(MCMCKernel):
         return ""
 
     def proposal_potential(self, x: torch.Tensor) -> Union[torch.Tensor, float]:
-        sigma = self.proposal_sqrt_cov_flat
+        sqrt_cov = self.proposal_sqrt_cov_flat
         mu = self.proposal_mean_flat
 
         batch_shape = x.shape[:-len(self.event_shape)]
 
         x_flat = x.view(*batch_shape, -1)
-        u_x = gaussian_potential(x_flat, torch.as_tensor(mu), torch.as_tensor(sigma)).sum(dim=-1)
-        return u_x
+
+        cov = torch.einsum('ij,jk->ik', sqrt_cov.T, sqrt_cov)
+        cov_inv = torch.linalg.inv(cov)
+        return -0.5 * torch.logdet(cov) - 0.5 * torch.einsum('...i,ij,...j->...', x_flat - mu, cov_inv, x_flat - mu)
 
     def propose(self, x: torch.Tensor) -> Tuple[torch.Tensor, Union[torch.Tensor, float]]:
         """
@@ -114,8 +116,8 @@ class GaussianIMH(MCMCSampler):
             log_prob_accept = metropolis_acceptance_log_ratio(
                 -self.target(x[~divergence_mask]),
                 -self.target(x_prime[~divergence_mask]),
-                -u_x,
-                -u_x_prime,
+                -u_x[~divergence_mask],
+                -u_x_prime[~divergence_mask],
             )
             log_u = torch.rand_like(log_prob_accept).log()
             acceptance_mask[~divergence_mask] = log_u < log_prob_accept
@@ -133,17 +135,11 @@ class GaussianIMH(MCMCSampler):
 
 @dataclass
 class IsotropicGaussianIMHParameters(GaussianIMHParameters):
-    tune_proposal_scale: bool = True
-    dual_averaging: Optional[DualAveraging] = None
+    tune_proposal_scale: bool = False
 
     def __post_init__(self):
-        if self.tune_proposal_scale and self.dual_averaging is None:
-            self.dual_averaging = DualAveraging(
-                1.0,
-                params=DualAveragingParams(
-                    target_acceptance_rate=0.4,
-                )
-            )
+        if self.tune_proposal_scale:
+            raise ValueError
 
 
 @dataclass
@@ -153,6 +149,17 @@ class IsotropicGaussianIMHKernel(GaussianIMHKernel):
     def __repr__(self):
         return f"Proposal log scale: {math.log(self.proposal_sqrt_cov_flat):.3f}"
 
+    def proposal_potential(self, x: torch.Tensor) -> Union[torch.Tensor, float]:
+        sigma = self.proposal_sqrt_cov_flat
+        mu = self.proposal_mean_flat
+
+        batch_shape = x.shape[:-len(self.event_shape)]
+
+        x_flat = x.view(*batch_shape, -1)
+        return gaussian_potential(x_flat, torch.as_tensor(mu), torch.as_tensor(sigma)).sum(dim=-1)
+    
+    def __post_init__(self):
+        assert isinstance(self.proposal_sqrt_cov_flat, float), f"{type(self.proposal_sqrt_cov_flat) = }"
 
 class IsotropicGaussianIMH(GaussianIMH):
     def __init__(self,
@@ -167,14 +174,7 @@ class IsotropicGaussianIMH(GaussianIMH):
         super().__init__(event_shape, target, kernel, params)
 
     def update_kernel(self, data: Dict[str, Any]):
-        self.kernel: IsotropicGaussianIMHKernel
-        self.params: IsotropicGaussianIMHParameters
-
-        if self.params.tune_proposal_scale:
-            acceptance_rate = torch.mean(data['mask'].float())
-            error = self.params.dual_averaging.p.target_acceptance_rate - acceptance_rate
-            self.params.dual_averaging.step(error)
-            self.kernel.proposal_sqrt_cov_flat = self.params.dual_averaging.value
+        raise ValueError
 
 
 if __name__ == '__main__':
