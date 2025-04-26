@@ -14,7 +14,6 @@ from nfmc.algorithms.sampling.nfmc.neutra import NeuTraKernel, NeuTraParameters,
 from nfmc.algorithms.sampling.nfmc.tess import TESSKernel, TESSParameters, TESS
 from nfmc.util import create_flow_object
 import torch.nn as nn
-from potentials.base import Potential
 
 
 def create_sampler(target: callable,
@@ -62,10 +61,8 @@ def create_sampler(target: callable,
 
     if flow is not None and not isinstance(flow, str):
         event_shape = flow.event_shape
-    elif isinstance(target, Potential):
+    elif hasattr(target, "event_shape"):
         event_shape = target.event_shape
-
-    event_size = int(torch.prod(torch.as_tensor(event_shape)))
 
     if strategy in ['hmc', 'uhmc', 'ula', 'mala', 'mh', 'ess']:
         # MCMC
@@ -240,7 +237,7 @@ def create_sampler(target: callable,
     raise ValueError(f"Unsupported sampling strategy: {strategy}")
 
 
-def sample(target: Union[callable, Potential],
+def sample(target: Union[callable, Any],
            event_shape: Optional[Union[torch.Size, Tuple[int, ...]]] = None,
            flow: Optional[Union[str, Any]] = 'realnvp',
            strategy: str = "imh",  # todo rename to 'sampler'
@@ -283,7 +280,7 @@ def sample(target: Union[callable, Potential],
         flow = None
     if flow is not None and not isinstance(flow, str):
         event_shape = flow.event_shape
-    elif isinstance(target, Potential):
+    elif hasattr(target, "event_shape"):
         event_shape = target.event_shape
     if 'param_kwargs' not in kwargs:
         kwargs['param_kwargs'] = {}
