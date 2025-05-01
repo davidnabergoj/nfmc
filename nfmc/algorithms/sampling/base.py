@@ -241,7 +241,6 @@ class MCMCSamples:
     event_shape: Union[Tuple[int, ...], torch.Size]
     store_samples: bool = True
     _running: List[torch.Tensor] = None  # shape: (n_iterations, n_chains, *event_shape)
-    n_samples: int = 0
     last_sample: torch.Tensor = None  # shape (n_chains, *event_shape)
     thinning: int = 1
     seen_samples: int = 0
@@ -254,6 +253,12 @@ class MCMCSamples:
         if index == -1 or index == self.n_samples - 1:
             return self.last_sample
         return self._running[index]
+
+    @property
+    def n_samples(self) -> int:
+        if self._running is None:
+            return 0
+        return len(self._running)
 
     def add(self, x: torch.Tensor):
         """
@@ -275,16 +280,20 @@ class MCMCSamples:
         if not self.store_samples:
             return
 
-        thinning_mask = (torch.arange(self.seen_samples, self.seen_samples + len(x)) % self.thinning) == 0
-        self.seen_samples += len(x)
-
-        added_samples = x[thinning_mask].detach().cpu()
-        self._running.extend(added_samples)
-        self.n_samples += len(added_samples)
-
-        if self.max_samples is not None:
-            self._running = self._running[-self.max_samples:]
-            self.n_samples = min(self.n_samples, self.max_samples)
+        if self.max_samples is None or len(self.n_samples) + len(x) <= self.max_samples:
+            thinning_mask = (torch.arange(self.seen_samples, self.seen_samples + len(x)) % self.thinning) == 0
+            self.seen_samples += len(x)
+            added_samples = x[thinning_mask].detach().cpu()
+            self._running.extend(added_samples)
+        else:
+            # Reservoir sampling
+            for i in range(len(x)):
+                if self.n_samples < self.max_samples:
+                    self._running.append(x[i])
+                else:
+                    _idx = torch.randint(low=0, high=self.n_samples)
+                    if _idx < self.max_samples:
+                        self._running[_idx] = x[i]
 
     def as_tensor(self) -> torch.Tensor:
         return torch.stack(self._running, dim=0)
@@ -292,7 +301,6 @@ class MCMCSamples:
     def reset(self):
         del self._running
         self._running = []
-        self.n_samples = 0
 
 
 @dataclass
