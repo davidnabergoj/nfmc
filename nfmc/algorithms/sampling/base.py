@@ -280,7 +280,7 @@ class MCMCSamples:
         if not self.store_samples:
             return
 
-        if self.max_samples is None or len(self.n_samples) + len(x) <= self.max_samples:
+        if self.max_samples is None or self.n_samples + len(x) <= self.max_samples:
             thinning_mask = (torch.arange(self.seen_samples, self.seen_samples + len(x)) % self.thinning) == 0
             self.seen_samples += len(x)
             added_samples = x[thinning_mask].detach().cpu()
