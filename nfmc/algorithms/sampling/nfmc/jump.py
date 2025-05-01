@@ -101,6 +101,42 @@ class JumpNFMC(Sampler):
         super().__init__(event_shape, target, kernel, params)
         self.inner_sampler = inner_sampler
 
+    def nf_step(self, x, out):
+        n_chains = len(x)
+        x_prime, f_x_prime = self.kernel.flow.sample(n_chains, return_log_prob=True)
+        x_prime = x_prime.detach()
+        f_x_prime = f_x_prime.detach()
+
+        if self.params.adjusted_jumps:
+            try:
+                u_x = self.target(x)
+                u_x_prime = self.target(x_prime)
+                out.statistics.update_counters(
+                    n_target_calls=2 * n_chains,
+                )
+
+                f_x = self.kernel.flow.log_prob(x)
+                log_alpha = metropolis_acceptance_log_ratio(
+                    log_prob_target_curr=-u_x.cpu(),
+                    log_prob_target_prime=-u_x_prime.cpu(),
+                    log_prob_proposal_curr=f_x.cpu(),
+                    log_prob_proposal_prime=f_x_prime.cpu()
+                )
+                mask = torch.rand_like(log_alpha).log() < log_alpha
+            except ValueError:
+                mask = torch.zeros(size=x.shape[:-len(self.event_shape)], dtype=torch.bool)
+        else:
+            mask = torch.ones(size=x.shape[:-len(self.event_shape)], dtype=torch.bool)
+
+        x[mask] = x_prime[mask].to(x)
+        
+        out.statistics.update_counters(
+            n_attempted_jumps=n_chains,
+            n_accepted_jumps=int(torch.sum(mask)),
+        )
+        
+        return x
+
     def warmup(self,
                x0: torch.Tensor,
                show_progress: bool = True,
@@ -202,41 +238,12 @@ class JumpNFMC(Sampler):
 
             # Jump
             pbar.set_description_str(f'Jump MCMC')
-            x_prime, f_x_prime = self.kernel.flow.sample(n_chains, return_log_prob=True)
-            x_prime = x_prime.detach()
-            f_x_prime = f_x_prime.detach()
-
-            x = mcmc_output.running_samples[-1]
-            if self.params.adjusted_jumps:
-                try:
-                    u_x = self.target(x)
-                    u_x_prime = self.target(x_prime)
-                    out.statistics.update_counters(
-                        n_target_calls=2 * n_chains,
-                    )
-
-                    f_x = self.kernel.flow.log_prob(x)
-                    log_alpha = metropolis_acceptance_log_ratio(
-                        log_prob_target_curr=-u_x.cpu(),
-                        log_prob_target_prime=-u_x_prime.cpu(),
-                        log_prob_proposal_curr=f_x.cpu(),
-                        log_prob_proposal_prime=f_x_prime.cpu()
-                    )
-                    mask = torch.rand_like(log_alpha).log() < log_alpha
-                except ValueError:
-                    mask = torch.zeros(size=x.shape[:-len(event_shape)], dtype=torch.bool)
-            else:
-                mask = torch.ones(size=x.shape[:-len(event_shape)], dtype=torch.bool)
-
-            x[mask] = x_prime[mask].to(x)
+            x = mcmc_output.running_samples.last_sample
+            x = self.nf_step(x, out)
             t1 = time.time()
 
             # Update output
             out.statistics.update_elapsed_time(t1 - t0)
-            out.statistics.update_counters(
-                n_attempted_jumps=n_chains,
-                n_accepted_jumps=int(torch.sum(mask)),
-            )
             out.statistics.expectations.update(x)
             pbar.set_postfix_str(f'{out.statistics}')
 
@@ -245,6 +252,10 @@ class JumpNFMC(Sampler):
         out.kernel = self.kernel
         return out
 
+class SIRJumpNFMC(JumpNFMC):
+    def nf_step(self, x, out):
+        # TODO implement
+        raise NotImplementedError
 
 class JumpHMC(JumpNFMC):
     def __init__(self,
