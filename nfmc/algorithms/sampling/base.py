@@ -291,7 +291,7 @@ class MCMCSamples:
                 if self.n_samples < self.max_samples:
                     self._running.append(x[i])
                 else:
-                    _idx = torch.randint(low=0, high=self.n_samples)
+                    _idx = int(torch.randint(low=0, high=self.n_samples, size=()).detach())
                     if _idx < self.max_samples:
                         self._running[_idx] = x[i]
 
