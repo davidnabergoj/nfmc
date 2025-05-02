@@ -157,34 +157,35 @@ class JumpNFMC(Sampler):
             time_limit_seconds=inner_sampler_warmup_time_limit
         )
 
-        x_train, x_val = train_val_split(
-            warmup_output.samples,
-            train_pct=self.params.train_pct,
-            max_train_size=self.params.max_train_size,
-            max_val_size=self.params.max_val_size
-        )
-        flow_params = deepcopy(self.kernel.flow.state_dict())
-        elapsed_time = time.time() - t0
-
-        if time_limit_seconds is not None:
-            flow_fit_time_limit = time_limit_seconds - elapsed_time
-        else:
-            flow_fit_time_limit = None
-
-        try:
-            self.kernel.flow.fit(
-                x_train=x_train,
-                x_val=x_val,
-                **{
-                    **self.params.flow_fit_kwargs,
-                    **dict(
-                        show_progress=show_progress,
-                        time_limit_seconds=flow_fit_time_limit
-                    )
-                }
+        if len(warmup_output.samples) > 0:
+            x_train, x_val = train_val_split(
+                warmup_output.samples,
+                train_pct=self.params.train_pct,
+                max_train_size=self.params.max_train_size,
+                max_val_size=self.params.max_val_size
             )
-        except ValueError:
-            self.kernel.flow.load_state_dict(flow_params)
+            flow_params = deepcopy(self.kernel.flow.state_dict())
+            elapsed_time = time.time() - t0
+
+            if time_limit_seconds is not None:
+                flow_fit_time_limit = time_limit_seconds - elapsed_time
+            else:
+                flow_fit_time_limit = None
+
+            try:
+                self.kernel.flow.fit(
+                    x_train=x_train,
+                    x_val=x_val,
+                    **{
+                        **self.params.flow_fit_kwargs,
+                        **dict(
+                            show_progress=show_progress,
+                            time_limit_seconds=flow_fit_time_limit
+                        )
+                    }
+                )
+            except ValueError:
+                self.kernel.flow.load_state_dict(flow_params)
 
         # Prefer initialization to MCMC samples because unadjusted flow sampling can generate outliers
         return warmup_output
@@ -199,7 +200,7 @@ class JumpNFMC(Sampler):
         if not self.inner_sampler.params.store_samples:
             raise ValueError("Inner sampler in jump HMC must store samples")
 
-        n_chains, *event_shape = x0.shape
+        _, *event_shape = x0.shape
         event_shape = tuple(event_shape)
 
         out = JumpNFMCOutput(event_shape=x0.shape[1:], store_samples=self.params.store_samples)
@@ -238,7 +239,9 @@ class JumpNFMC(Sampler):
 
             # Jump
             pbar.set_description_str(f'Jump MCMC')
-            x = mcmc_output.running_samples.last_sample
+
+            if mcmc_output.running_samples.last_sample is not None:
+                x = mcmc_output.running_samples.last_sample
             x = self.nf_step(x, out)
             t1 = time.time()
 
@@ -252,10 +255,6 @@ class JumpNFMC(Sampler):
         out.kernel = self.kernel
         return out
 
-class SIRJumpNFMC(JumpNFMC):
-    def nf_step(self, x, out):
-        # TODO implement
-        raise NotImplementedError
 
 class JumpHMC(JumpNFMC):
     def __init__(self,

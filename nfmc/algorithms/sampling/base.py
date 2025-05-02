@@ -132,9 +132,10 @@ class MCMCExpectationDict:
         self.data_transform = data_transform
 
     def update(self, x: torch.Tensor):
-        x_transformed = self.data_transform(x)
-        for k in self.expectations.keys():
-            self.expectations[k].update(x_transformed)
+        if len(x) > 0:
+            x_transformed = self.data_transform(x)
+            for k in self.expectations.keys():
+                self.expectations[k].update(x_transformed)
 
     def reset(self):
         for k in self.expectations.keys():
@@ -247,6 +248,7 @@ class MCMCSamples:
     max_samples: int = None
 
     def __post_init__(self):
+        self._running = []
         self.reset()
 
     def __getitem__(self, index):
@@ -256,8 +258,6 @@ class MCMCSamples:
 
     @property
     def n_samples(self) -> int:
-        if self._running is None:
-            return 0
         return len(self._running)
 
     def add(self, x: torch.Tensor):
@@ -266,6 +266,9 @@ class MCMCSamples:
 
         :param x: tensor with shape `(n_chains, *event_shape)` or `(k, n_chains, *event_shape)`
         """
+        if len(x) == 0:
+            return
+
         # transform x into shape `(k, n_chains, *event_shape)`
         if len(x.shape) == len(self.event_shape) + 1 and x.shape[1:] == self.event_shape:
             x = x[None]
@@ -296,7 +299,10 @@ class MCMCSamples:
                         self._running[_idx] = x[i]
 
     def as_tensor(self) -> torch.Tensor:
-        return torch.stack(self._running, dim=0)
+        if len(self._running) > 0:
+            return torch.stack(self._running, dim=0)
+        else:
+            return torch.empty(size=(0, 0, *self.event_shape), dtype=torch.double)
 
     def reset(self):
         del self._running
