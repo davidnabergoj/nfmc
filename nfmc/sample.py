@@ -12,6 +12,7 @@ from nfmc.algorithms.sampling.nfmc.imh import FlowIMHKernel, FlowIMHParameters, 
 from nfmc.algorithms.sampling.nfmc.jump import JumpNFMCParameters, JumpULA, JumpHMC, JumpUHMC, JumpMALA, JumpMH, JumpESS
 from nfmc.algorithms.sampling.nfmc.neutra import NeuTraKernel, NeuTraParameters, NeuTraHMC, NeuTraMH
 from nfmc.algorithms.sampling.nfmc.tess import TESSKernel, TESSParameters, TESS
+from nfmc.algorithms.sampling.nfmc.ex2mcmc import Ex2MCMCKernel, Ex2MCMCParameters, Ex2MH, Ex2HMC
 from nfmc.util import create_flow_object
 import torch.nn as nn
 
@@ -105,6 +106,8 @@ def create_sampler(target: callable,
         "jump_mh",
         "neutra_hmc",
         "neutra_mh",
+        "ex2_hmc",
+        "ex2_mh",
         "tess",
         "dlmc"
     ]:
@@ -203,6 +206,34 @@ def create_sampler(target: callable,
                 event_shape,
                 target,
                 negative_log_likelihood=negative_log_likelihood,
+                kernel=kernel,
+                params=params,
+                inner_kernel=inner_kernel,
+                inner_params=inner_params
+            )
+        elif strategy == 'ex2_hmc':
+            kernel = Ex2MCMCKernel(event_shape, target, flow=flow_object)
+            params = Ex2MCMCParameters(**param_kwargs)
+            inner_kernel = HMCKernel(event_shape, target, **inner_kernel_kwargs)
+            if 'n_iterations' not in inner_param_kwargs:
+                inner_param_kwargs['n_iterations'] = 5
+            inner_params = HMCParameters(**inner_param_kwargs)
+            return Ex2HMC(
+                event_shape,
+                target,
+                kernel=kernel,
+                params=params,
+                inner_kernel=inner_kernel,
+                inner_params=inner_params
+            )
+        elif strategy == 'ex2_mh':
+            kernel = Ex2MCMCKernel(event_shape, target, flow=flow_object)
+            params = Ex2MCMCParameters(**param_kwargs)
+            inner_kernel = MHKernel(event_shape, target, **inner_kernel_kwargs)
+            inner_params = MHParameters(**inner_param_kwargs)
+            return Ex2MH(
+                event_shape,
+                target,
                 kernel=kernel,
                 params=params,
                 inner_kernel=inner_kernel,

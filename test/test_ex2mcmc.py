@@ -1,5 +1,7 @@
+import pytest
 import torch
 
+from nfmc import sample
 from nfmc.algorithms.sampling.mcmc.mh import MH, MHParameters
 from nfmc.algorithms.sampling.nfmc.ex2mcmc import Ex2MCMC, Ex2MCMCParameters
 
@@ -89,3 +91,23 @@ def test_warmup_local_and_sampling_no_local():
 
     assert s_out.samples.shape == (n_jumps, n_chains, *event_shape)
     assert torch.isfinite(s_out.samples).all()
+
+@pytest.mark.parametrize('local_kernel', ['hmc', 'mh'])
+def test_sample_wrapper(local_kernel: str):
+    torch.manual_seed(0)
+    out = sample(
+        target=lambda x: torch.sum(x ** 2, dim=-1),
+        event_shape=(2,),
+        strategy=f'ex2_{local_kernel}',
+        n_chains = 7,
+        n_iterations=3,
+        n_warmup_iterations=4,
+        inner_param_kwargs = {
+            'n_iterations': 5,
+            'n_warmup_iterations': 6
+        }
+    )
+    assert out.samples.shape == (3 + 3 * 5, 7, 2)
+    assert torch.isfinite(out.samples).all()
+
+    

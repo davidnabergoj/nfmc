@@ -1,9 +1,12 @@
 from dataclasses import dataclass
+from typing import Tuple, Union
 import torch
 
 from nfmc.algorithms.sampling.base import NFMCKernel, Sampler
 from nfmc.algorithms.sampling.nfmc.jump import JumpNFMC, JumpNFMCParameters
 from nfmc.util import create_flow_object
+from nfmc.algorithms.sampling.mcmc.mh import MH, MHKernel, MHParameters
+from nfmc.algorithms.sampling.mcmc.hmc import HMC, HMCKernel, HMCParameters
 
 
 @dataclass
@@ -20,7 +23,7 @@ class Ex2MCMC(JumpNFMC):
     def __init__(self,
                  event_shape, 
                  target, 
-                 inner_sampler: Sampler, 
+                 inner_sampler: Sampler,
                  kernel: Ex2MCMCKernel = None, 
                  params: Ex2MCMCParameters = None):
         if kernel is None:
@@ -65,3 +68,26 @@ class Ex2MCMC(JumpNFMC):
 
         # return chosen points
         return candidates[range(n_chains), pool_indices]
+
+class Ex2MH(Ex2MCMC):
+    def __init__(self, 
+                 event_shape: Union[Tuple[int, ...], torch.Size],
+                 target: callable,
+                 kernel: Ex2MCMCKernel = None,
+                 params: Ex2MCMCParameters = None,
+                 inner_kernel: MHKernel = None,
+                 inner_params: MHParameters = None):
+        inner_sampler = MH(event_shape, target, inner_kernel, inner_params)
+        super().__init__(event_shape, target, inner_sampler, kernel, params)
+
+
+class Ex2HMC(Ex2MCMC):
+    def __init__(self, 
+                 event_shape: Union[Tuple[int, ...], torch.Size],
+                 target: callable,
+                 kernel: Ex2MCMCKernel = None,
+                 params: Ex2MCMCParameters = None,
+                 inner_kernel: HMCKernel = None,
+                 inner_params: HMCParameters = None):
+        inner_sampler = HMC(event_shape, target, inner_kernel, inner_params)
+        super().__init__(event_shape, target, inner_sampler, kernel, params)
