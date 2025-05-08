@@ -12,7 +12,7 @@ from nfmc.algorithms.sampling.nfmc.imh import FlowIMHKernel, FlowIMHParameters, 
 from nfmc.algorithms.sampling.nfmc.jump import JumpNFMCParameters, JumpULA, JumpHMC, JumpUHMC, JumpMALA, JumpMH, JumpESS
 from nfmc.algorithms.sampling.nfmc.neutra import NeuTraKernel, NeuTraParameters, NeuTraHMC, NeuTraMH
 from nfmc.algorithms.sampling.nfmc.tess import TESSKernel, TESSParameters, TESS
-from nfmc.algorithms.sampling.nfmc.ex2mcmc import Ex2MCMCKernel, Ex2MCMCParameters, Ex2MH, Ex2HMC
+from nfmc.algorithms.sampling.nfmc.ex2mcmc import Ex2MCMCKernel, Ex2MCMCParameters, Ex2MH, Ex2HMC, IteratedSIR
 from nfmc.util import create_flow_object
 import torch.nn as nn
 
@@ -106,6 +106,7 @@ def create_sampler(target: callable,
         "jump_mh",
         "neutra_hmc",
         "neutra_mh",
+        "isir",
         "ex2_hmc",
         "ex2_mh",
         "tess",
@@ -238,6 +239,15 @@ def create_sampler(target: callable,
                 params=params,
                 inner_kernel=inner_kernel,
                 inner_params=inner_params
+            )
+        elif strategy == 'isir':
+            kernel = Ex2MCMCKernel(event_shape, target, flow=flow_object)
+            params = Ex2MCMCParameters(**param_kwargs)
+            return IteratedSIR(
+                event_shape,
+                target,
+                kernel=kernel,
+                params=params,
             )
         elif strategy == "tess":
             if negative_log_likelihood is None:

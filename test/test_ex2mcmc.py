@@ -110,4 +110,17 @@ def test_sample_wrapper(local_kernel: str):
     assert out.samples.shape == (3 + 3 * 5, 7, 2)
     assert torch.isfinite(out.samples).all()
 
+def test_sample_wrapper_iterated_sir():
+    torch.manual_seed(0)
+    out = sample(
+        target=lambda x: torch.sum(x ** 2, dim=-1),
+        event_shape=(2,),
+        strategy=f'isir',
+        n_chains = 7,
+        n_iterations=3,
+        n_warmup_iterations=4,
+    )
+    assert out.samples.shape == (3, 7, 2)
+    assert torch.isfinite(out.samples).all()
+
     
