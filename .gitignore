@@ -1,2 +1,5 @@
 .idea
 **/*.pyc
+.env
+.vscode/settings.json
+**/*.pyc.*
