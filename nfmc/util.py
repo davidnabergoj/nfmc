@@ -462,14 +462,16 @@ def grad_f(x: torch.Tensor,
            event_shape: Union[Tuple[int, ...], torch.Size]):
     """
     Compute gradient of function f with respect to input tensor x.
+    Converts infinite values to `torch.nan`.
 
     :param torch.Tensor x: input tensor with shape `(*batch_shape, *event_shape)`.
-    :param callable f: function to be differentiated.
+    :param callable f: function to be differentiated. Maps a tensor with shape `event_shape` to a scalar.
     :param Union[Tuple[int, ...], torch.Size] event_shape: event shape of the input tensor.
     :return: evaluated function tensor with shape `(*batch_shape)`, gradient tensor with shape 
     `(*batch_shape, *event_shape)`, and the total numbers of function calls and gradient evaluations.
     """
-    function_value = torch.full(size=x.shape, fill_value=torch.nan).to(x)
+    batch_shape = x.shape[:-len(event_shape)]
+    function_value = torch.full(size=batch_shape, fill_value=torch.nan).to(x)
     grad_value = torch.full(size=x.shape, fill_value=torch.nan).to(x)
 
     finite_mask = sum_except_batch(

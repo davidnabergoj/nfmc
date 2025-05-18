@@ -11,8 +11,8 @@ class IMHKernel(MHKernel):
     def __init__(self, 
                  event_shape: Union[Tuple[int, ...], torch.Size],
                  neg_log_prob_target: callable,
-                 proposal_log_prob: callable,
-                 proposal_sample_with_log_prob: callable):
+                 proposal_log_prob: callable = None,
+                 proposal_sample_with_log_prob: callable = None):
         """
         IMH kernel constructor.
         
@@ -20,14 +20,37 @@ class IMHKernel(MHKernel):
         :param callable neg_log_prob_target: function that computes the negative of the log target probability density. 
          Receives as input a tensor with shape `(*batch_shape, *event_shape)` and outputs a tensor with shape 
          `batch_shape`.
-        :param callable proposal_log_prob: function that computes the log proposal probability density. 
+        :param callable proposal_log_prob: function that computes the unnormalized log proposal probability density. 
          Receives as input a tensor with shape `(*batch_shape, *event_shape)` and outputs a tensor with shape 
-         `batch_shape`.
+         `batch_shape`. If None, use a standard Gaussian proposal.
         :param callable proposal_sample_with_log_prob: function that draws samples from the proposal distribution. 
          Receives as input a sample shape tuple `batch_shape` and returns a tensor with shape 
          `(*batch_shape, *event_shape)`, and the corresponding log probability density tensor with shape `batch_shape`.
+         If None, use a standard Gaussian proposal.
         """
         super().__init__(event_shape, neg_log_prob_target)
+
+        if proposal_log_prob is None and proposal_sample_with_log_prob is not None:
+            raise ValueError("Both proposal_log_prob and proposal_sample_with_log_prob must be provided")
+        if proposal_log_prob is not None and proposal_sample_with_log_prob is None:
+            raise ValueError("Both proposal_log_prob and proposal_sample_with_log_prob must be provided")
+        if proposal_log_prob is None and proposal_sample_with_log_prob is None:
+            dist = torch.distributions.Normal(
+                loc=torch.zeros(size=event_shape),
+                scale=torch.ones(size=event_shape)
+            )
+
+            def _prop_lp(_in):
+                return sum_except_batch(dist.log_prob(_in), event_shape)
+
+            def _prop_swlp(batch_shape):
+                _x = dist.sample(sample_shape=batch_shape)
+                _lp = _prop_lp(_x)
+                return _x, _lp
+
+            proposal_log_prob = _prop_lp
+            proposal_sample_with_log_prob = _prop_swlp
+
         self.proposal_log_prob = proposal_log_prob
         self.proposal_sample_with_log_prob = proposal_sample_with_log_prob
 

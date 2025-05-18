@@ -2,19 +2,14 @@ from typing import Optional, Tuple, Union
 
 import torch
 from nfmc.algorithms.mh.base import MHKernel
-from nfmc.util import metropolis_acceptance_log_ratio, sum_except_batch
+from nfmc.util import metropolis_acceptance_log_ratio, sum_except_batch, diag_mult
 
 
 def propose_state(x: torch.Tensor,
                   event_shape: Union[Tuple[int, ...], torch.Size],
                   step_size: float,
                   inv_mass_diag: torch.Tensor) -> Tuple[torch.Tensor, Union[torch.Tensor, float], torch.Tensor]:
-    batch_shape = x.shape[:-len(event_shape)]
-    event_size = int(torch.prod(torch.as_tensor(event_shape)))
-    noise = torch.multiply(
-        torch.randn(size=(*batch_shape, event_size)),
-        inv_mass_diag[[None] * len(batch_shape)]
-    ).view_as(x)
+    noise = diag_mult(torch.randn_like(x), inv_mass_diag, event_shape).to(x)
     x_prime = x + step_size * noise
     return x_prime
 
@@ -40,7 +35,7 @@ class RWMHKernel(MHKernel):
          the mass matrix in HMC and MALA.
         """
         super().__init__(event_shape, neg_log_prob_target)
-        step_size = step_size
+        self.step_size = step_size
         self.proposal_scale = proposal_scale
         if self.proposal_scale is None:
             self.proposal_scale = torch.ones(
@@ -55,7 +50,6 @@ class RWMHKernel(MHKernel):
             self.event_shape,
             self.step_size,
             self.proposal_scale,
-            self.neg_log_prob_target
         )
 
         # Compute divergence mask

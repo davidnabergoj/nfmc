@@ -116,14 +116,14 @@ class HMCKernel(MHKernel):
         noise = torch.randn_like(x)
         p = diag_mult(
             noise, 
-            1 / self.kernel.inv_mass_diag.sqrt().to(x), 
+            1 / self.inv_mass_diag.sqrt().to(x), 
             self.event_shape
         )
 
         # Simulate trajectory
         x_prime, p_prime, nc, ng = hmc_trajectory(
             x=x,
-            p=p,
+            momentum=p,
             event_shape=self.event_shape,
             step_size=self.step_size,
             n_leapfrog_steps=self.n_leapfrog_steps,
@@ -148,7 +148,7 @@ class HMCKernel(MHKernel):
         if n_valid > 0:
             hamiltonian_start: torch.Tensor = self.neg_log_prob_target(x[~divergence_mask]) + 0.5 * sum_except_batch(
                 diag_mult(
-                    p[~divergence_mask] ** 2, self.kernel.inv_mass_diag, self.event_shape
+                    p[~divergence_mask] ** 2, self.inv_mass_diag, self.event_shape
                 ),
                 self.event_shape
             )
@@ -156,7 +156,7 @@ class HMCKernel(MHKernel):
 
             hamiltonian_end: torch.Tensor = self.neg_log_prob_target(x_prime[~divergence_mask]) + 0.5 * sum_except_batch(
                 diag_mult(
-                    p_prime[~divergence_mask] ** 2, self.kernel.inv_mass_diag, self.event_shape
+                    p_prime[~divergence_mask] ** 2, self.inv_mass_diag, self.event_shape
                 ),
                 self.event_shape
             )

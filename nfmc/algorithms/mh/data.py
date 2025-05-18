@@ -3,7 +3,6 @@ from typing import Dict, List, Optional, Tuple, Union
 import torch
 
 from nfmc.algorithms.util.expectation import MCMCExpectation, MCMCExpectationDict
-from nfmc.algorithms.sampling.mcmc.mh import MHKernel
 from nfmc.algorithms.util.samples import MCMCSamples
 
 
@@ -106,13 +105,11 @@ class MHOutput:
                  event_shape: Union[Tuple[int, ...], torch.Size],
                  running_samples: MCMCSamples = None,
                  statistics: Optional[MHStatistics] = None,
-                 kernel: Optional[MHKernel] = None,
                  store_samples: bool = True,
                  max_samples: int = None):
         self.event_shape = event_shape
         self.running_samples = running_samples
         self.statistics = statistics
-        self.kernel = kernel
         self.store_samples = store_samples
         self.max_samples = max_samples
 
