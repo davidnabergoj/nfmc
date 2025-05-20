@@ -4,18 +4,21 @@ import torch
 
 
 class MCMCSamples:
-    event_shape: Union[Tuple[int, ...], torch.Size]
-    store_samples: bool = True
-    # shape: (n_iterations, n_chains, *event_shape)
-    _running: List[torch.Tensor] = None
-    last_sample: torch.Tensor = None  # shape (n_chains, *event_shape)
-    thinning: int = 1
-    seen_samples: int = 0
-    max_samples: int = None
+    def __init__(self,
+                 event_shape: Union[Tuple[int, ...], torch.Size],
+                 _running: List[torch.Tensor] = None,
+                 last_sample: torch.Tensor = None,
+                 thinning: int = 1,
+                 seen_samples: int = 0):
+        self.event_shape = event_shape
+        self._running = _running
+        self.last_sample = last_sample
+        self.thinning = thinning
+        self.seen_samples = seen_samples
 
-    def __post_init__(self):
-        self._running = []
-        self.reset()
+    @property
+    def store_samples(self):
+        return self.max_samples > 0
 
     def __getitem__(self, index):
         if index == -1 or index == self.n_samples - 1:

@@ -1,4 +1,3 @@
-from dataclasses import dataclass
 from typing import Dict, List, Optional, Tuple, Union
 import torch
 
@@ -6,38 +5,25 @@ from nfmc.algorithms.util.expectation import MCMCExpectation, MCMCExpectationDic
 from nfmc.algorithms.util.samples import MCMCSamples
 
 
-@dataclass
 class MHStatistics:
-    event_shape: Union[Tuple[int, ...], torch.Size]
-    n_accepted_trajectories: Optional[int] = 0
-    n_attempted_trajectories: Optional[int] = 0
-    n_divergences: Optional[int] = 0
-    n_target_gradient_calls: Optional[int] = 0
-    n_target_calls: Optional[int] = 0
-    elapsed_time_seconds: Optional[float] = 0.0
+    def __init__(self,
+                 event_shape: Union[Tuple[int, ...], torch.Size],
+                 elapsed_time_seconds: Optional[float] = 0.0,
+                 data_transform: callable = lambda v: v):
+        """
+        
+        """
+        event_shape: Union[Tuple[int, ...], torch.Size]
+        elapsed_time_seconds: Optional[float] = 0.0
 
-    # transform data using this function when computing statistics
-    data_transform: callable = lambda v: v
-    expectations: MCMCExpectationDict = None
-
-    def update_counters(self,
-                        n_accepted_trajectories: int = 0,
-                        n_attempted_trajectories: int = 0,
-                        n_divergences: int = 0,
-                        n_target_gradient_calls: int = 0,
-                        n_target_calls: int = 0):
-        self.n_accepted_trajectories = int(
-            self.n_accepted_trajectories + n_accepted_trajectories)
-        self.n_attempted_trajectories = int(
-            self.n_attempted_trajectories + n_attempted_trajectories)
-        self.n_divergences = int(self.n_divergences + n_divergences)
-        self.n_target_gradient_calls = int(
-            self.n_target_gradient_calls + n_target_gradient_calls)
-        self.n_target_calls = int(self.n_target_calls + n_target_calls)
+        # transform data using this function when computing statistics
+        data_transform: callable = lambda v: v
+        expectations: MCMCExpectationDict = None
 
     def update_elapsed_time(self, delta_time_seconds: float):
         self.elapsed_time_seconds = float(
-            self.elapsed_time_seconds + delta_time_seconds)
+            self.elapsed_time_seconds + delta_time_seconds
+        )
 
     def __post_init__(self):
         self.expectations = MCMCExpectationDict(
@@ -103,24 +89,21 @@ class MHStatistics:
 class MHOutput:
     def __init__(self,
                  event_shape: Union[Tuple[int, ...], torch.Size],
-                 running_samples: MCMCSamples = None,
-                 statistics: Optional[MHStatistics] = None,
-                 store_samples: bool = True,
                  max_samples: int = None):
+        """
+        Object containing output from Metropolis-Hastings sampling.
+
+        :param Union[Tuple[int, ...], torch.Size] event_shape: shape of the event tensor.
+        :param int max_samples: maximum number of samples to store.
+        """
         self.event_shape = event_shape
-        self.running_samples = running_samples
-        self.statistics = statistics
-        self.store_samples = store_samples
         self.max_samples = max_samples
 
-        if self.running_samples is None:
-            self.running_samples = MCMCSamples(
-                self.event_shape,
-                store_samples=self.store_samples,
-                max_samples=self.max_samples,
-            )
-        if self.statistics is None:
-            self.statistics = MHStatistics(self.event_shape)
+        self.running_samples = MCMCSamples(
+            self.event_shape,
+            max_samples=self.max_samples,
+        )
+        self.statistics = MHStatistics(self.event_shape)
 
     @property
     def samples(self) -> Union[torch.Tensor, None]:

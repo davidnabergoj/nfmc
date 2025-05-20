@@ -1,7 +1,7 @@
 from typing import Optional, Tuple, Union
 import torch
 from nfmc.algorithms.mh.base import MHKernel
-from nfmc.util import grad_f, metropolis_acceptance_log_ratio, sum_except_batch, diag_mult
+from nfmc.util import compute_divergence_mask, grad_f, metropolis_acceptance_log_ratio, sum_except_batch, diag_mult
 
 
 def propose_state(x: torch.Tensor,
@@ -59,18 +59,15 @@ class MALAKernel(MHKernel):
             self.inv_mass_diag,
             self.neg_log_prob_target
         )
-        self._n_calls += nc
-        self._n_grads += ng
+        self.increment_n_calls(nc)
+        self.increment_n_grads(ng)
 
         # Compute divergence mask
-        divergence_mask_x = sum_except_batch(
-            (~torch.isfinite(x_prime)).long(), self.event_shape
-        ) > 0
+        divergence_mask_x = compute_divergence_mask(x_prime, self.event_shape)
         divergence_mask_u = (~torch.isfinite(u_x)).long() > 0
-        divergence_mask_grad_u = sum_except_batch(
-            (~torch.isfinite(grad_u_x)).long(), self.event_shape
-        ) > 0
+        divergence_mask_grad_u = compute_divergence_mask(grad_u_x, self.event_shape)
         divergence_mask = divergence_mask_x | divergence_mask_u | divergence_mask_grad_u
+        self.increment_n_divergences(int(divergence_mask.long().sum()))
 
         # Compute acceptance mask
         u_x_prime, grad_u_x_prime, nc, ng = grad_f(
@@ -78,8 +75,8 @@ class MALAKernel(MHKernel):
             self.neg_log_prob_target,
             self.event_shape
         )
-        self._n_calls += nc
-        self._n_grads += ng
+        self.increment_n_calls(nc)
+        self.increment_n_grads(ng)
 
         acceptance_mask = torch.zeros_like(divergence_mask)
         log_prob_accept = metropolis_acceptance_log_ratio(
@@ -104,5 +101,9 @@ class MALAKernel(MHKernel):
         )
         log_u = torch.rand_like(log_prob_accept).log()
         acceptance_mask[~divergence_mask] = log_u < log_prob_accept
+
+        self.increment_n_steps()
+        self.increment_n_attempted_transitions(n_chains=x.shape[0])
+        self.increment_n_accepted_transitions(int(acceptance_mask.long().sum()))
 
         return x_prime.detach(), acceptance_mask

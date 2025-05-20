@@ -2,7 +2,7 @@ from typing import Optional, Tuple, Union
 
 import torch
 from nfmc.algorithms.mh.base import MHKernel
-from nfmc.util import metropolis_acceptance_log_ratio, sum_except_batch, diag_mult
+from nfmc.util import compute_divergence_mask, metropolis_acceptance_log_ratio, sum_except_batch, diag_mult
 
 
 def propose_state(x: torch.Tensor,
@@ -53,10 +53,10 @@ class RWMHKernel(MHKernel):
         )
 
         # Compute divergence mask
-        divergence_mask = sum_except_batch(
-            (~torch.isfinite(x_prime)).long(), self.event_shape
-        ) > 0
-        n_valid = int(torch.sum((~divergence_mask).long()))
+        divergence_mask = compute_divergence_mask(x_prime, self.event_shape)
+
+        n_valid_proposals = int(torch.sum((~divergence_mask).long()))
+        self.increment_n_divergences(torch.sum(divergence_mask.long()))
 
         # Compute acceptance mask
         acceptance_mask = torch.zeros_like(divergence_mask)
@@ -66,8 +66,12 @@ class RWMHKernel(MHKernel):
             0,
             0
         )
-        self._n_calls += 2 * n_valid
+        self.increment_n_calls(2 * n_valid_proposals)
         log_u = torch.rand_like(log_prob_accept).log()
         acceptance_mask[~divergence_mask] = log_u < log_prob_accept
+
+        self.increment_n_steps()
+        self.increment_n_accepted_transitions(int(acceptance_mask.long().sum()))
+        self.increment_n_attempted_transitions(n_chains=x.shape[0])
 
         return x_prime.detach(), acceptance_mask

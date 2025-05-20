@@ -532,3 +532,7 @@ def diag_mult(x: torch.Tensor,
         '...i,i->...i', x_reshaped, diag.to(x_reshaped)
     )
     return x_reshaped_multiplied.view_as(x)
+
+def compute_divergence_mask(x: torch.Tensor, event_shape):
+    infinite_x_mask = ~torch.isfinite(x)
+    return sum_except_batch(infinite_x_mask.long(), event_shape) > 0

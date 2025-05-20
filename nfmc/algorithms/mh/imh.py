@@ -1,7 +1,7 @@
 from typing import Tuple, Union
 import torch
 from nfmc.algorithms.mh.base import MHKernel
-from nfmc.util import metropolis_acceptance_log_ratio, sum_except_batch
+from nfmc.util import compute_divergence_mask, metropolis_acceptance_log_ratio, sum_except_batch
 
 
 class IMHKernel(MHKernel):
@@ -62,9 +62,9 @@ class IMHKernel(MHKernel):
         u_x_prime = -log_prob_x_prime
 
         # Compute divergence mask
-        divergence_mask = sum_except_batch(
-            (~torch.isfinite(x_prime)).long(), self.event_shape
-        ) > 0
+        divergence_mask = compute_divergence_mask(x_prime, self.event_shape)
+        n_valid_proposals = int((~divergence_mask).long().sum())
+        self.increment_n_divergences(int(divergence_mask.long().sum()))
 
         # Compute acceptance mask
         acceptance_mask = torch.zeros_like(divergence_mask)
@@ -74,7 +74,13 @@ class IMHKernel(MHKernel):
             -u_x[~divergence_mask],
             -u_x_prime[~divergence_mask],
         )
+        self.increment_n_calls(n_valid_proposals * 2)
+
         log_u = torch.rand_like(log_prob_accept).log()
         acceptance_mask[~divergence_mask] = log_u < log_prob_accept
+        
+        self.increment_n_steps()
+        self.increment_n_attempted_transitions(n_chains=x.shape[0])
+        self.increment_n_accepted_transitions(int(acceptance_mask.long().sum()))
 
         return x_prime.detach(), acceptance_mask

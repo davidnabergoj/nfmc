@@ -3,7 +3,7 @@ from typing import Optional, Tuple, Union
 import torch
 
 from nfmc.algorithms.mh.base import MHSampler, MHKernel
-from nfmc.util import diag_mult, grad_f, sum_except_batch
+from nfmc.util import compute_divergence_mask, diag_mult, grad_f, sum_except_batch
 
 
 def hmc_step_b(x: torch.Tensor,
@@ -115,8 +115,8 @@ class HMCKernel(MHKernel):
         # Sample momentum
         noise = torch.randn_like(x)
         p = diag_mult(
-            noise, 
-            1 / self.inv_mass_diag.sqrt().to(x), 
+            noise,
+            1 / self.inv_mass_diag.sqrt().to(x),
             self.event_shape
         )
 
@@ -130,29 +130,27 @@ class HMCKernel(MHKernel):
             inv_mass_diag=self.inv_mass_diag,
             neg_log_prob_target=self.neg_log_prob_target
         )
-        self._n_calls += nc
-        self._n_grads += ng
+        self.increment_n_calls(nc)
+        self.increment_n_grads(ng)
 
         # Compute divergence mask
-        divergence_mask_x = sum_except_batch(
-            (~torch.isfinite(x_prime)).long(), self.event_shape
-        ) > 0
-        divergence_mask_p = sum_except_batch(
-            (~torch.isfinite(p_prime)).long(), self.event_shape
-        ) > 0
+        divergence_mask_x = compute_divergence_mask(x_prime, self.event_shape)
+        divergence_mask_p = compute_divergence_mask(p_prime, self.event_shape)
         divergence_mask = divergence_mask_x | divergence_mask_p
+
+        n_valid_proposals = int((~divergence_mask).long().sum())
+        self.increment_n_divergences(int(divergence_mask.long().sum()))
 
         # Compute acceptance mask
         acceptance_mask = torch.zeros_like(divergence_mask)
-        n_valid = int(torch.sum((~divergence_mask).long()))
-        if n_valid > 0:
+        if n_valid_proposals > 0:
             hamiltonian_start: torch.Tensor = self.neg_log_prob_target(x[~divergence_mask]) + 0.5 * sum_except_batch(
                 diag_mult(
                     p[~divergence_mask] ** 2, self.inv_mass_diag, self.event_shape
                 ),
                 self.event_shape
             )
-            self._n_calls += n_valid
+            self.increment_n_calls(n_valid_proposals)
 
             hamiltonian_end: torch.Tensor = self.neg_log_prob_target(x_prime[~divergence_mask]) + 0.5 * sum_except_batch(
                 diag_mult(
@@ -160,11 +158,15 @@ class HMCKernel(MHKernel):
                 ),
                 self.event_shape
             )
-            self._n_calls += n_valid
+            self.increment_n_calls(n_valid_proposals)
 
             log_prob_accept = -hamiltonian_end - (-hamiltonian_start)
             log_u = torch.rand_like(log_prob_accept).log()
             acceptance_mask[~divergence_mask] = (log_u < log_prob_accept)
+
+        self.increment_n_steps()
+        self.increment_n_attempted_transitions(n_chains=x.shape[0])
+        self.increment_n_accepted_transitions(int(acceptance_mask.long().sum()))
 
         return x_prime.detach(), acceptance_mask
 
