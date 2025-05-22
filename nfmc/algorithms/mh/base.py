@@ -1,9 +1,5 @@
-from copy import deepcopy
-import time
 from typing import Tuple, Union
 import torch
-from tqdm import tqdm
-from nfmc.algorithms.util.samples import Samples
 
 
 class MHKernel:

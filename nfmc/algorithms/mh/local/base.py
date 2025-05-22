@@ -4,7 +4,7 @@ from typing import Union, Tuple, Optional
 import torch
 from tqdm import tqdm
 from nfmc.algorithms.mh.base import MHKernel
-from nfmc.algorithms.mh.dual_averaging import DualAveraging
+from nfmc.algorithms.mh.local.dual_averaging import DualAveraging
 from nfmc.algorithms.util.samples import Samples
 
 

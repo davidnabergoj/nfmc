@@ -1,10 +1,10 @@
 import pytest
 import torch
-from nfmc.algorithms.mh.local import LocalMHSampler
-from nfmc.algorithms.mh.rwmh import RWMHKernel
-from nfmc.algorithms.mh.hmc import HMCKernel
+from nfmc.algorithms.mh.local.base import LocalMHSampler
+from nfmc.algorithms.mh.local.rwmh import RWMHKernel
+from nfmc.algorithms.mh.local.hmc import HMCKernel
+from nfmc.algorithms.mh.local.mala import MALAKernel
 from nfmc.algorithms.mh.imh import IMHKernel
-from nfmc.algorithms.mh.mala import MALAKernel
 from nfmc.algorithms.util.samples import Samples
 from test.util import standard_gaussian_neg_log_prob
 

@@ -1,7 +1,7 @@
 from typing import Optional, Tuple, Union
 
 import torch
-from nfmc.algorithms.mh.local import LocalMHKernel
+from nfmc.algorithms.mh.local.base import LocalMHKernel
 from nfmc.util import compute_divergence_mask, metropolis_acceptance_log_ratio, sum_except_batch, diag_mult
 
 

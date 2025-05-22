@@ -1,5 +1,5 @@
 import numpy as np
-from nfmc.algorithms.mh.dual_averaging import DualAveraging
+from nfmc.algorithms.mh.local.dual_averaging import DualAveraging
 
 
 def test_step():

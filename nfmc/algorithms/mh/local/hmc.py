@@ -2,7 +2,7 @@ import math
 from typing import Optional, Tuple, Union
 import torch
 
-from nfmc.algorithms.mh.local import LocalMHKernel
+from nfmc.algorithms.mh.local.base import LocalMHKernel
 from nfmc.util import compute_divergence_mask, diag_mult, grad_f, sum_except_batch
 
 
