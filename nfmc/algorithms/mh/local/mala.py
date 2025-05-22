@@ -1,23 +1,20 @@
 from typing import Tuple, Union
 import torch
 from nfmc.algorithms.mh.local.base import LocalMHKernel
-from nfmc.util import compute_divergence_mask, grad_f, metropolis_acceptance_log_ratio, sum_except_batch, diag_mult
+from nfmc.util import compute_divergence_mask, grad_f, metropolis_acceptance_log_ratio, sum_except_batch
 
 
 def propose_state(x: torch.Tensor,
                   event_shape: Union[Tuple[int, ...], torch.Size],
                   step_size: float,
-                  inv_mass_diag: torch.Tensor,
                   neg_log_prob_target: callable):
     noise = torch.randn_like(x).to(x)
 
     # Compute potential and gradient at current state
     u_x, grad_u_x, nc, ng = grad_f(x, neg_log_prob_target, event_shape)
 
-    grad_term = -step_size * \
-        diag_mult(grad_u_x, inv_mass_diag.to(x), event_shape)
-    noise_term = diag_mult(noise, torch.sqrt(
-        2 * step_size * inv_mass_diag.to(x)), event_shape)
+    grad_term = -step_size * grad_u_x
+    noise_term = noise * 2 * step_size
     x_prime = x + grad_term + noise_term
     return x_prime, u_x, grad_u_x, nc, ng
 
@@ -26,14 +23,12 @@ def proposal_neg_log_prob(x_prime: torch.Tensor,
                           event_shape: Union[Tuple[int, ...], torch.Size],
                           x: torch.Tensor,
                           grad_u_x: torch.Tensor,
-                          inv_mass_diag: torch.Tensor,
                           tau: float):
     """
     Compute the negative log probability density of the MALA proposal q(x_prime | x).
     """
-    term = x_prime - (x - tau * diag_mult(grad_u_x,
-                      inv_mass_diag, event_shape))
-    return sum_except_batch(diag_mult(term ** 2, inv_mass_diag, event_shape), event_shape) / (4 * tau)
+    term = x_prime - (x - tau * grad_u_x)
+    return sum_except_batch(term ** 2, event_shape) / (4 * tau)
 
 
 class MALAKernel(LocalMHKernel):
@@ -78,7 +73,6 @@ class MALAKernel(LocalMHKernel):
             x,
             self.event_shape,
             self.step_size,
-            self.inv_mass_diag,
             self.neg_log_prob_target
         )
         self.increment_n_calls(nc)
@@ -110,7 +104,6 @@ class MALAKernel(LocalMHKernel):
                 self.event_shape,
                 x_prime[~divergence_mask],
                 grad_u_x_prime,
-                1 / self.inv_mass_diag,
                 self.step_size
             ),
             log_prob_proposal_prime=-proposal_neg_log_prob(
@@ -118,7 +111,6 @@ class MALAKernel(LocalMHKernel):
                 self.event_shape,
                 x[~divergence_mask],
                 grad_u_x[~divergence_mask],
-                1 / self.inv_mass_diag,
                 self.step_size
             )
         )
@@ -128,7 +120,7 @@ class MALAKernel(LocalMHKernel):
         x = x.detach()
 
         if update:
-            self._update(x, acceptance_mask, **kwargs)
+            self._update(acceptance_mask, **kwargs)
 
         self.increment_n_steps()
         self.increment_n_attempted_transitions(n_chains=x.shape[0])

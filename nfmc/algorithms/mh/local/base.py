@@ -11,17 +11,15 @@ from nfmc.algorithms.util.samples import Samples
 class LocalMHKernel(MHKernel):
     """
     Metropolis-Hastings kernel with local transitions.
-    Transitions use a step size and a mass matrix.
+    Transitions use a step size.
     """
 
     def __init__(self,
                  event_shape: Union[Tuple[int, ...], torch.Size],
                  neg_log_prob_target: callable,
                  step_size: float = 0.01,
-                 inv_mass_diag: Optional[torch.Tensor] = None,
                  dual_averaging_kwargs: dict = None,
-                 target_acceptance_rate: float = 0.651,
-                 mass_matrix_update_interval: int = 100):
+                 target_acceptance_rate: float = 0.651):
         """
         LocalMHKernel constructor.
 
@@ -39,14 +37,6 @@ class LocalMHKernel(MHKernel):
         super().__init__(event_shape, neg_log_prob_target)
 
         self.step_size = step_size
-        self.inv_mass_diag = inv_mass_diag
-        if self.inv_mass_diag is None:
-            self.inv_mass_diag = torch.ones(
-                size=(self.event_size,),
-                dtype=torch.double
-            )
-
-        self.mass_matrix_update_interval = mass_matrix_update_interval
         self._dual_averaging: DualAveraging = DualAveraging(
             self.step_size,
             **(dual_averaging_kwargs or {})
@@ -71,10 +61,8 @@ class LocalMHKernel(MHKernel):
         raise NotImplementedError
 
     def _update(self,
-                x: torch.Tensor,
                 m: torch.Tensor,
-                tune_step_size: bool = True,
-                tune_inv_mass_diag: bool = False):
+                tune_step_size: bool = True):
         """
         Update kernel parameters.
 
@@ -83,14 +71,6 @@ class LocalMHKernel(MHKernel):
         :param bool tune_step_size: if True, update the step size whenever `update=True` in the `.step` method.
         :param bool tune_inv_mass_diag: if True, update the mass matrix whenever `update=True` in the `.step` method.
         """
-        if (
-            x.shape[0] > 1
-            and tune_inv_mass_diag
-            and self._n_steps > 0
-            and self._n_steps % self.mass_matrix_update_interval == 0
-        ):
-            delta = 1e-6  # For numerical stability
-            self.inv_mass_diag = torch.var(x.flatten(1, -1), dim=0) + delta
         if tune_step_size:
             acc_rate = m.float().mean()
             error = self._target_acceptance_rate - acc_rate

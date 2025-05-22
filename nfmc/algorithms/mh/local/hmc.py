@@ -3,7 +3,7 @@ from typing import Optional, Tuple, Union
 import torch
 
 from nfmc.algorithms.mh.local.base import LocalMHKernel
-from nfmc.util import compute_divergence_mask, diag_mult, grad_f, sum_except_batch
+from nfmc.util import compute_divergence_mask, grad_f, sum_except_batch
 
 
 def hmc_step_b(x: torch.Tensor,
@@ -22,15 +22,13 @@ def hmc_step_b(x: torch.Tensor,
 
 def hmc_step_a(x: torch.Tensor,
                momentum: torch.Tensor,
-               inv_mass_diag,
-               step_size: float,
-               event_shape: Union[Tuple[int, ...], torch.Size]):
+               step_size: float):
     """
     HMC position update.
 
     :return: transformed position.
     """
-    return x + step_size * diag_mult(momentum, inv_mass_diag.to(momentum), event_shape)
+    return x + step_size * momentum
 
 
 def hmc_trajectory(x: torch.Tensor,
@@ -38,7 +36,6 @@ def hmc_trajectory(x: torch.Tensor,
                    event_shape: Union[Tuple[int, ...], torch.Size],
                    step_size: float,
                    n_leapfrog_steps: int,
-                   inv_mass_diag: torch.Tensor,
                    neg_log_prob_target: callable,
                    full_output: bool = False):
     """
@@ -49,8 +46,6 @@ def hmc_trajectory(x: torch.Tensor,
     :param Union[Tuple[int, ...], torch.Size] event_shape: event shape of the input tensor.
     :param float step_size: HMC step size.
     :param int n_leapfrog_steps: number of leapfrog steps, i.e., the trajectory length.
-    :param torch.Tensor inv_mass_diag: diagonal of the inverse mass matrix with shape `(event_size,)`, where 
-     `event_size` is the number of event elements.
     :param callable neg_log_prob_target: function that computes the negative log target probability density.
     :param bool full_output: if True, return the entire trajectory as the output tuple element.
     :return: final position and momentum tensors, each with shape `(n_chains, *event_shape)`, as well as the total 
@@ -72,7 +67,7 @@ def hmc_trajectory(x: torch.Tensor,
         n_calls += nc
         n_grads += ng
 
-        x = hmc_step_a(x, momentum, inv_mass_diag, step_size, event_shape)
+        x = hmc_step_a(x, momentum, step_size)
 
         momentum, nc, ng = hmc_step_b(
             x,
@@ -128,22 +123,14 @@ class HMCKernel(LocalMHKernel):
         :param kwargs: keyword arguments for kernel updates.
         :return: new state tensor with shape `(*batch_shape, *event_shape)`.
         """
-        # Sample momentum
-        noise = torch.randn_like(x)
-        p = diag_mult(
-            noise,
-            1 / self.inv_mass_diag.sqrt().to(x),
-            self.event_shape
-        )
-
-        # Simulate trajectory
+        # Sample momentum and simulate trajectory
+        p = torch.randn_like(x)
         x_prime, p_prime, nc, ng = hmc_trajectory(
             x=x,
             momentum=p,
             event_shape=self.event_shape,
             step_size=self.step_size,
             n_leapfrog_steps=self.n_leapfrog_steps,
-            inv_mass_diag=self.inv_mass_diag,
             neg_log_prob_target=self.neg_log_prob_target
         )
         self.increment_n_calls(nc)
@@ -160,19 +147,21 @@ class HMCKernel(LocalMHKernel):
         # Compute acceptance mask
         acceptance_mask = torch.zeros_like(divergence_mask)
         if n_valid_proposals > 0:
-            hamiltonian_start: torch.Tensor = self.neg_log_prob_target(x[~divergence_mask]) + 0.5 * sum_except_batch(
-                diag_mult(
-                    p[~divergence_mask] ** 2, self.inv_mass_diag, self.event_shape
-                ),
-                self.event_shape
+            hamiltonian_start: torch.Tensor = (
+                self.neg_log_prob_target(x[~divergence_mask])
+                + 0.5 * sum_except_batch(
+                    p[~divergence_mask] ** 2,
+                    self.event_shape
+                )
             )
             self.increment_n_calls(n_valid_proposals)
 
-            hamiltonian_end: torch.Tensor = self.neg_log_prob_target(x_prime[~divergence_mask]) + 0.5 * sum_except_batch(
-                diag_mult(
-                    p_prime[~divergence_mask] ** 2, self.inv_mass_diag, self.event_shape
-                ),
-                self.event_shape
+            hamiltonian_end: torch.Tensor = (
+                self.neg_log_prob_target(x_prime[~divergence_mask]) 
+                + 0.5 * sum_except_batch(
+                    p_prime[~divergence_mask] ** 2,
+                    self.event_shape
+                )
             )
             self.increment_n_calls(n_valid_proposals)
 
@@ -183,7 +172,7 @@ class HMCKernel(LocalMHKernel):
         x = x.detach()
 
         if update:
-            self._update(x, acceptance_mask, **kwargs)
+            self._update(acceptance_mask, **kwargs)
 
         self.increment_n_steps()
         self.increment_n_attempted_transitions(n_chains=x.shape[0])
@@ -192,8 +181,6 @@ class HMCKernel(LocalMHKernel):
 
         return x
 
-
     def __repr__(self):
         return (f'log step: {math.log(self.step_size):.2f}, '
-                f'leapfrogs: {self.n_leapfrog_steps}, '
-                f'mass norm: {torch.max(torch.abs(self.inv_mass_diag)):.2f}')
+                f'leapfrogs: {self.n_leapfrog_steps}')

@@ -1,25 +1,19 @@
-from typing import Optional, Tuple, Union
+from typing import Tuple, Union
 
 import torch
 from nfmc.algorithms.mh.local.base import LocalMHKernel
-from nfmc.util import compute_divergence_mask, metropolis_acceptance_log_ratio, sum_except_batch, diag_mult
+from nfmc.util import compute_divergence_mask, metropolis_acceptance_log_ratio
 
 
 def propose_state(x: torch.Tensor,
-                  event_shape: Union[Tuple[int, ...], torch.Size],
-                  step_size: float,
-                  inv_mass_diag: torch.Tensor) -> Tuple[torch.Tensor, Union[torch.Tensor, float], torch.Tensor]:
-    noise = diag_mult(torch.randn_like(x), inv_mass_diag, event_shape).to(x)
-    x_prime = x + step_size * noise
+                  step_size: float) -> Tuple[torch.Tensor, Union[torch.Tensor, float], torch.Tensor]:
+    x_prime = x + step_size * torch.randn_like(x)
     return x_prime
 
 
 class RWMHKernel(LocalMHKernel):
     """
-    Random-walk Metropolis-Hastings kernel with a centered diagonal Gaussian proposal.
-
-    This class extends LocalMHKernel to make use of mass matrix tuning. The inverse of the mass matrix is interpreted as
-    the centered Gaussian proposal covariance.
+    Random-walk Metropolis-Hastings kernel with a centered standard Gaussian proposal.
     """
 
     def __init__(self,
@@ -44,10 +38,6 @@ class RWMHKernel(LocalMHKernel):
         super().__init__(event_shape, neg_log_prob_target, **kwargs)
 
     @property
-    def proposal_scale(self) -> torch.Tensor:
-        return (2.38 ** 2) / self.event_size * self.inv_mass_diag.sqrt()
-
-    @property
     def name(self):
         return 'RWMH'
 
@@ -65,12 +55,7 @@ class RWMHKernel(LocalMHKernel):
         """
 
         # Propose new state
-        x_prime = propose_state(
-            x,
-            self.event_shape,
-            self.step_size,
-            self.proposal_scale,
-        )
+        x_prime = propose_state(x, self.step_size)
 
         # Compute divergence mask
         divergence_mask = compute_divergence_mask(x_prime, self.event_shape)
@@ -93,7 +78,7 @@ class RWMHKernel(LocalMHKernel):
         x = x.detach()
 
         if update:
-            self._update(x, acceptance_mask, **kwargs)
+            self._update(acceptance_mask, **kwargs)
 
         self.increment_n_steps()
         self.increment_n_accepted_transitions(
