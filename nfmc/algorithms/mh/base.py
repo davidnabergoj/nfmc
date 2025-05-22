@@ -161,7 +161,7 @@ class MHSampler:
         """
 
         out = MHOutput(
-            event_shape, 
+            event_shape,
             max_samples=max_samples,
             data_transform=data_transform
         )

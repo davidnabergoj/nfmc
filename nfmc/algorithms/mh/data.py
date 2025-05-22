@@ -2,7 +2,7 @@ from typing import Dict, List, Optional, Tuple, Union
 import torch
 
 from nfmc.algorithms.util.expectation import MCMCExpectation, MCMCExpectationDict
-from nfmc.algorithms.util.samples import MCMCSamples
+from nfmc.algorithms.util.samples import Samples
 
 
 class MHStatistics:
@@ -99,7 +99,7 @@ class MHOutput:
         self.event_shape = event_shape
         self.max_samples = max_samples
 
-        self.running_samples = MCMCSamples(
+        self.running_samples = Samples(
             self.event_shape,
             max_samples=self.max_samples,
         )
