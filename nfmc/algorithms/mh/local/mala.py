@@ -57,14 +57,12 @@ class MALAKernel(LocalMHKernel):
 
     def step(self,
              x: torch.Tensor,
-             update: bool = False,
-             **kwargs) -> torch.Tensor:
+             update: bool = False) -> torch.Tensor:
         """
         Perform one MALA transition.
 
         :param torch.Tensor x: incoming state tensor with shape `(*batch_shape, *event_shape)`.
         :param bool update: if True, update kernel parameters.
-        :param kwargs: keyword arguments for kernel updates.
         :return: new state tensor with shape `(*batch_shape, *event_shape)`.
         """
 
@@ -120,7 +118,7 @@ class MALAKernel(LocalMHKernel):
         x = x.detach()
 
         if update:
-            self._update(acceptance_mask, **kwargs)
+            self._update(acceptance_mask)
 
         self.increment_n_steps()
         self.increment_n_attempted_transitions(n_chains=x.shape[0])
