@@ -111,6 +111,10 @@ class HMCKernel(MHKernel):
             self.inv_mass_diag = torch.ones(
                 size=(self.event_size,), dtype=torch.double)
 
+    @property
+    def name(self):
+        return 'HMC'
+
     def step(self, x: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
         # Sample momentum
         noise = torch.randn_like(x)

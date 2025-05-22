@@ -1,6 +1,8 @@
 from typing import List, Tuple, Union
 import torch
 
+from nfmc.algorithms.util.expectation import MCExpectation
+
 
 class Samples:
     """
@@ -11,11 +13,26 @@ class Samples:
     Samples can be transformed via a user-defined functional.
     Stores the empirical first and second moment of samples.
     """
+
     def __init__(self,
                  event_shape: Union[Tuple[int, ...], torch.Size],
-                 max_samples: int = None):
+                 max_samples: int = None,
+                 data_transform: callable = None):
+        """
+        Samples class constructor.
+
+        :param Union[Tuple[int, ...], torch.Size] event_shape: shape of the event tensor.
+        :param int max_samples: maximum number of samples to store in the reservoir. If None, all samples are stored.
+        :param callable data_transform: functional that transforms each added sample of type torch.Tensor with shape 
+         `(*batch_shape, *event_shape)` into a torch.Tensor with shape `(*batch_shape, *event_shape)`. If None, no 
+          transformation is applied.
+        """
         self.event_shape = event_shape
         self.max_samples = max_samples
+        self.data_transform = data_transform
+
+        self.first_moment = MCExpectation(event_shape)
+        self.second_moment = MCExpectation(event_shape)
 
         self._last_sample: torch.Tensor = None
         self._running_samples: List[torch.Tensor] = []
@@ -31,7 +48,7 @@ class Samples:
     @property
     def n_samples(self):
         return len(self._running_samples)
-    
+
     def add(self, x: torch.Tensor):
         """
         Store sample x.
@@ -41,7 +58,7 @@ class Samples:
         if len(x) == 0:
             return
 
-        # transform x into shape `(k, n_chains, *event_shape)`
+        # Transform x into shape `(k, n_chains, *event_shape)`
         if len(x.shape) == len(self.event_shape) + 1 and x.shape[1:] == self.event_shape:
             x = x[None]
         elif len(x.shape) == len(self.event_shape) + 2 and x.shape[2:] == self.event_shape:
@@ -50,6 +67,14 @@ class Samples:
             raise ValueError(
                 f"Expected x.shape[1:] or x.shape[2:] to be {self.event_shape}, got {x.shape = }"
             )
+
+        # Apply data transform
+        if self.data_transform is not None:
+            x = self.data_transform(x)
+
+        # Update first and second moments
+        self.first_moment.update(x)
+        self.second_moment.update(x ** 2)
 
         # Store the last sample separately
         self._last_sample = x[-1].detach()
@@ -66,7 +91,8 @@ class Samples:
                 if self.n_samples < self.max_samples:
                     self._running_samples.append(x[i])
                 else:
-                    _idx = int(torch.randint(low=0, high=self.n_samples, size=()).detach())
+                    _idx = int(torch.randint(
+                        low=0, high=self.n_samples, size=()).detach())
                     if _idx < self.max_samples:
                         self._running_samples[_idx] = x[i]
 

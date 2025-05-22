@@ -2,16 +2,16 @@ from typing import Dict, Tuple, Union
 import torch
 
 
-class MCMCExpectation:
+class MCExpectation:
     """
-    Compute E[f(x)] on streaming data.
+    Compute E[f(x)] on streaming data using Monte Carlo.
     """
 
     def __init__(self,
                  event_shape: Union[torch.Size, Tuple[int, ...]],
-                 f: callable):
+                 transform: callable = lambda v: v):
         self.event_shape = event_shape
-        self.f = f
+        self.transform = transform
         self.running_value: Union[torch.Tensor, float] = 0.0
         self.n_seen: int = 0
 
@@ -33,19 +33,17 @@ class MCMCExpectation:
 
         self.running_value = torch.add(
             self.n_seen / (self.n_seen + n_new) * self.running_value,
-            n_new / (self.n_seen + n_new) * torch.mean(self.f(x.detach()).detach(), dim=(0, 1))
+            n_new / (self.n_seen + n_new) *
+            torch.mean(self.transform(x.detach()).detach(), dim=(0, 1))
         )
         self.n_seen += n_new
 
-    def reset(self):
-        self.n_seen = 0
-        self.running_value = 0.0
-
     def as_tensor(self):
         return torch.as_tensor(self.running_value)
-    
-class MCMCExpectationDict:
-    def __init__(self, expectations: Dict[str, MCMCExpectation], data_transform: callable):
+
+
+class MCExpectationDict:
+    def __init__(self, expectations: Dict[str, MCExpectation], data_transform: callable):
         self.expectations = expectations
         self.data_transform = data_transform
 

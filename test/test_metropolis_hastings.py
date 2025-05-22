@@ -5,6 +5,7 @@ from nfmc.algorithms.mh.rwmh import RWMHKernel
 from nfmc.algorithms.mh.hmc import HMCKernel
 from nfmc.algorithms.mh.imh import IMHKernel
 from nfmc.algorithms.mh.mala import MALAKernel
+from nfmc.algorithms.util.samples import Samples
 from test.util import standard_gaussian_neg_log_prob
 
 
@@ -16,7 +17,7 @@ def test_kernel_step(event_shape, kernel_class, n_chains):
 
     x_current = torch.randn(size=(n_chains, *event_shape))
     kernel = kernel_class(
-        event_shape=event_shape, 
+        event_shape=event_shape,
         neg_log_prob_target=standard_gaussian_neg_log_prob
     )
     x_prime, acceptance_mask = kernel.step(x_current)
@@ -29,11 +30,12 @@ def test_kernel_step(event_shape, kernel_class, n_chains):
     assert acceptance_mask.dtype == torch.bool
     assert x_current.dtype == x_prime.dtype
 
+
 @pytest.mark.parametrize('event_shape', [(1,), (2,), (10,), (2, 3, 5)])
 @pytest.mark.parametrize('kernel_class', [RWMHKernel, HMCKernel, IMHKernel, MALAKernel])
 @pytest.mark.parametrize('n_chains', [1, 2, 4])
 @pytest.mark.parametrize('n_steps', [1, 2, 4])
-def test_sampler_warmup(event_shape, kernel_class, n_chains, n_steps):
+def test_sampling(event_shape, kernel_class, n_chains, n_steps):
     torch.manual_seed(0)
 
     x_initial = torch.randn(size=(n_chains, *event_shape))
@@ -42,8 +44,14 @@ def test_sampler_warmup(event_shape, kernel_class, n_chains, n_steps):
         neg_log_prob_target=standard_gaussian_neg_log_prob
     )
     sampler = MHSampler(kernel)
-    draws = sampler.warmup(x_initial, show_progress=False)
+    samples = sampler.sample(
+        x_initial,
+        n_steps=n_steps,
+        show_progress=False
+    )
 
-    assert torch.isfinite(draws).all()
-    assert draws.shape == (n_steps, n_chains, *event_shape)
-    assert draws.dtype == x_initial.dtype
+    assert isinstance(samples, Samples)
+
+    assert torch.isfinite(samples.as_tensor()).all()
+    assert samples.as_tensor().shape == (n_steps, n_chains, *event_shape)
+    assert samples.as_tensor().dtype == x_initial.dtype

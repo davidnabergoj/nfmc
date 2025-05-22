@@ -1,16 +1,16 @@
+from copy import deepcopy
 import time
 from typing import Tuple, Union
 import torch
 from tqdm import tqdm
-
-from nfmc.algorithms.mh.data import MHOutput
-from nfmc.algorithms.util.expectation import MCMCExpectation, MCMCExpectationDict
+from nfmc.algorithms.util.samples import Samples
 
 
 class MHKernel:
     """
     Base MCMC kernel class for Metropolis-Hastings algorithms.
     """
+
     def __init__(self,
                  event_shape: Union[Tuple[int, ...], torch.Size],
                  neg_log_prob_target: callable):
@@ -30,7 +30,26 @@ class MHKernel:
         self._n_accepted_transitions: int = 0
         self._n_calls: int = 0  # Target density evaluation counter
         self._n_grads: int = 0  # Target density gradient evaluation counter
-        self._n_divergences: int = 0   # Counts the number of chains that diverged across all steps
+        # Counts the number of chains that diverged across all steps
+        self._n_divergences: int = 0
+
+    @property
+    def name(self) -> str:
+        raise NotImplementedError
+
+    def reset_statistics(self):
+        self._n_steps = 0
+        self._n_attempted_transitions = 0
+        self._n_accepted_transitions = 0
+        self._n_calls = 0
+        self._n_grads = 0
+        self._n_divergences = 0
+
+    @property
+    def acceptance_rate(self):
+        if self._n_attempted_transitions == 0:
+            return torch.nan
+        return self._n_accepted_transitions / self._n_attempted_transitions
 
     def increment_n_steps(self):
         self._n_steps += 1
@@ -38,7 +57,7 @@ class MHKernel:
     def increment_n_attempted_transitions(self, n_chains: int):
         self._n_attempted_transitions += n_chains
         self._n_attempted_transitions = int(self._n_attempted_transitions)
-    
+
     def increment_n_accepted_transitions(self, n_accepted_chains: int):
         self._n_accepted_transitions += n_accepted_chains
         self._n_accepted_transitions = int(self._n_accepted_transitions)
@@ -50,7 +69,7 @@ class MHKernel:
     def increment_n_grads(self, n_grads: int):
         self._n_grads += n_grads
         self._n_grads = int(self._n_grads)
-    
+
     def increment_n_divergences(self, n_divergences: int):
         self._n_divergences += n_divergences
         self._n_divergences = int(self._n_divergences)
@@ -80,69 +99,29 @@ class MHSampler:
     Sampler class for Metropolis-Hastings algorithms.
     """
 
-    def __init__(self, 
+    def __init__(self,
                  kernel: MHKernel,
-                 functional: callable = None, 
                  **kwargs):
         """
         MHSampler constructor.
-        
-        :param callable functional: estimate the expectation of this functional. The functional is applied to each drawn 
-         sample and averaged on the fly. This does not affect drawn samples, but instead produces separate first and 
-         second moments of the functional.
+
+        :param MHKernel kernel: Metropolis-Hastings kernel that performs state transitions.
         """
         self.kernel = kernel
-
-        self.expectations = MCMCExpectationDict(
-            {
-                'first_moment': MCMCExpectation(self.kernel.event_shape, f=lambda v: v),
-                'second_moment': MCMCExpectation(self.kernel.event_shape, f=lambda v: v ** 2),
-            },
-            data_transform=functional
-        )
 
     @property
     def name(self) -> str:
         return "Metropolis-Hastings sampler"
 
-    @property
-    def functional_first_moment(self):
-        return self.expectations['first_moment'].as_tensor()
-    
-    @property
-    def functional_second_moment(self):
-        return self.expectations['second_moment'].as_tensor()
-    
-    @property
-    def functional_variance(self):
-        return self.functional_second_moment - self.functional_first_moment ** 2
-    
-    @property
-    def acceptance_rate(self):
-        if self.kernel._n_attempted_transitions == 0:
-            return torch.nan
-        return self.kernel._n_accepted_transitions / self.kernel._n_attempted_transitions
-
-    @property
     def calls_per_second(self, elapsed_time_seconds):
         if elapsed_time_seconds > 0:
-            return self.kernel.n_target_calls / elapsed_time_seconds
+            return self.kernel._n_calls / elapsed_time_seconds
         return torch.nan
 
-    @property
     def grads_per_second(self, elapsed_time_seconds):
         if elapsed_time_seconds > 0:
-            return self.kernel.n_target_gradient_calls / elapsed_time_seconds
+            return self.kernel._n_grads / elapsed_time_seconds
         return torch.nan
-
-    def warmup(self,
-               x0: torch.Tensor,
-               show_progress: bool = True,
-               time_limit_seconds: Union[float, int] = None) -> MHOutput:
-        """
-        Optimizes kernel parameters.
-        """
-        raise NotImplementedError
 
     def sample(self,
                x0: torch.Tensor,
@@ -150,7 +129,7 @@ class MHSampler:
                show_progress: bool = True,
                time_limit_seconds: Union[float, int] = None,
                max_samples: int = None,
-               data_transform: callable = None) -> MHOutput:
+               data_transform: callable = None) -> Samples:
         """
         Draw samples with a fixed kernel.
 
@@ -160,31 +139,29 @@ class MHSampler:
         :param float time_limit_seconds: maximum sampling time. Sampling stops if this time is exceeded.
         """
 
-        out = MHOutput(
-            event_shape,
+        samples = Samples(
+            event_shape=self.kernel.event_shape,
             max_samples=max_samples,
             data_transform=data_transform
         )
-        out.statistics.data_transform = self.data_transform
-        x = torch.clone(x0).detach()
+        self.kernel.reset_statistics()
+        x = deepcopy(x0.detach())
 
+        t0 = time.time()
         for _ in (pbar := tqdm(range(n_steps),
-                               desc=f'Metropolis-Hastings sampling ({self.kernel.name} kernel)',
+                               desc=f'{self.kernel.name} sampling',
                                disable=not show_progress)):
-            if time_limit_seconds is not None and out.statistics.elapsed_time_seconds > time_limit_seconds:
-                break
-
-            t0 = time.time()
             x_prime, mask = self.kernel.step(x)
             x[mask] = x_prime[mask]
-            out.statistics.expectations.update(x)
-            out.running_samples.add(x)
+            samples.add(x)
 
-            pbar.set_postfix_str(f'{out.statistics} | {self.kernel}')
-
-            out.statistics.update_elapsed_time(time.time() - t0)
-            if out.statistics.elapsed_time_seconds > time_limit_seconds:
+            elapsed_time = time.time() - t0
+            pbar.set_postfix_str(
+                f'acc-rate: {self.kernel.acceptance_rate} | '
+                f'calls/s: {self.calls_per_second(elapsed_time)} | '
+                f'grads/s: {self.grads_per_second(elapsed_time)} | '
+            )
+            if time_limit_seconds is not None and elapsed_time > time_limit_seconds:
                 break
 
-        out.kernel = self.kernel
-        return out
+        return samples

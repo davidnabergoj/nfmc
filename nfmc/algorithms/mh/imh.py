@@ -8,14 +8,15 @@ class IMHKernel(MHKernel):
     """
     Independent Metropolis-Hastings kernel.
     """
-    def __init__(self, 
+
+    def __init__(self,
                  event_shape: Union[Tuple[int, ...], torch.Size],
                  neg_log_prob_target: callable,
                  proposal_log_prob: callable = None,
                  proposal_sample_with_log_prob: callable = None):
         """
         IMH kernel constructor.
-        
+
         :param Union[Tuple[int, ...], torch.Size] event_shape: shape of the event.
         :param callable neg_log_prob_target: function that computes the negative of the log target probability density. 
          Receives as input a tensor with shape `(*batch_shape, *event_shape)` and outputs a tensor with shape 
@@ -31,9 +32,11 @@ class IMHKernel(MHKernel):
         super().__init__(event_shape, neg_log_prob_target)
 
         if proposal_log_prob is None and proposal_sample_with_log_prob is not None:
-            raise ValueError("Both proposal_log_prob and proposal_sample_with_log_prob must be provided")
+            raise ValueError(
+                "Both proposal_log_prob and proposal_sample_with_log_prob must be provided")
         if proposal_log_prob is not None and proposal_sample_with_log_prob is None:
-            raise ValueError("Both proposal_log_prob and proposal_sample_with_log_prob must be provided")
+            raise ValueError(
+                "Both proposal_log_prob and proposal_sample_with_log_prob must be provided")
         if proposal_log_prob is None and proposal_sample_with_log_prob is None:
             dist = torch.distributions.Normal(
                 loc=torch.zeros(size=event_shape),
@@ -54,11 +57,16 @@ class IMHKernel(MHKernel):
         self.proposal_log_prob = proposal_log_prob
         self.proposal_sample_with_log_prob = proposal_sample_with_log_prob
 
+    @property
+    def name(self):
+        return 'IMH'
+
     def step(self, x: torch.Tensor):
         # Propose new state
         batch_shape = x.shape[:-len(self.event_shape)]
         u_x = -self.proposal_log_prob(x)
-        x_prime, log_prob_x_prime = self.proposal_sample_with_log_prob(batch_shape)
+        x_prime, log_prob_x_prime = self.proposal_sample_with_log_prob(
+            batch_shape)
         u_x_prime = -log_prob_x_prime
 
         # Compute divergence mask
@@ -78,9 +86,10 @@ class IMHKernel(MHKernel):
 
         log_u = torch.rand_like(log_prob_accept).log()
         acceptance_mask[~divergence_mask] = log_u < log_prob_accept
-        
+
         self.increment_n_steps()
         self.increment_n_attempted_transitions(n_chains=x.shape[0])
-        self.increment_n_accepted_transitions(int(acceptance_mask.long().sum()))
+        self.increment_n_accepted_transitions(
+            int(acceptance_mask.long().sum()))
 
         return x_prime.detach(), acceptance_mask

@@ -116,3 +116,28 @@ def test_reservoir_limit_one():
 
     assert s.n_samples == reservoir_limit
     assert s.as_tensor().shape == (reservoir_limit, n_chains, *event_shape)
+
+
+def test_functional():
+    n_chains = 10
+    event_shape = (2, 3, 5)
+    s = Samples(event_shape=event_shape, data_transform=lambda v: v ** 2)
+
+    x = torch.zeros(size=(n_chains, *event_shape)) + 2
+    s.add(x)
+
+    assert s.n_samples == 1
+    assert s.as_tensor().shape == (1, n_chains, *event_shape)
+    assert torch.all(s.as_tensor() == 4.0)
+
+
+def test_moments():
+    n_chains = 10
+    event_shape = (2, 3, 5)
+    s = Samples(event_shape=event_shape)
+
+    x = torch.zeros(size=(n_chains, *event_shape)) + 2
+    s.add(x)
+
+    assert torch.all(s.first_moment.as_tensor() == 2.0)
+    assert torch.all(s.second_moment.as_tensor() == 4.0)

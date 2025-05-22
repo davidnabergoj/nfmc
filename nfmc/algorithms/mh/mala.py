@@ -31,7 +31,8 @@ def proposal_neg_log_prob(x_prime: torch.Tensor,
     """
     Compute the negative log probability density of the MALA proposal q(x_prime | x).
     """
-    term = x_prime - (x - tau * diag_mult(grad_u_x, inv_mass_diag, event_shape))
+    term = x_prime - (x - tau * diag_mult(grad_u_x,
+                      inv_mass_diag, event_shape))
     return sum_except_batch(diag_mult(term ** 2, inv_mass_diag, event_shape), event_shape) / (4 * tau)
 
 
@@ -50,6 +51,10 @@ class MALAKernel(MHKernel):
                 dtype=torch.double
             )
 
+    @property
+    def name(self):
+        return 'MALA'
+
     def step(self, x: torch.Tensor):
         # Propose new state
         x_prime, u_x, grad_u_x, nc, ng = propose_state(
@@ -65,7 +70,8 @@ class MALAKernel(MHKernel):
         # Compute divergence mask
         divergence_mask_x = compute_divergence_mask(x_prime, self.event_shape)
         divergence_mask_u = (~torch.isfinite(u_x)).long() > 0
-        divergence_mask_grad_u = compute_divergence_mask(grad_u_x, self.event_shape)
+        divergence_mask_grad_u = compute_divergence_mask(
+            grad_u_x, self.event_shape)
         divergence_mask = divergence_mask_x | divergence_mask_u | divergence_mask_grad_u
         self.increment_n_divergences(int(divergence_mask.long().sum()))
 
@@ -104,6 +110,7 @@ class MALAKernel(MHKernel):
 
         self.increment_n_steps()
         self.increment_n_attempted_transitions(n_chains=x.shape[0])
-        self.increment_n_accepted_transitions(int(acceptance_mask.long().sum()))
+        self.increment_n_accepted_transitions(
+            int(acceptance_mask.long().sum()))
 
         return x_prime.detach(), acceptance_mask
