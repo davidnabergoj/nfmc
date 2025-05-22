@@ -61,7 +61,13 @@ class IMHKernel(MHKernel):
     def name(self):
         return 'IMH'
 
-    def step(self, x: torch.Tensor):
+    def step(self, x: torch.Tensor) -> torch.Tensor:
+        """
+        Perform one IMH transition.
+
+        :param torch.Tensor x: incoming state tensor with shape `(*batch_shape, *event_shape)`.
+        :return: new state tensor with shape `(*batch_shape, *event_shape)`.
+        """
         # Propose new state
         batch_shape = x.shape[:-len(self.event_shape)]
         u_x = -self.proposal_log_prob(x)
@@ -86,10 +92,11 @@ class IMHKernel(MHKernel):
 
         log_u = torch.rand_like(log_prob_accept).log()
         acceptance_mask[~divergence_mask] = log_u < log_prob_accept
+        x[acceptance_mask] = x_prime[acceptance_mask]
 
         self.increment_n_steps()
         self.increment_n_attempted_transitions(n_chains=x.shape[0])
         self.increment_n_accepted_transitions(
             int(acceptance_mask.long().sum()))
-
-        return x_prime.detach(), acceptance_mask
+        
+        return x

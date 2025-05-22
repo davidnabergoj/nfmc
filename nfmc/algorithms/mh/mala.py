@@ -1,6 +1,6 @@
-from typing import Optional, Tuple, Union
+from typing import Tuple, Union
 import torch
-from nfmc.algorithms.mh.base import MHKernel
+from nfmc.algorithms.mh.local import LocalMHKernel
 from nfmc.util import compute_divergence_mask, grad_f, metropolis_acceptance_log_ratio, sum_except_batch, diag_mult
 
 
@@ -36,26 +36,43 @@ def proposal_neg_log_prob(x_prime: torch.Tensor,
     return sum_except_batch(diag_mult(term ** 2, inv_mass_diag, event_shape), event_shape) / (4 * tau)
 
 
-class MALAKernel(MHKernel):
+class MALAKernel(LocalMHKernel):
+    """
+    MALA kernel with a diagonal mass matrix.
+    """
+
     def __init__(self,
                  event_shape: Union[Tuple[int, ...], torch.Size],
                  neg_log_prob_target: callable,
-                 step_size: float = 0.01,
-                 inv_mass_diag: Optional[torch.Tensor] = None):
-        super().__init__(event_shape, neg_log_prob_target)
-        self.step_size = step_size
-        self.inv_mass_diag = inv_mass_diag
-        if self.inv_mass_diag is None:
-            self.inv_mass_diag = torch.ones(
-                size=(self.event_size,),
-                dtype=torch.double
-            )
+                 **kwargs):
+        """
+        HMCKernel constructor.
+
+        :param Union[Tuple[int, ...], torch.Size] event_shape: shape of the event tensor.
+        :param callable neg_log_prob_target: negative log probability density function. Takes as input a tensor with 
+        :param kwargs: keyword arguments for the LocalMHKernel constructor.
+        """
+        if 'target_acceptance_rate' not in kwargs:
+            kwargs['target_acceptance_rate'] = 0.57
+        super().__init__(event_shape, neg_log_prob_target, **kwargs)
 
     @property
     def name(self):
         return 'MALA'
 
-    def step(self, x: torch.Tensor):
+    def step(self,
+             x: torch.Tensor,
+             update: bool = False,
+             **kwargs) -> torch.Tensor:
+        """
+        Perform one MALA transition.
+
+        :param torch.Tensor x: incoming state tensor with shape `(*batch_shape, *event_shape)`.
+        :param bool update: if True, update kernel parameters.
+        :param kwargs: keyword arguments for kernel updates.
+        :return: new state tensor with shape `(*batch_shape, *event_shape)`.
+        """
+
         # Propose new state
         x_prime, u_x, grad_u_x, nc, ng = propose_state(
             x,
@@ -107,10 +124,15 @@ class MALAKernel(MHKernel):
         )
         log_u = torch.rand_like(log_prob_accept).log()
         acceptance_mask[~divergence_mask] = log_u < log_prob_accept
+        x[acceptance_mask] = x_prime[acceptance_mask]
+        x = x.detach()
+
+        if update:
+            self._update(x, acceptance_mask, **kwargs)
 
         self.increment_n_steps()
         self.increment_n_attempted_transitions(n_chains=x.shape[0])
         self.increment_n_accepted_transitions(
             int(acceptance_mask.long().sum()))
 
-        return x_prime.detach(), acceptance_mask
+        return x

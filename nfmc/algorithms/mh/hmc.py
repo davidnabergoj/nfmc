@@ -2,7 +2,7 @@ import math
 from typing import Optional, Tuple, Union
 import torch
 
-from nfmc.algorithms.mh.base import MHSampler, MHKernel
+from nfmc.algorithms.mh.local import LocalMHKernel
 from nfmc.util import compute_divergence_mask, diag_mult, grad_f, sum_except_batch
 
 
@@ -91,31 +91,43 @@ def hmc_trajectory(x: torch.Tensor,
     return x, momentum, n_calls, n_grads
 
 
-class HMCKernel(MHKernel):
+class HMCKernel(LocalMHKernel):
     """
-    HMC kernel with a diagonal mass matrix.
+    HMC kernel.
     """
 
     def __init__(self,
                  event_shape: Union[Tuple[int, ...], torch.Size],
                  neg_log_prob_target: callable,
-                 step_size: float = 0.01,
                  n_leapfrog_steps: int = 20,
-                 inv_mass_diag: Optional[torch.Tensor] = None):
-        super().__init__(event_shape, neg_log_prob_target)
+                 **kwargs):
+        """
+        HMCKernel constructor.
 
-        self.step_size = step_size
+        :param Union[Tuple[int, ...], torch.Size] event_shape: shape of the event tensor.
+        :param callable neg_log_prob_target: negative log probability density function. Takes as input a tensor with 
+        :param int n_leapfrog_steps: number of leapfrog steps in each trajectory.
+        :param kwargs: keyword arguments for the LocalMHKernel constructor.
+        """
+        super().__init__(event_shape, neg_log_prob_target, **kwargs)
         self.n_leapfrog_steps = n_leapfrog_steps
-        self.inv_mass_diag = inv_mass_diag
-        if self.inv_mass_diag is None:
-            self.inv_mass_diag = torch.ones(
-                size=(self.event_size,), dtype=torch.double)
 
     @property
     def name(self):
         return 'HMC'
 
-    def step(self, x: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
+    def step(self,
+             x: torch.Tensor,
+             update: bool = False,
+             **kwargs) -> torch.Tensor:
+        """
+        Perform one HMC transition.
+
+        :param torch.Tensor x: incoming state tensor with shape `(*batch_shape, *event_shape)`.
+        :param bool update: if True, update kernel parameters.
+        :param kwargs: keyword arguments for kernel updates.
+        :return: new state tensor with shape `(*batch_shape, *event_shape)`.
+        """
         # Sample momentum
         noise = torch.randn_like(x)
         p = diag_mult(
@@ -167,12 +179,19 @@ class HMCKernel(MHKernel):
             log_prob_accept = -hamiltonian_end - (-hamiltonian_start)
             log_u = torch.rand_like(log_prob_accept).log()
             acceptance_mask[~divergence_mask] = (log_u < log_prob_accept)
+        x[acceptance_mask] = x_prime[acceptance_mask]
+        x = x.detach()
+
+        if update:
+            self._update(x, acceptance_mask, **kwargs)
 
         self.increment_n_steps()
         self.increment_n_attempted_transitions(n_chains=x.shape[0])
-        self.increment_n_accepted_transitions(int(acceptance_mask.long().sum()))
+        self.increment_n_accepted_transitions(
+            int(acceptance_mask.long().sum()))
 
-        return x_prime.detach(), acceptance_mask
+        return x
+
 
     def __repr__(self):
         return (f'log step: {math.log(self.step_size):.2f}, '
