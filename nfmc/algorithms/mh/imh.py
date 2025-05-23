@@ -61,7 +61,7 @@ class IMHKernel(MHKernel):
     def name(self):
         return 'IMH'
 
-    def step(self, x: torch.Tensor) -> torch.Tensor:
+    def step(self, x: torch.Tensor, **kwargs) -> torch.Tensor:
         """
         Perform one IMH transition.
 

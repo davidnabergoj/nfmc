@@ -2,16 +2,22 @@ from copy import deepcopy
 import time
 from typing import List, Tuple, Union
 import torch
+import torch.nn as nn
 from tqdm import tqdm
 from nfmc.algorithms.mh.base import MHKernel
 from nfmc.algorithms.sampling.base.sampler import MHSampler
 from nfmc.algorithms.util.samples import Samples
 
 
-class Preconditioner:
+class Preconditioner(nn.Module):
     """
     MCMC preconditioning class.
     """
+
+    def __init__(self,
+                 event_shape: Union[torch.Size, Tuple[int, ...]]):
+        super().__init__()
+        self.event_shape = event_shape
 
     def inverse_transform(self, z: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
         """
@@ -24,11 +30,11 @@ class Preconditioner:
         """
         raise NotImplementedError
 
-    def fit(self, x: torch.Tensor):
+    def fit(self, z: torch.Tensor):
         """
         Update parameters of this preconditioner.
 
-        :param torch.Tensor x: tensor of samples with shape `(*batch_shape, *event_shape)`.
+        :param torch.Tensor z: tensor of samples with shape `(*batch_shape, *event_shape)`.
         """
         raise NotImplementedError
 
@@ -165,7 +171,7 @@ class PreconditionedMHSampler(MHSampler):
                     z_train_list,
                     max_training_samples
                 )
-                self.kernel.preconditioner.fit(x=z_train)
+                self.kernel.preconditioner.fit(z=z_train)
                 z_train_list = []
 
             z = self.kernel.step(z, update_kernel=True)

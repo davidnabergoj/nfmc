@@ -514,11 +514,11 @@ def grad_f(x: torch.Tensor,
     return function_value, grad_value, n_calls, n_grads
 
 
-def diag_mult(x: torch.Tensor,
-              diag: torch.Tensor,
-              event_shape: Union[Tuple[int, ...], torch.Size]):
+def diag_mult_flat(x: torch.Tensor,
+                   diag: torch.Tensor,
+                   event_shape: Union[Tuple[int, ...], torch.Size]):
     """
-    Multiplies diagonal matrix M by vector x.
+    Multiplies flat diagonal matrix M by vector x.
 
     :param torch.Tensor x: input tensor with shape `(*batch_shape, *event_shape)`.
     :param torch.Tensor diag: diagonal of matrix M with shape `(event_size,)`, i.e., the number of event elements.
@@ -532,6 +532,22 @@ def diag_mult(x: torch.Tensor,
         '...i,i->...i', x_reshaped, diag.to(x_reshaped)
     )
     return x_reshaped_multiplied.view_as(x)
+
+
+def diag_mult(x: torch.Tensor,
+              diag: torch.Tensor,
+              event_shape: Union[Tuple[int, ...], torch.Size]):
+    """
+    Multiplies diagonal matrix M by vector x.
+    The shape of M aligns with the shape of x.
+
+    :param torch.Tensor x: input tensor with shape `(*batch_shape, *event_shape)`.
+    :param torch.Tensor diag: diagonal of matrix M with shape `event_shape`.
+    :param Union[Tuple[int, ...], torch.Size] event_shape: event shape of tensor x.
+    :return: the product tensor of M * x with shape `(*batch_shape, *event_shape)`.
+    """
+    return diag_mult_flat(x, diag.flatten(), event_shape)
+
 
 def compute_divergence_mask(x: torch.Tensor, event_shape):
     infinite_x_mask = ~torch.isfinite(x)

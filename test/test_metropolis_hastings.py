@@ -5,6 +5,8 @@ from nfmc.algorithms.mh.local.rwmh import RWMHKernel
 from nfmc.algorithms.mh.local.hmc import HMCKernel
 from nfmc.algorithms.mh.local.mala import MALAKernel
 from nfmc.algorithms.mh.imh import IMHKernel
+from nfmc.algorithms.mh.preconditioning.base import PreconditionedMHKernel
+from nfmc.algorithms.mh.preconditioning.preconditioners import DenseLinearPreconditioner, DiagonalLinearPreconditioner
 from nfmc.algorithms.util.samples import Samples
 from test.util import standard_gaussian_neg_log_prob
 
@@ -26,6 +28,29 @@ def test_kernel_step(event_shape, kernel_class, n_chains):
     assert x_new.shape == x_current.shape
     assert torch.isfinite(x_new).all()
     assert x_current.dtype == x_new.dtype
+
+
+@pytest.mark.parametrize('event_shape', [(1,), (2,), (10,), (2, 3, 5)])
+@pytest.mark.parametrize('kernel_class', [RWMHKernel, HMCKernel, IMHKernel, MALAKernel])
+@pytest.mark.parametrize('n_chains', [1, 2, 4])
+@pytest.mark.parametrize('preconditioner_class', [DiagonalLinearPreconditioner, DenseLinearPreconditioner])
+def test_preconditioned_kernel_step(event_shape, kernel_class, n_chains, preconditioner_class):
+    torch.manual_seed(0)
+
+    base_kernel = kernel_class(
+        event_shape=event_shape,
+        neg_log_prob_target=standard_gaussian_neg_log_prob
+    )
+    preconditioner = preconditioner_class(event_shape)
+    kernel = PreconditionedMHKernel(base_kernel, preconditioner)
+
+    z_current = torch.randn(size=(n_chains, *event_shape))
+    z_new = kernel.step(z_current)
+
+    assert not z_new.requires_grad
+    assert z_new.shape == z_current.shape
+    assert torch.isfinite(z_new).all()
+    assert z_current.dtype == z_new.dtype
 
 
 @pytest.mark.parametrize('event_shape', [(1,), (2,), (10,), (2, 3, 5)])
@@ -52,6 +77,7 @@ def test_sampling(event_shape, kernel_class, n_chains, n_steps):
     assert torch.isfinite(samples.as_tensor()).all()
     assert samples.as_tensor().shape == (n_steps, n_chains, *event_shape)
     assert samples.as_tensor().dtype == x_initial.dtype
+
 
 @pytest.mark.parametrize('event_shape', [(1,), (2,), (10,), (2, 3, 5)])
 @pytest.mark.parametrize('kernel_class', [RWMHKernel, HMCKernel, MALAKernel])
