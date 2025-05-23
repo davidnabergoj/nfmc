@@ -1,6 +1,6 @@
 from copy import deepcopy
 import time
-from typing import Union, Tuple, Optional
+from typing import Union, Tuple
 import torch
 from tqdm import tqdm
 from nfmc.algorithms.mh.base import MHKernel
@@ -79,18 +79,18 @@ class LocalMHSampler:
     """
 
     def __init__(self,
-                 kernel: MHKernel,
+                 kernel: LocalMHKernel,
                  **kwargs):
         """
         MHSampler constructor.
 
-        :param MHKernel kernel: Metropolis-Hastings kernel that performs state transitions.
+        :param LocalMHKernel kernel: Metropolis-Hastings kernel that performs state transitions.
         """
         self.kernel = kernel
 
     @property
     def name(self) -> str:
-        return "Metropolis-Hastings sampler"
+        return "Local Metropolis-Hastings sampler"
 
     def calls_per_second(self, elapsed_time_seconds):
         if elapsed_time_seconds > 0:

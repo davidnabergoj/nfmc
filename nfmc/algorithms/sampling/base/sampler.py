@@ -2,7 +2,7 @@ from typing import Tuple, Union
 
 import torch
 
-from nfmc.algorithms.mh.base import MHKernel
+from nfmc.algorithms.mh.base import LocalMHKernel
 from nfmc.algorithms.sampling.base.sampler_data import MCMCOutput
 
 
@@ -13,7 +13,7 @@ class MHSampler:
 
     def __init__(self,
                  event_shape: Union[torch.Size, Tuple[int, ...]],
-                 kernel: MHKernel,
+                 kernel: LocalMHKernel,
                  **kwargs):
         self.event_shape = event_shape
         self.kernel = kernel

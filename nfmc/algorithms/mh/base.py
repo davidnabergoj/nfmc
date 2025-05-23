@@ -82,8 +82,6 @@ class MHKernel:
         Performs one kernel transition.
 
         :param torch.Tensor x: current state tensor with shape `(*batch_shape, *event_shape)`.
-        :param bool update: if True, also update the parameters of this kernel.
-        :param kwargs: keyword arguments for the kernel update.
         :return: new state tensor with shape `(*batch_shape, *event_shape)`.
         """
         raise NotImplementedError
