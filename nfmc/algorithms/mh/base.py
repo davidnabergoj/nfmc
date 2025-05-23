@@ -77,11 +77,13 @@ class MHKernel:
     def step(self,
              x: torch.Tensor,
              *args,
+             update: bool = False,
              **kwargs) -> Tuple[torch.Tensor, torch.Tensor]:
         """
         Performs one kernel transition.
 
         :param torch.Tensor x: current state tensor with shape `(*batch_shape, *event_shape)`.
+        :param bool update: if True, update kernel parameters.
         :return: new state tensor with shape `(*batch_shape, *event_shape)`.
         """
         raise NotImplementedError

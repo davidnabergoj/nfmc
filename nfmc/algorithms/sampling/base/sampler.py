@@ -2,8 +2,8 @@ from typing import Tuple, Union
 
 import torch
 
-from nfmc.algorithms.mh.base import LocalMHKernel
-from nfmc.algorithms.sampling.base.sampler_data import MCMCOutput
+from nfmc.algorithms.mh.base import MHKernel
+from nfmc.algorithms.util.samples import Samples
 
 
 class MHSampler:
@@ -13,28 +13,30 @@ class MHSampler:
 
     def __init__(self,
                  event_shape: Union[torch.Size, Tuple[int, ...]],
-                 kernel: LocalMHKernel,
+                 kernel: MHKernel,
                  **kwargs):
         self.event_shape = event_shape
         self.kernel = kernel
-    
+
     @property
     def name(self) -> str:
         return "Generic MH sampler"
 
     def warmup(self,
                x0: torch.Tensor,
+               n_steps: int,
                show_progress: bool = True,
-               time_limit_seconds: Union[float, int] = None) -> MCMCOutput:
+               time_limit_seconds: Union[float, int] = None) -> Samples:
         """
         Optimizes kernel parameters.
         """
         raise NotImplementedError
 
-    def sample(self, 
+    def sample(self,
                x0: torch.Tensor,
+               n_steps: int,
                show_progress: bool = True,
-               time_limit_seconds: Union[float, int] = None) -> MCMCOutput:
+               time_limit_seconds: Union[float, int] = None) -> Samples:
         """
         Samples with a fixed kernel.
         """

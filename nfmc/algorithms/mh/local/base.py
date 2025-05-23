@@ -130,7 +130,7 @@ class LocalMHSampler:
         """
         Draw samples with a fixed kernel.
 
-        :param torch.Tensor x0: initial state with shape `(n_chains, *event_shape)`.
+        :param torch.Tensor x0: initial state with shape `(*batch_shape, *event_shape)`.
         :param int n_steps: number of MCMC steps to perform.
         :param bool show_progress: if True, display a progress bar.
         :param float time_limit_seconds: maximum sampling time. Sampling stops if this time is exceeded.
