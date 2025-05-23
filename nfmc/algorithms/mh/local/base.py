@@ -5,6 +5,7 @@ import torch
 from tqdm import tqdm
 from nfmc.algorithms.mh.base import MHKernel
 from nfmc.algorithms.mh.local.dual_averaging import DualAveraging
+from nfmc.algorithms.sampling.base.sampler import MHSampler
 from nfmc.algorithms.util.samples import Samples
 
 
@@ -73,7 +74,7 @@ class LocalMHKernel(MHKernel):
         self.step_size = self._dual_averaging.value
 
 
-class LocalMHSampler:
+class LocalMHSampler(MHSampler):
     """
     Sampler class for local Metropolis-Hastings algorithms.
     """
@@ -91,16 +92,6 @@ class LocalMHSampler:
     @property
     def name(self) -> str:
         return "Local Metropolis-Hastings sampler"
-
-    def calls_per_second(self, elapsed_time_seconds):
-        if elapsed_time_seconds > 0:
-            return self.kernel._n_calls / elapsed_time_seconds
-        return torch.nan
-
-    def grads_per_second(self, elapsed_time_seconds):
-        if elapsed_time_seconds > 0:
-            return self.kernel._n_grads / elapsed_time_seconds
-        return torch.nan
 
     def warmup(self,
                x0: torch.Tensor,

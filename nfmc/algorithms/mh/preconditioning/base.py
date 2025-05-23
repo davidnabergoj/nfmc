@@ -63,6 +63,10 @@ class PreconditionedMHKernel(MHKernel):
         # Override the target log probability density
         self.base_kernel.neg_log_prob_target = self.neg_log_prob_adjusted_target
 
+    @property
+    def name(self):
+        return f'Preconditioned {self.base_kernel.name}'
+
     def neg_log_prob_adjusted_target(self, z: torch.Tensor) -> torch.Tensor:
         """
         Returns the negative log probability density of the preconditioner-adjusted target distribution.
@@ -92,11 +96,9 @@ class PreconditionedMHSampler(MHSampler):
     """
 
     def __init__(self,
-                 event_shape: Union[torch.Size, Tuple[int, ...]],
                  kernel: PreconditionedMHKernel,
                  **kwargs):
-        self.event_shape = event_shape
-        self.kernel = kernel
+        super().__init__(kernel.event_shape, kernel=kernel)
 
     @property
     def name(self) -> str:

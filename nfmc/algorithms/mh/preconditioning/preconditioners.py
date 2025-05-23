@@ -2,7 +2,8 @@ from typing import Tuple, Union
 import torch
 import torch.nn as nn
 from nfmc.algorithms.mh.preconditioning.base import Preconditioner
-from nfmc.util import diag_mult
+from nfmc.util import diag_mult, flatten_event
+from torchflows.flows import Flow
 
 
 class DiagonalLinearPreconditioner(Preconditioner):
@@ -44,24 +45,15 @@ class DenseLinearPreconditioner(Preconditioner):
 
     @property
     def event_size(self):
-        return int (torch.prod(torch.as_tensor(self.event_shape)))
-
-    def flatten_event(self, z: torch.Tensor):
-        """
-        Converts tensor with shape `(*batch_shape, *event_shape)` into a tensor with shape `(batch_size, event_size)`.
-        """
-        n_batch_dims = len(z.shape) - len(self.event_shape)
-        # (batch_size, *event_shape)
-        z_flat_tmp = z.flatten(start_dim=0, end_dim=n_batch_dims - 1)
-        z_flat = z_flat_tmp.flatten(start_dim=1)  # (batch_size, event_size)
-        return z_flat
+        return int(torch.prod(torch.as_tensor(self.event_shape)))
 
     def inverse_transform(self, z: torch.Tensor):
         batch_shape = z.shape[:-len(self.event_shape)]
-        z_flat = self.flatten_event(z)
+        z_flat = flatten_event(z, self.event_shape)
         fv = -torch.log(torch.diag(self.tril_mat)).sum()
         log_det = torch.full(size=batch_shape, fill_value=fv).to(z)
-        x_flat = torch.linalg.solve_triangular(self.tril_mat, z_flat.T, upper=False).T
+        x_flat = torch.linalg.solve_triangular(
+            self.tril_mat, z_flat.T, upper=False).T
         x = x_flat.view_as(z)
         return x, log_det
 
@@ -69,6 +61,25 @@ class DenseLinearPreconditioner(Preconditioner):
         """
         :param torch.Tensor z: training data tensor with shape `(*batch_shape, *event_shape)`.
         """
-        z_flat = self.flatten_event(z)
+        z_flat = flatten_event(z, self.event_shape)
         cov = torch.cov(z_flat.T)  # (event_size, event_size)
-        self.tril_mat = torch.linalg.cholesky(cov + 1e-8 * torch.eye(self.event_size))
+        self.tril_mat = torch.linalg.cholesky(
+            cov + 1e-8 * torch.eye(self.event_size))
+
+
+class NormalizingFlowPreconditioner(Preconditioner):
+    def __init__(self,
+                 flow: Flow):
+        super().__init__(event_shape=flow.event_shape)
+        self.flow: Flow = flow
+
+    def inverse_transform(self, z: torch.Tensor):
+        x, log_det = self.flow.bijection.inverse(z)
+        return x, log_det
+
+    def fit(self, z: torch.Tensor, **kwargs):
+        """
+        Does not use a train/validation split.
+        """
+        z_flat = z.view(-1, *self.event_shape)
+        self.flow.fit(z_flat, **kwargs)

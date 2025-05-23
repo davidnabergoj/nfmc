@@ -552,3 +552,12 @@ def diag_mult(x: torch.Tensor,
 def compute_divergence_mask(x: torch.Tensor, event_shape):
     infinite_x_mask = ~torch.isfinite(x)
     return sum_except_batch(infinite_x_mask.long(), event_shape) > 0
+
+def flatten_event(x: torch.Tensor, 
+                  event_shape: Union[Tuple[int, ...], torch.Size]):
+    """
+    Converts tensor with shape `(*batch_shape, *event_shape)` into a tensor with shape `(batch_size, event_size)`.
+    """
+    event_size = int(torch.as_tensor(event_shape).prod()) if event_shape else 1
+    x = x.view(-1, event_size)
+    return x

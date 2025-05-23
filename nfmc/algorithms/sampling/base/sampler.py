@@ -22,6 +22,16 @@ class MHSampler:
     def name(self) -> str:
         return "Generic MH sampler"
 
+    def calls_per_second(self, elapsed_time_seconds):
+        if elapsed_time_seconds > 0:
+            return self.kernel._n_calls / elapsed_time_seconds
+        return torch.nan
+
+    def grads_per_second(self, elapsed_time_seconds):
+        if elapsed_time_seconds > 0:
+            return self.kernel._n_grads / elapsed_time_seconds
+        return torch.nan
+
     def warmup(self,
                x0: torch.Tensor,
                n_steps: int,
