@@ -139,12 +139,12 @@ class LocalMHSampler:
          shape `(*batch_shape, *event_shape)` and outputs a tensor with shape `(*batch_shape, *event_shape)`.
         :param bool _tuning: if True, update the kernel at the end of each step.
         """
-
         samples = Samples(
             event_shape=self.kernel.event_shape,
             max_samples=max_samples,
             data_transform=data_transform
         )
+        
         self.kernel.reset_statistics()
         x = deepcopy(x0.detach())
 

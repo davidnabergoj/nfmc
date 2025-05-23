@@ -13,9 +13,6 @@ class Preconditioner:
     MCMC preconditioning class.
     """
 
-    def __init__(self):
-        pass
-
     def inverse_transform(self, z: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
         """
         Computes the inverse of z under this preconditioner.
@@ -28,7 +25,12 @@ class Preconditioner:
         raise NotImplementedError
 
     def fit(self, x: torch.Tensor):
-        pass
+        """
+        Update parameters of this preconditioner.
+
+        :param torch.Tensor x: tensor of samples with shape `(*batch_shape, *event_shape)`.
+        """
+        raise NotImplementedError
 
 
 class PreconditionedMHKernel(MHKernel):
@@ -114,9 +116,10 @@ class PreconditionedMHSampler(MHSampler):
                time_limit_seconds: Union[float, int] = None,
                max_samples: int = None,
                max_training_samples: int = None,
-               data_transform: callable = None) -> Samples:
+               data_transform: callable = None,
+               return_latent_samples: bool = False) -> Samples:
         """
-        Optimizes kernel parameters.
+        Optimize kernel parameters.
 
         The kernel is updated every step unless it internally overrides this.
         The preconditioner is updated every K steps where K is equal to preconditioner_update_interval.
@@ -127,15 +130,24 @@ class PreconditionedMHSampler(MHSampler):
         :param bool show_progress: if True, display a progress bar.
         :param float time_limit_seconds: maximum sampling time. Sampling stops if this time is exceeded.
         :param int max_samples: maximum number of samples to store.
-        :param int max_samples: maximum number of training samples to train the preconditioner.
+        :param int max_training_samples: maximum number of training samples to train the preconditioner.
         :param callable data_transform: function that transforms each generated sample. Receives as input a tensor with
          shape `(*batch_shape, *event_shape)` and outputs a tensor with shape `(*batch_shape, *event_shape)`.
+        :param bool return_latent_samples: if True, return tuple with two Samples object. The first object holds samples
+         from the target distribution, the second holds latent samples. The specified data_transform callable is still 
+         applied to samples in each object.
         """
         target_samples = Samples(
             event_shape=self.kernel.event_shape,
             max_samples=max_samples,
-            data_transform=data_transform
+            data_transform=lambda z: data_transform(
+                self.kernel.preconditioner.inverse_transform(z)[0])
         )
+        latent_samples = Samples(
+            event_shape=self.kernel.event_shape,
+            max_samples=max_samples,
+        )
+
         self.kernel.reset_statistics()
         z = deepcopy(z0.detach())
 
@@ -158,6 +170,8 @@ class PreconditionedMHSampler(MHSampler):
 
             z = self.kernel.step(z, update_kernel=True)
             target_samples.add(z)
+            if return_latent_samples:
+                latent_samples.add(z)
             z_train_list.append(z)
 
             elapsed_time = time.time() - t0
@@ -169,14 +183,66 @@ class PreconditionedMHSampler(MHSampler):
             if time_limit_seconds is not None and elapsed_time > time_limit_seconds:
                 break
 
+        if return_latent_samples:
+            return target_samples, latent_samples
         return target_samples
 
     def sample(self,
-               x0: torch.Tensor,
+               z0: torch.Tensor,
                n_steps: int,
                show_progress: bool = True,
-               time_limit_seconds: Union[float, int] = None) -> Samples:
+               time_limit_seconds: Union[float, int] = None,
+               max_samples: int = None,
+               data_transform: callable = None,
+               return_latent_samples: bool = False) -> Samples:
         """
-        Samples with a fixed kernel.
+        Sample with a fixed kernel.
+
+        The kernel is updated every step unless it internally overrides this.
+        The preconditioner is updated every K steps where K is equal to preconditioner_update_interval.
+
+        :param torch.Tensor z0: initial latent state with shape `(*batch_shape, *event_shape)`.
+        :param int n_steps: number of MCMC steps to perform.
+        :param bool show_progress: if True, display a progress bar.
+        :param float time_limit_seconds: maximum sampling time. Sampling stops if this time is exceeded.
+        :param int max_samples: maximum number of samples to store.
+        :param callable data_transform: function that transforms each generated sample. Receives as input a tensor with
+         shape `(*batch_shape, *event_shape)` and outputs a tensor with shape `(*batch_shape, *event_shape)`.
+        :param bool return_latent_samples: if True, return tuple with two Samples object. The first object holds samples
+         from the target distribution, the second holds latent samples. The specified data_transform callable is still 
+         applied to samples in each object.
         """
-        raise NotImplementedError
+        target_samples = Samples(
+            event_shape=self.kernel.event_shape,
+            max_samples=max_samples,
+            data_transform=data_transform
+        )
+        latent_samples = Samples(
+            event_shape=self.kernel.event_shape,
+            max_samples=max_samples,
+        )
+
+        self.kernel.reset_statistics()
+        z = deepcopy(z0.detach())
+
+        t0 = time.time()
+        for _ in (pbar := tqdm(range(n_steps),
+                               desc=f'{self.kernel.name} sampling',
+                               disable=not show_progress)):
+            z = self.kernel.step(z)
+            target_samples.add(z)
+            if return_latent_samples:
+                latent_samples.add(z)
+
+            elapsed_time = time.time() - t0
+            pbar.set_postfix_str(
+                f'acc-rate: {self.kernel.acceptance_rate} | '
+                f'calls/s: {self.calls_per_second(elapsed_time)} | '
+                f'grads/s: {self.grads_per_second(elapsed_time)} | '
+            )
+            if time_limit_seconds is not None and elapsed_time > time_limit_seconds:
+                break
+
+        if return_latent_samples:
+            return target_samples, latent_samples
+        return target_samples
