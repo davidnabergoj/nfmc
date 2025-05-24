@@ -1,7 +1,7 @@
 from typing import Tuple, Union
 import torch
 import torch.nn as nn
-from nfmc.algorithms.mh.preconditioning.base import Preconditioner
+from nfmc.algorithms.preconditioning.base import Preconditioner
 from nfmc.util import diag_mult, flatten_event
 from torchflows.flows import Flow
 

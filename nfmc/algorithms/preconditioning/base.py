@@ -4,8 +4,8 @@ from typing import List, Tuple, Union
 import torch
 import torch.nn as nn
 from tqdm import tqdm
-from nfmc.algorithms.mh.base import MHKernel
-from nfmc.algorithms.sampling.base.sampler import MHSampler
+from nfmc.algorithms.mh.base import MarkovKernel
+from nfmc.algorithms.sampling.base.sampler import MCMCSampler
 from nfmc.algorithms.util.samples import Samples
 
 
@@ -39,15 +39,15 @@ class Preconditioner(nn.Module):
         raise NotImplementedError
 
 
-class PreconditionedMHKernel(MHKernel):
+class PreconditionedMarkovKernel(MarkovKernel):
     """
-    Preconditioned Metropolis-Hastings kernel class.
+    Preconditioned Markov kernel class.
 
     All kernel transitions are performed according to a preconditioner-adjusted target density.
     """
 
     def __init__(self,
-                 base_kernel: MHKernel,
+                 base_kernel: MarkovKernel,
                  preconditioner: Preconditioner):
         super().__init__(
             event_shape=base_kernel.event_shape,
@@ -59,9 +59,6 @@ class PreconditionedMHKernel(MHKernel):
             base_kernel.neg_log_prob_target
         )
         self.base_kernel = base_kernel
-
-        # Override the target log probability density
-        self.base_kernel.neg_log_prob_target = self.neg_log_prob_adjusted_target
 
     @property
     def name(self):
@@ -75,34 +72,36 @@ class PreconditionedMHKernel(MHKernel):
         :return: negative log probability tensor with shape `batch_shape`
         """
         x, log_det_inverse = self.preconditioner.inverse_transform(z)
-        return self.neg_log_prob_target(x) - log_det_inverse
+        return self.base_neg_log_prob_target(x) - log_det_inverse
 
     def step(self,
              z: torch.Tensor,
-             update_kernel: bool = False):
+             update: bool = False):
         """
         Performs one kernel transition.
 
         :param torch.Tensor z: current latent state tensor with shape `(*batch_shape, *event_shape)`.
-        :param bool update_kernel: if True, update kernel parameters.
+        :param bool update: if True, update base kernel parameters.
         :return: new latent state tensor with shape `(*batch_shape, *event_shape)`.
         """
-        return self.base_kernel.step(z, update=update_kernel)
+        # Ensure the correct target distribution is used
+        self.base_kernel.set_target(self.neg_log_prob_adjusted_target)
+        return self.base_kernel.step(z, update=update)
 
 
-class PreconditionedMHSampler(MHSampler):
+class PreconditionedMCMCSampler(MCMCSampler):
     """
-    Sampler class for Metropolis-Hastings algorithms with preconditioning.
+    Sampler class for MCMC algorithms with preconditioning.
     """
 
     def __init__(self,
-                 kernel: PreconditionedMHKernel,
+                 kernel: PreconditionedMarkovKernel,
                  **kwargs):
         super().__init__(kernel.event_shape, kernel=kernel)
 
     @property
     def name(self) -> str:
-        return "Generic preconditioned MH sampler"
+        return "Generic preconditioned MCMC sampler"
 
     def prepare_training_data(self,
                               train_data_list: List[torch.Tensor],
@@ -184,7 +183,6 @@ class PreconditionedMHSampler(MHSampler):
 
             elapsed_time = time.time() - t0
             pbar.set_postfix_str(
-                f'acc-rate: {self.kernel.acceptance_rate} | '
                 f'calls/s: {self.calls_per_second(elapsed_time)} | '
                 f'grads/s: {self.grads_per_second(elapsed_time)} | '
             )
@@ -244,7 +242,6 @@ class PreconditionedMHSampler(MHSampler):
 
             elapsed_time = time.time() - t0
             pbar.set_postfix_str(
-                f'acc-rate: {self.kernel.acceptance_rate} | '
                 f'calls/s: {self.calls_per_second(elapsed_time)} | '
                 f'grads/s: {self.grads_per_second(elapsed_time)} | '
             )

@@ -2,18 +2,18 @@ from typing import Tuple, Union
 
 import torch
 
-from nfmc.algorithms.mh.base import MHKernel
+from nfmc.algorithms.mh.base import MarkovKernel
 from nfmc.algorithms.util.samples import Samples
 
 
-class MHSampler:
+class MCMCSampler:
     """
-    Sampler class for Metropolis-Hastings algorithms.
+    MCMC sampler class.
     """
 
     def __init__(self,
                  event_shape: Union[torch.Size, Tuple[int, ...]],
-                 kernel: MHKernel,
+                 kernel: MarkovKernel,
                  **kwargs):
         self.event_shape = event_shape
         self.kernel = kernel

@@ -4,7 +4,7 @@ import torch
 from nfmc.algorithms.kernel import MarkovKernel
 
 
-class MHKernel(MarkovKernel):
+class MarkovKernel(MarkovKernel):
     """
     Base MCMC kernel class for Metropolis-Hastings algorithms.
     """
@@ -46,5 +46,3 @@ class MHKernel(MarkovKernel):
     def increment_n_accepted_transitions(self, n_accepted_chains: int):
         self._n_accepted_transitions += n_accepted_chains
         self._n_accepted_transitions = int(self._n_accepted_transitions)
-
-

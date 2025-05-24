@@ -3,13 +3,13 @@ import time
 from typing import Union, Tuple
 import torch
 from tqdm import tqdm
-from nfmc.algorithms.mh.base import MHKernel
+from nfmc.algorithms.mh.base import MarkovKernel
 from nfmc.algorithms.mh.local.dual_averaging import DualAveraging
-from nfmc.algorithms.sampling.base.sampler import MHSampler
+from nfmc.algorithms.sampling.base.sampler import MCMCSampler
 from nfmc.algorithms.util.samples import Samples
 
 
-class LocalMHKernel(MHKernel):
+class LocalMHKernel(MarkovKernel):
     """
     Metropolis-Hastings kernel with local transitions.
     Transitions use a step size.
@@ -74,7 +74,7 @@ class LocalMHKernel(MHKernel):
         self.step_size = self._dual_averaging.value
 
 
-class LocalMHSampler(MHSampler):
+class LocalMHSampler(MCMCSampler):
     """
     Sampler class for local Metropolis-Hastings algorithms.
     """

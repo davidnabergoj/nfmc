@@ -28,6 +28,9 @@ class MarkovKernel:
         # Counts the number of chains that diverged across all steps
         self._n_divergences: int = 0
 
+    def set_target(self, new_neg_log_prob_target: callable):
+        self.neg_log_prob_target = new_neg_log_prob_target
+
     @property
     def event_size(self):
         return int(torch.prod(torch.as_tensor(self.event_shape)))
@@ -109,6 +112,10 @@ class CompositionKernel(MarkovKernel):
         self.kernel_index = 0
         self.mode = mode
 
+    def set_target(self, new_neg_log_prob_target: callable):
+        for k in self.kernels:
+            k.neg_log_prob_target = new_neg_log_prob_target
+
     def step(self,
              x: torch.Tensor,
              update: bool = False,
@@ -188,6 +195,10 @@ class MixingKernel(MarkovKernel):
                 dtype=torch.float
             )
         )
+
+    def set_target(self, new_neg_log_prob_target: callable):
+        for k in self.kernels:
+            k.neg_log_prob_target = new_neg_log_prob_target
 
     def step(self,
              x: torch.Tensor,

@@ -1,10 +1,10 @@
 from typing import Tuple, Union
 import torch
-from nfmc.algorithms.mh.base import MHKernel
+from nfmc.algorithms.mh.base import MarkovKernel
 from nfmc.util import compute_divergence_mask, metropolis_acceptance_log_ratio, sum_except_batch
 
 
-class IMHKernel(MHKernel):
+class IMHKernel(MarkovKernel):
     """
     Independent Metropolis-Hastings kernel.
     """

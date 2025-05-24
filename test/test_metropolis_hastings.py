@@ -5,8 +5,8 @@ from nfmc.algorithms.mh.local.rwmh import RWMHKernel
 from nfmc.algorithms.mh.local.hmc import HMCKernel
 from nfmc.algorithms.mh.local.mala import MALAKernel
 from nfmc.algorithms.mh.imh import IMHKernel
-from nfmc.algorithms.mh.preconditioning.base import PreconditionedMHKernel, PreconditionedMHSampler
-from nfmc.algorithms.mh.preconditioning.preconditioners import DenseLinearPreconditioner, DiagonalLinearPreconditioner, NormalizingFlowPreconditioner
+from nfmc.algorithms.preconditioning.base import PreconditionedMCMCSampler, PreconditionedMarkovKernel
+from nfmc.algorithms.preconditioning.preconditioners import DenseLinearPreconditioner, DiagonalLinearPreconditioner, NormalizingFlowPreconditioner
 from nfmc.algorithms.util.samples import Samples
 from nfmc.util import create_flow_object
 from test.util import standard_gaussian_neg_log_prob
@@ -46,7 +46,7 @@ def test_linear_preconditioned_kernel_step(event_shape, kernel_class, n_chains, 
         neg_log_prob_target=standard_gaussian_neg_log_prob
     )
     preconditioner = preconditioner_class(event_shape)
-    kernel = PreconditionedMHKernel(base_kernel, preconditioner)
+    kernel = PreconditionedMarkovKernel(base_kernel, preconditioner)
 
     z_current = torch.randn(size=(n_chains, *event_shape))
     z_new = kernel.step(z_current)
@@ -69,7 +69,7 @@ def test_flow_preconditioned_kernel_step(event_shape, kernel_class, n_chains):
     )
     flow = create_flow_object('realnvp', event_shape)
     preconditioner = NormalizingFlowPreconditioner(flow)
-    kernel = PreconditionedMHKernel(base_kernel, preconditioner)
+    kernel = PreconditionedMarkovKernel(base_kernel, preconditioner)
 
     z_current = torch.randn(size=(n_chains, *event_shape))
     z_new = kernel.step(z_current)
@@ -123,9 +123,9 @@ def test_linear_preconditioned_sampling(event_shape, kernel_class, n_chains, n_s
         neg_log_prob_target=standard_gaussian_neg_log_prob
     )
     preconditioner = preconditioner_class(event_shape)
-    kernel = PreconditionedMHKernel(base_kernel, preconditioner)
+    kernel = PreconditionedMarkovKernel(base_kernel, preconditioner)
 
-    sampler = PreconditionedMHSampler(kernel)
+    sampler = PreconditionedMCMCSampler(kernel)
     samples = sampler.sample(
         x_initial,
         n_steps=n_steps,
@@ -153,9 +153,9 @@ def test_flow_preconditioned_sampling(event_shape, kernel_class, n_chains, n_ste
     )
     flow = create_flow_object('realnvp', event_shape)
     preconditioner = NormalizingFlowPreconditioner(flow)
-    kernel = PreconditionedMHKernel(base_kernel, preconditioner)
+    kernel = PreconditionedMarkovKernel(base_kernel, preconditioner)
 
-    sampler = PreconditionedMHSampler(kernel)
+    sampler = PreconditionedMCMCSampler(kernel)
     samples = sampler.sample(
         x_initial,
         n_steps=n_steps,
