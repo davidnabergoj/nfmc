@@ -131,6 +131,7 @@ class PreconditionedMCMCSampler(MCMCSampler):
 
         The kernel is updated every step unless it internally overrides this.
         The preconditioner is updated every K steps where K is equal to preconditioner_update_interval.
+        The preconditioner is not updated within the final K steps so that the rest of the kernel can be stably tuned.
 
         :param torch.Tensor z0: initial latent state with shape `(*batch_shape, *event_shape)`.
         :param int n_steps: number of MCMC steps to perform.
@@ -173,7 +174,7 @@ class PreconditionedMCMCSampler(MCMCSampler):
                                   desc=f'{self.kernel.name} sampling',
                                   disable=not show_progress)):
 
-            if step % preconditioner_update_interval == 0 and step > 0:
+            if step % preconditioner_update_interval == 0 and 0 < step < n_steps - preconditioner_update_interval:
                 # Update the preconditioner first so drawn sample can contribute toward next preconditioner fit.
                 z_train = self.prepare_training_data(
                     z_train_list,
