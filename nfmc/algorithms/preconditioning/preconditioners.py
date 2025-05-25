@@ -24,7 +24,7 @@ class DiagonalLinearPreconditioner(Preconditioner):
         log_det = torch.full(size=batch_shape, fill_value=fv).to(z)
         return diag_mult(z, 1 / self.v, self.event_shape), log_det
 
-    def fit(self, z: torch.Tensor):
+    def fit(self, z: torch.Tensor, **kwargs):
         n_batch_dims = len(z.shape) - len(self.event_shape)
         batch_dims = list(range(n_batch_dims))
         self.v = torch.std(z, dim=batch_dims) + 1e-8
@@ -57,7 +57,7 @@ class DenseLinearPreconditioner(Preconditioner):
         x = x_flat.view_as(z)
         return x, log_det
 
-    def fit(self, z: torch.Tensor):
+    def fit(self, z: torch.Tensor, **kwargs):
         """
         :param torch.Tensor z: training data tensor with shape `(*batch_shape, *event_shape)`.
         """

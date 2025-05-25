@@ -17,3 +17,7 @@ class JumpMarkovKernel(CompositionKernel):
             [local_kernel, global_kernel],
             **kwargs
         )
+
+    @property
+    def name(self):
+        return "Generic jump kernel"

@@ -30,11 +30,12 @@ class Preconditioner(nn.Module):
         """
         raise NotImplementedError
 
-    def fit(self, z: torch.Tensor):
+    def fit(self, z: torch.Tensor, **kwargs):
         """
         Update parameters of this preconditioner.
 
         :param torch.Tensor z: tensor of samples with shape `(*batch_shape, *event_shape)`.
+        :param kwargs:
         """
         raise NotImplementedError
 
@@ -97,7 +98,7 @@ class PreconditionedMCMCSampler(MCMCSampler):
     def __init__(self,
                  kernel: PreconditionedMarkovKernel,
                  **kwargs):
-        super().__init__(kernel.event_shape, kernel=kernel)
+        super().__init__(kernel)
 
     @property
     def name(self) -> str:
@@ -106,10 +107,9 @@ class PreconditionedMCMCSampler(MCMCSampler):
     def prepare_training_data(self,
                               train_data_list: List[torch.Tensor],
                               max_training_samples: int):
-        data_shape = train_data_list[0].shape
-        n_batch_dims = len(data_shape) - len(self.kernel.event_shape)
-        batch_dims = list(range(n_batch_dims))
-        z_train = torch.cat(train_data_list, dim=batch_dims)
+        # Flatten training data elements
+        train_data_list = [z.view(-1, *self.kernel.event_shape) for z in train_data_list]
+        z_train = torch.concat(train_data_list, dim=0)
         z_train = z_train[torch.randperm(len(z_train))]
         if max_training_samples is not None:
             z_train = z_train[:max_training_samples]
@@ -124,7 +124,8 @@ class PreconditionedMCMCSampler(MCMCSampler):
                max_samples: int = None,
                max_training_samples: int = None,
                data_transform: callable = None,
-               return_latent_samples: bool = False) -> Samples:
+               return_latent_samples: bool = False,
+               **kwargs) -> Samples:
         """
         Optimize kernel parameters.
 
@@ -143,12 +144,18 @@ class PreconditionedMCMCSampler(MCMCSampler):
         :param bool return_latent_samples: if True, return tuple with two Samples object. The first object holds samples
          from the target distribution, the second holds latent samples. The specified data_transform callable is still 
          applied to samples in each object.
+        :param kwargs: keyword arguments for `preconditioner.fit`.
+        :return: Samples object with MCMC draws.
         """
+        if data_transform is None:
+            data_transform = lambda v: v
+
         target_samples = Samples(
             event_shape=self.kernel.event_shape,
             max_samples=max_samples,
             data_transform=lambda z: data_transform(
-                self.kernel.preconditioner.inverse_transform(z)[0])
+                self.kernel.preconditioner.inverse_transform(z)[0]
+            )
         )
         latent_samples = Samples(
             event_shape=self.kernel.event_shape,
@@ -172,10 +179,10 @@ class PreconditionedMCMCSampler(MCMCSampler):
                     z_train_list,
                     max_training_samples
                 )
-                self.kernel.preconditioner.fit(z=z_train)
+                self.kernel.preconditioner.fit(z=z_train, **kwargs)
                 z_train_list = []
 
-            z = self.kernel.step(z, update_kernel=True)
+            z = self.kernel.step(z, update=True)
             target_samples.add(z)
             if return_latent_samples:
                 latent_samples.add(z)
@@ -218,6 +225,9 @@ class PreconditionedMCMCSampler(MCMCSampler):
          from the target distribution, the second holds latent samples. The specified data_transform callable is still 
          applied to samples in each object.
         """
+        if data_transform is None:
+            data_transform = lambda v: v
+
         target_samples = Samples(
             event_shape=self.kernel.event_shape,
             max_samples=max_samples,

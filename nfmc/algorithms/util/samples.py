@@ -29,6 +29,9 @@ class Samples:
         """
         self.event_shape = event_shape
         self.max_samples = max_samples
+
+        if data_transform is None:
+            data_transform = lambda v: v
         self.data_transform = data_transform
 
         self.first_moment = MCExpectation(event_shape)

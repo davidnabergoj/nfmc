@@ -1,11 +1,44 @@
 import torch
+from nfmc.util import sum_except_batch
 
 
-def standard_gaussian_neg_log_prob(x):
-    # x.shape == (batch_size, *event_shape)
-    return torch.sum(x ** 2, dim=list(range(1, len(x.shape))))
+class StandardGaussian:
+    """
+    Standard Gaussian distribution class.
+    """
+
+    def __init__(self, event_shape):
+        self.event_shape = event_shape
+
+    def neg_log_prob(self, x: torch.Tensor):
+        """
+        Computes the negative log probability density of this distribution.
+
+        :param torch.Tensor x: input tensor with shape `(*batch_shape, *event_shape)`.
+        :return: negative log probability density tensor with shape `batch_shape`.
+        """
+        return sum_except_batch(
+            x ** 2,
+            self.event_shape
+        )
 
 
-def diagonal_gaussian_neg_log_prob(x):
-    # x.shape == (batch_size, *event_shape)
-    return torch.sum(x ** 2 / (2 * 100 ** 2), dim=list(range(1, len(x.shape))))
+class DiagonalGaussian:
+    """
+    Class for the diagonal Gaussian distribution with mean zero standard deviation equal 100 in all dimensions.
+    """
+
+    def __init__(self, event_shape):
+        self.event_shape = event_shape
+
+    def neg_log_prob(self, x: torch.Tensor):
+        """
+        Computes the negative log probability density of this distribution.
+
+        :param torch.Tensor x: input tensor with shape `(*batch_shape, *event_shape)`.
+        :return: negative log probability density tensor with shape `batch_shape`.
+        """
+        return sum_except_batch(
+            x ** 2 / (2 * 100 ** 2),
+            self.event_shape
+        )

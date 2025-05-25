@@ -12,10 +12,8 @@ class MCMCSampler:
     """
 
     def __init__(self,
-                 event_shape: Union[torch.Size, Tuple[int, ...]],
                  kernel: MarkovKernel,
                  **kwargs):
-        self.event_shape = event_shape
         self.kernel = kernel
 
     @property
