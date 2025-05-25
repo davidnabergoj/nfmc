@@ -1,0 +1,99 @@
+import pytest
+import torch
+
+from nfmc.algorithms.preconditioning.implementations import NeuTraRWMHKernel, NeuTraMALAKernel, NeuTraHMCKernel
+from nfmc.algorithms.preconditioning.base import PreconditionedMCMCSampler
+from nfmc.algorithms.util.samples import Samples
+from nfmc.util import create_flow_object
+from test.util import StandardGaussian
+
+
+@pytest.mark.parametrize('event_shape', [(2,), (10,), (2, 3, 5)])
+@pytest.mark.parametrize('kernel_class', [NeuTraRWMHKernel, NeuTraMALAKernel, NeuTraHMCKernel])
+@pytest.mark.parametrize('n_chains', [1, 2, 4])
+def test_neutra_mh_kernel_step(event_shape,
+                               kernel_class,
+                               n_chains):
+    torch.manual_seed(0)
+
+    flow = create_flow_object('realnvp', event_shape)
+    kernel = kernel_class(
+        flow=flow,
+        neg_log_prob_target=StandardGaussian(event_shape).neg_log_prob,
+    )
+
+    z_current = torch.randn(size=(n_chains, *event_shape))
+    z_new = kernel.step(z_current)
+
+    assert not z_new.requires_grad
+    assert z_new.shape == z_current.shape
+    assert torch.isfinite(z_new).all()
+    assert z_current.dtype == z_new.dtype
+
+
+@pytest.mark.parametrize('event_shape', [(2,)])
+@pytest.mark.parametrize('kernel_class', [NeuTraRWMHKernel, NeuTraMALAKernel, NeuTraHMCKernel])
+@pytest.mark.parametrize('n_chains', [4])
+@pytest.mark.parametrize('n_steps', [4, 5, 6])
+def test_neutra_mh_warmup(event_shape,
+                          kernel_class,
+                          n_chains,
+                          n_steps):
+    torch.manual_seed(0)
+
+    flow = create_flow_object('realnvp', event_shape)
+    kernel = kernel_class(
+        flow=flow,
+        neg_log_prob_target=StandardGaussian(event_shape).neg_log_prob,
+    )
+    assert kernel.preconditioner is not None
+    assert kernel.preconditioner.inverse_transform is not None
+
+    sampler = PreconditionedMCMCSampler(kernel)
+
+    z_initial = torch.randn(size=(n_chains, *event_shape))
+    samples = sampler.warmup(
+        z_initial,
+        n_steps=n_steps,
+        show_progress=False,
+        preconditioner_update_interval=5,
+        n_epochs=2  # Number of NF training epochs
+    )
+
+    assert isinstance(samples, Samples)
+    assert torch.isfinite(samples.as_tensor()).all()
+    assert samples.as_tensor().shape == (n_steps, n_chains, *event_shape)
+    assert samples.as_tensor().dtype == z_initial.dtype
+
+
+@pytest.mark.parametrize('event_shape', [(2,)])
+@pytest.mark.parametrize('kernel_class', [NeuTraRWMHKernel, NeuTraMALAKernel, NeuTraHMCKernel])
+@pytest.mark.parametrize('n_chains', [1, 2, 4])
+@pytest.mark.parametrize('n_steps', [1, 2, 4])
+def test_neutra_mh_sample(event_shape,
+                          kernel_class,
+                          n_chains,
+                          n_steps):
+    torch.manual_seed(0)
+
+    flow = create_flow_object('realnvp', event_shape)
+    kernel = kernel_class(
+        flow=flow,
+        neg_log_prob_target=StandardGaussian(event_shape).neg_log_prob,
+    )
+    assert kernel.preconditioner is not None
+    assert kernel.preconditioner.inverse_transform is not None
+
+    sampler = PreconditionedMCMCSampler(kernel)
+
+    z_initial = torch.randn(size=(n_chains, *event_shape))
+    samples = sampler.sample(
+        z_initial,
+        n_steps=n_steps,
+        show_progress=False
+    )
+
+    assert isinstance(samples, Samples)
+    assert torch.isfinite(samples.as_tensor()).all()
+    assert samples.as_tensor().shape == (n_steps, n_chains, *event_shape)
+    assert samples.as_tensor().dtype == z_initial.dtype
