@@ -40,65 +40,45 @@ class Preconditioner(nn.Module):
         raise NotImplementedError
 
 
-class PreconditionedMarkovKernel(MarkovKernel):
+class PreconditionedMCMCSampler(MCMCSampler):
     """
-    Preconditioned Markov kernel class.
+    Sampler class for MCMC algorithms with preconditioning.
 
     All kernel transitions are performed according to a preconditioner-adjusted target density.
     """
 
     def __init__(self,
-                 base_kernel: MarkovKernel,
-                 preconditioner: Preconditioner):
-        super().__init__(
-            event_shape=base_kernel.event_shape,
-            neg_log_prob_target=base_kernel.neg_log_prob_target
-        )
+                 kernel: MarkovKernel,
+                 preconditioner: Preconditioner,
+                 **kwargs):
+        """
+        PreconditionedMCMCSampler constructor.
+        Warning: this constructor overrides the negative log probability density callable of the kernel.
 
+        :param MarkovKernel kernel: kernel for MCMC.
+        :param Preconditioner preconditioner: preconditioner object for target density adjustments.
+        """
+        super().__init__(kernel)
         self.preconditioner = preconditioner
+
+        # Store the original negative log probability callable
         self.base_neg_log_prob_target = deepcopy(
-            base_kernel.neg_log_prob_target
+            kernel.neg_log_prob_target
         )
-        self.base_kernel = base_kernel
 
-    @property
-    def name(self):
-        return f'Preconditioned {self.base_kernel.name}'
+        # Set the negative log probability callable handle to the adjusted one
+        # Note: self._neg_log_prob_adjusted_target is implicitly updated whenever self.preconditioner is updated.
+        self.kernel.neg_log_prob_target = self._neg_log_prob_adjusted_target
 
-    def neg_log_prob_adjusted_target(self, z: torch.Tensor) -> torch.Tensor:
+    def _neg_log_prob_adjusted_target(self, z: torch.Tensor) -> torch.Tensor:
         """
         Returns the negative log probability density of the preconditioner-adjusted target distribution.
 
         :param torch.Tensor z: latent tensor with shape `(*batch_shape, *event_shape)`.
-        :return: negative log probability tensor with shape `batch_shape`
+        :return: negative log probability tensor with shape `batch_shape`.
         """
         x, log_det_inverse = self.preconditioner.inverse_transform(z)
         return self.base_neg_log_prob_target(x) - log_det_inverse
-
-    def step(self,
-             z: torch.Tensor,
-             update: bool = False):
-        """
-        Performs one kernel transition.
-
-        :param torch.Tensor z: current latent state tensor with shape `(*batch_shape, *event_shape)`.
-        :param bool update: if True, update base kernel parameters.
-        :return: new latent state tensor with shape `(*batch_shape, *event_shape)`.
-        """
-        # Ensure the correct target distribution is used
-        self.base_kernel.set_target(self.neg_log_prob_adjusted_target)
-        return self.base_kernel.step(z, update=update)
-
-
-class PreconditionedMCMCSampler(MCMCSampler):
-    """
-    Sampler class for MCMC algorithms with preconditioning.
-    """
-
-    def __init__(self,
-                 kernel: PreconditionedMarkovKernel,
-                 **kwargs):
-        super().__init__(kernel)
 
     @property
     def name(self) -> str:
@@ -108,7 +88,8 @@ class PreconditionedMCMCSampler(MCMCSampler):
                               train_data_list: List[torch.Tensor],
                               max_training_samples: int):
         # Flatten training data elements
-        train_data_list = [z.view(-1, *self.kernel.event_shape) for z in train_data_list]
+        train_data_list = [z.view(-1, *self.kernel.event_shape)
+                           for z in train_data_list]
         z_train = torch.concat(train_data_list, dim=0)
         z_train = z_train[torch.randperm(len(z_train))]
         if max_training_samples is not None:
@@ -149,13 +130,13 @@ class PreconditionedMCMCSampler(MCMCSampler):
         :return: Samples object with MCMC draws.
         """
         if data_transform is None:
-            data_transform = lambda v: v
+            def data_transform(v): return v
 
         target_samples = Samples(
             event_shape=self.kernel.event_shape,
             max_samples=max_samples,
             data_transform=lambda z: data_transform(
-                self.kernel.preconditioner.inverse_transform(z)[0]
+                self.preconditioner.inverse_transform(z)[0]
             )
         )
         latent_samples = Samples(
@@ -171,7 +152,7 @@ class PreconditionedMCMCSampler(MCMCSampler):
 
         t0 = time.time()
         for step in (pbar := tqdm(range(n_steps),
-                                  desc=f'{self.kernel.name} sampling',
+                                  desc=f'Warmup',
                                   disable=not show_progress)):
 
             if step % preconditioner_update_interval == 0 and 0 < step < n_steps - preconditioner_update_interval:
@@ -180,7 +161,7 @@ class PreconditionedMCMCSampler(MCMCSampler):
                     z_train_list,
                     max_training_samples
                 )
-                self.kernel.preconditioner.fit(z=z_train, **kwargs)
+                self.preconditioner.fit(z=z_train, **kwargs)
                 z_train_list = []
 
             z = self.kernel.step(z, update=True)
@@ -190,10 +171,7 @@ class PreconditionedMCMCSampler(MCMCSampler):
             z_train_list.append(z)
 
             elapsed_time = time.time() - t0
-            pbar.set_postfix_str(
-                f'calls/s: {self.calls_per_second(elapsed_time)} | '
-                f'grads/s: {self.grads_per_second(elapsed_time)} | '
-            )
+            pbar.set_postfix_str(self.pbar_repr(elapsed_time))
             if time_limit_seconds is not None and elapsed_time > time_limit_seconds:
                 break
 
@@ -227,7 +205,7 @@ class PreconditionedMCMCSampler(MCMCSampler):
          applied to samples in each object.
         """
         if data_transform is None:
-            data_transform = lambda v: v
+            def data_transform(v): return v
 
         target_samples = Samples(
             event_shape=self.kernel.event_shape,
@@ -244,7 +222,7 @@ class PreconditionedMCMCSampler(MCMCSampler):
 
         t0 = time.time()
         for _ in (pbar := tqdm(range(n_steps),
-                               desc=f'{self.kernel.name} sampling',
+                               desc=f'Sampling',
                                disable=not show_progress)):
             z = self.kernel.step(z)
             target_samples.add(z)
@@ -252,10 +230,7 @@ class PreconditionedMCMCSampler(MCMCSampler):
                 latent_samples.add(z)
 
             elapsed_time = time.time() - t0
-            pbar.set_postfix_str(
-                f'calls/s: {self.calls_per_second(elapsed_time)} | '
-                f'grads/s: {self.grads_per_second(elapsed_time)} | '
-            )
+            pbar.set_postfix_str(self.pbar_repr(elapsed_time))
             if time_limit_seconds is not None and elapsed_time > time_limit_seconds:
                 break
 

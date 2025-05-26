@@ -1,14 +1,14 @@
 from nfmc.algorithms.mh.local.hmc import HMCKernel
 from nfmc.algorithms.mh.local.mala import MALAKernel
 from nfmc.algorithms.mh.local.rwmh import RWMHKernel
-from nfmc.algorithms.preconditioning.base import PreconditionedMarkovKernel
 from nfmc.algorithms.preconditioning.preconditioners import NormalizingFlowPreconditioner
+from nfmc.algorithms.preconditioning.base import PreconditionedMCMCSampler
 from torchflows import Flow
 
 
-class NeuTraRWMHKernel(PreconditionedMarkovKernel):
+class NeuTraRWMH(PreconditionedMCMCSampler):
     """
-    Normalizing flow-preconditioned latent RWMH kernel.
+    Normalizing flow-preconditioned RWMH sampler.
     """
 
     def __init__(self,
@@ -30,9 +30,9 @@ class NeuTraRWMHKernel(PreconditionedMarkovKernel):
         super().__init__(latent_kernel, preconditioner)
 
 
-class NeuTraMALAKernel(PreconditionedMarkovKernel):
+class NeuTraMALA(PreconditionedMCMCSampler):
     """
-    Normalizing flow-preconditioned latent MALA kernel.
+    Normalizing flow-preconditioned MALA sampler.
     """
 
     def __init__(self,
@@ -54,9 +54,9 @@ class NeuTraMALAKernel(PreconditionedMarkovKernel):
         super().__init__(latent_kernel, preconditioner)
 
 
-class NeuTraHMCKernel(PreconditionedMarkovKernel):
+class NeuTraHMC(PreconditionedMCMCSampler):
     """
-    Normalizing flow-preconditioned latent HMC kernel.
+    Normalizing flow-preconditioned HMC sampler.
     """
 
     def __init__(self,

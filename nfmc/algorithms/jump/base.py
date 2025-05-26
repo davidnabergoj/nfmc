@@ -9,6 +9,7 @@ class JumpMarkovKernel(CompositionKernel):
     Jump Markov kernels are compositions of a local Markov kernel and a global Markov kernel. Global Markov kernel 
      examples include an independent Metropolis-Hastings kernel or an i-SIR kernel.
     """
+
     def __init__(self,
                  local_kernel: MarkovKernel,
                  global_kernel: MarkovKernel,

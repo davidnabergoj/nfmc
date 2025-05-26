@@ -3,13 +3,13 @@ import time
 from typing import Union, Tuple
 import torch
 from tqdm import tqdm
-from nfmc.algorithms.mh.base import MarkovKernel
+from nfmc.algorithms.mh.base import MHKernel
 from nfmc.algorithms.mh.local.dual_averaging import DualAveraging
 from nfmc.algorithms.sampling.base.sampler import MCMCSampler
 from nfmc.algorithms.util.samples import Samples
 
 
-class LocalMHKernel(MarkovKernel):
+class LocalMHKernel(MHKernel):
     """
     Metropolis-Hastings kernel with local transitions.
     Transitions use a step size.
@@ -25,13 +25,13 @@ class LocalMHKernel(MarkovKernel):
         LocalMHKernel constructor.
 
         :param Union[Tuple[int, ...], torch.Size] event_shape: shape of the event tensor.
-        :param callable neg_log_prob_target: negative log probability density function. Takes as input a tensor with 
+        :param callable neg_log_prob_target: negative log probability density function. Takes as input a tensor with
          shape `(*batch_shape, *event_shape)` and returns a tensor with shape `batch_shape`.
         :param float step_size: positive step size.
         :param torch.Tensor inv_mass_diag: inverse of the diagonal mass matrix. If None, the mass matrix is set to
          identity.
         :param dict dual_averaging_kwargs: keyword arguments passed to DualAveraging.
-        :param float target_acceptance_rate: scalar between 0 and 1 (exclusive). Used in step size tuning via dual 
+        :param float target_acceptance_rate: scalar between 0 and 1 (exclusive). Used in step size tuning via dual
          averaging.
         :param int mass_matrix_update_interval: number of kernel transitions before each mass matrix update.
         """
@@ -39,8 +39,7 @@ class LocalMHKernel(MarkovKernel):
 
         self.step_size = step_size
         self._dual_averaging: DualAveraging = DualAveraging(
-            self.step_size,
-            **(dual_averaging_kwargs or {})
+            self.step_size, **(dual_averaging_kwargs or {})
         )
         self._target_acceptance_rate: float = target_acceptance_rate
 
@@ -54,7 +53,7 @@ class LocalMHKernel(MarkovKernel):
 
         :param torch.Tensor x: current state tensor with shape `(n_chains, *event_shape)`.
         :param bool update: if True, also update the parameters of this kernel.
-        :return: proposed state tensor with shape `(n_chains, *event_shape)` and acceptance mask tensor with shape 
+        :return: proposed state tensor with shape `(n_chains, *event_shape)` and acceptance mask tensor with shape
          `(n_chains)`.
         """
         raise NotImplementedError
@@ -79,15 +78,23 @@ class LocalMHSampler(MCMCSampler):
     Sampler class for local Metropolis-Hastings algorithms.
     """
 
-    def __init__(self,
-                 kernel: LocalMHKernel,
-                 **kwargs):
+    def __init__(self, kernel: LocalMHKernel, **kwargs):
         """
         MHSampler constructor.
 
         :param LocalMHKernel kernel: Metropolis-Hastings kernel that performs state transitions.
         """
         self.kernel = kernel
+
+    @property
+    def acceptance_rate(self):
+        if self.kernel._n_attempted_transitions == 0:
+            return torch.nan
+        else:
+            return (
+                self.kernel._n_accepted_transitions
+                / self.kernel._n_attempted_transitions
+            )
 
     @property
     def name(self) -> str:
@@ -133,24 +140,28 @@ class LocalMHSampler(MCMCSampler):
         samples = Samples(
             event_shape=self.kernel.event_shape,
             max_samples=max_samples,
-            data_transform=data_transform
+            data_transform=data_transform,
         )
-        
+
         self.kernel.reset_statistics()
         x = deepcopy(x0.detach())
 
         t0 = time.time()
-        for _ in (pbar := tqdm(range(n_steps),
-                               desc=f'{self.kernel.name} sampling',
-                               disable=not show_progress)):
+        for _ in (
+            pbar := tqdm(
+                range(n_steps),
+                desc=f"{self.kernel.name} sampling",
+                disable=not show_progress,
+            )
+        ):
             x = self.kernel.step(x, update=_tuning)
             samples.add(x)
 
             elapsed_time = time.time() - t0
             pbar.set_postfix_str(
-                f'acc-rate: {self.kernel.acceptance_rate} | '
-                f'calls/s: {self.calls_per_second(elapsed_time)} | '
-                f'grads/s: {self.grads_per_second(elapsed_time)} | '
+                f"acc-rate: {self.kernel.acceptance_rate} | "
+                f"calls/s: {self.calls_per_second(elapsed_time)} | "
+                f"grads/s: {self.grads_per_second(elapsed_time)} | "
             )
             if time_limit_seconds is not None and elapsed_time > time_limit_seconds:
                 break

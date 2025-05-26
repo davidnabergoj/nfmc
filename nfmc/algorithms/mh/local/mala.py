@@ -1,4 +1,6 @@
 from typing import Tuple, Union
+import math
+
 import torch
 from nfmc.algorithms.mh.local.base import LocalMHKernel
 from nfmc.util import compute_divergence_mask, grad_f, metropolis_acceptance_log_ratio, sum_except_batch
@@ -8,13 +10,14 @@ def propose_state(x: torch.Tensor,
                   event_shape: Union[Tuple[int, ...], torch.Size],
                   step_size: float,
                   neg_log_prob_target: callable):
+    x = x.detach()
     noise = torch.randn_like(x).to(x)
 
     # Compute potential and gradient at current state
     u_x, grad_u_x, nc, ng = grad_f(x, neg_log_prob_target, event_shape)
 
-    grad_term = -step_size * grad_u_x
-    noise_term = noise * 2 * step_size
+    grad_term = -0.5 * step_size * grad_u_x
+    noise_term = noise * math.sqrt(step_size)
     x_prime = x + grad_term + noise_term
     return x_prime, u_x, grad_u_x, nc, ng
 
@@ -78,7 +81,7 @@ class MALAKernel(LocalMHKernel):
 
         # Compute divergence mask
         divergence_mask_x = compute_divergence_mask(x_prime, self.event_shape)
-        divergence_mask_u = (~torch.isfinite(u_x)).long() > 0
+        divergence_mask_u = ~torch.isfinite(u_x)
         divergence_mask_grad_u = compute_divergence_mask(
             grad_u_x, self.event_shape)
         divergence_mask = divergence_mask_x | divergence_mask_u | divergence_mask_grad_u
@@ -94,28 +97,32 @@ class MALAKernel(LocalMHKernel):
         self.increment_n_grads(ng)
 
         acceptance_mask = torch.zeros_like(divergence_mask)
-        log_prob_accept = metropolis_acceptance_log_ratio(
-            log_prob_target_curr=-u_x[~divergence_mask],
-            log_prob_target_prime=-u_x_prime,
-            log_prob_proposal_curr=-proposal_neg_log_prob(
-                x[~divergence_mask],
-                self.event_shape,
-                x_prime[~divergence_mask],
-                grad_u_x_prime,
-                self.step_size
-            ),
-            log_prob_proposal_prime=-proposal_neg_log_prob(
-                x_prime[~divergence_mask],
-                self.event_shape,
-                x[~divergence_mask],
-                grad_u_x[~divergence_mask],
-                self.step_size
+        if (~divergence_mask).any():
+            log_prob_accept = metropolis_acceptance_log_ratio(
+                log_prob_target_curr=-u_x[~divergence_mask],
+                log_prob_target_prime=-u_x_prime,
+                log_prob_proposal_curr=-proposal_neg_log_prob(
+                    x[~divergence_mask],
+                    self.event_shape,
+                    x_prime[~divergence_mask],
+                    grad_u_x_prime,
+                    self.step_size
+                ),
+                log_prob_proposal_prime=-proposal_neg_log_prob(
+                    x_prime[~divergence_mask],
+                    self.event_shape,
+                    x[~divergence_mask],
+                    grad_u_x[~divergence_mask],
+                    self.step_size
+                )
             )
-        )
-        log_u = torch.rand_like(log_prob_accept).log()
-        acceptance_mask[~divergence_mask] = log_u < log_prob_accept
-        x[acceptance_mask] = x_prime[acceptance_mask]
-        x = x.detach()
+            log_u = torch.rand_like(log_prob_accept.clamp(min=1e-10)).log()
+            acceptance_mask[~divergence_mask] = log_u < log_prob_accept
+
+        x_new = x.clone()
+        x_new[acceptance_mask] = x_prime[acceptance_mask]
+        x_new = x_new.detach()
+        x = x_new.detach()
 
         if update:
             self._update(acceptance_mask)

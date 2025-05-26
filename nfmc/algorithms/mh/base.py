@@ -4,7 +4,7 @@ import torch
 from nfmc.algorithms.kernel import MarkovKernel
 
 
-class MarkovKernel(MarkovKernel):
+class MHKernel(MarkovKernel):
     """
     Base MCMC kernel class for Metropolis-Hastings algorithms.
     """
@@ -26,12 +26,9 @@ class MarkovKernel(MarkovKernel):
         self._n_accepted_transitions: int = 0
 
     def reset_statistics(self):
-        self._n_steps = 0
+        super().reset_statistics()
         self._n_attempted_transitions = 0
         self._n_accepted_transitions = 0
-        self._n_calls = 0
-        self._n_grads = 0
-        self._n_divergences = 0
 
     @property
     def acceptance_rate(self):

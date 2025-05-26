@@ -71,6 +71,12 @@ class MarkovKernel:
     def __repr__(self):
         raise NotImplementedError
 
+    def reset_statistics(self):
+        self._n_steps = 0
+        self._n_calls = 0
+        self._n_grads = 0
+        self._n_divergences = 0
+
 
 class CompositionKernel(MarkovKernel):
     """
@@ -142,6 +148,10 @@ class CompositionKernel(MarkovKernel):
             for k in self.kernels:
                 y = k.step(y, update=update, **kwargs)
             return y
+
+    def reset_statistics(self):
+        for k in self.kernels:
+            k.reset_statistics()
 
 
 class MixingKernel(MarkovKernel):
@@ -217,3 +227,7 @@ class MixingKernel(MarkovKernel):
             update=update,
             **kwargs
         )
+
+    def reset_statistics(self):
+        for k in self.kernels:
+            k.reset_statistics()

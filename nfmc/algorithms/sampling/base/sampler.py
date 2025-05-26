@@ -20,6 +20,16 @@ class MCMCSampler:
     def name(self) -> str:
         return "Generic MH sampler"
 
+    def pbar_repr(self, elapsed_time_seconds: float):
+        """
+        Returns a string that represents this object in sampling/warmup progress bars.
+        """
+        data = [
+            f'{self.calls_per_second(elapsed_time_seconds)} c/s',
+            f'{self.grads_per_second(elapsed_time_seconds)} g/s',
+        ]
+        return f"{self.kernel.name}, {', '.join(data)}"
+
     def calls_per_second(self, elapsed_time_seconds):
         if elapsed_time_seconds > 0:
             return self.kernel._n_calls / elapsed_time_seconds
