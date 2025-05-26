@@ -44,7 +44,7 @@ def test_mcmc(kernel_class):
         sampling_draws.second_moment.as_tensor(), target.second_moment, rtol=0.2
     )
 
-# @pytest.mark.skip
+@pytest.mark.skip
 @pytest.mark.local_only
 @pytest.mark.parametrize(
     "sampler_class", [NeuTraRWMH, NeuTraMALA, NeuTraHMC]

@@ -132,15 +132,10 @@ class PreconditionedMCMCSampler(MCMCSampler):
         :param kwargs: keyword arguments for `preconditioner.fit`.
         :return: Samples object with MCMC draws.
         """
-        if data_transform is None:
-            def data_transform(v): return v
-
         target_samples = Samples(
             event_shape=self.kernel.event_shape,
             max_samples=max_samples,
-            data_transform=lambda z: data_transform(
-                self.preconditioner.inverse_transform(z)[0]
-            )
+            data_transform=data_transform
         )
 
         latent_samples = Samples(
@@ -173,8 +168,10 @@ class PreconditionedMCMCSampler(MCMCSampler):
                 z = torch.rand_like(z) * 2 - 1
 
             z = self.kernel.step(z, update=True)
-            target_samples.add(z)
-            x_train_list.append(self.preconditioner.inverse_transform(z)[0])
+            x = self.preconditioner.inverse_transform(z)[0]
+            x_train_list.append(x)
+
+            target_samples.add(x)
             if return_latent_samples:
                 latent_samples.add(z)
 
@@ -212,15 +209,10 @@ class PreconditionedMCMCSampler(MCMCSampler):
          from the target distribution, the second holds latent samples. The specified data_transform callable is still 
          applied to samples in each object.
         """
-        if data_transform is None:
-            def data_transform(v): return v
-
         target_samples = Samples(
             event_shape=self.kernel.event_shape,
             max_samples=max_samples,
-            data_transform=lambda z: data_transform(
-                self.preconditioner.inverse_transform(z)[0]
-            )
+            data_transform=data_transform
         )
 
         latent_samples = Samples(
@@ -236,7 +228,9 @@ class PreconditionedMCMCSampler(MCMCSampler):
                                desc=f'Sampling',
                                disable=not show_progress)):
             z = self.kernel.step(z)
-            target_samples.add(z)
+            x = self.preconditioner.inverse_transform(z)[0]
+
+            target_samples.add(x)
             if return_latent_samples:
                 latent_samples.add(z)
 
