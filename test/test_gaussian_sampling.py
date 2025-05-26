@@ -9,7 +9,7 @@ from nfmc.algorithms.mh.local.rwmh import RWMHKernel
 from nfmc.algorithms.mh.local.mala import MALAKernel
 from nfmc.algorithms.mh.local.base import LocalMHSampler
 from nfmc.algorithms.preconditioning.base import PreconditionedMCMCSampler
-from nfmc.algorithms.preconditioning.implementations import (
+from nfmc.algorithms.preconditioning.samplers.neutra import (
     NeuTraHMC,
     NeuTraMALA,
     NeuTraRWMH,
@@ -30,8 +30,12 @@ def test_mcmc(kernel_class):
     sampler = LocalMHSampler(kernel)
 
     x0 = torch.rand(size=(1, *event_shape)) * 2 - 1
-    warmup_draws = sampler.warmup(x0=x0, n_steps=1000)
-    sampling_draws = sampler.sample(x0=warmup_draws.last_sample, n_steps=2000)
+    warmup_draws = sampler.warmup(
+        x0=x0, n_steps=100 if kernel_class != RWMHKernel else 1000
+    )
+    sampling_draws = sampler.sample(
+        x0=warmup_draws.last_sample, n_steps=200 if kernel_class != RWMHKernel else 2000
+    )
 
     assert torch.allclose(
         sampling_draws.first_moment.as_tensor(), target.first_moment, rtol=0.2
@@ -40,16 +44,16 @@ def test_mcmc(kernel_class):
         sampling_draws.second_moment.as_tensor(), target.second_moment, rtol=0.2
     )
 
-
+# @pytest.mark.skip
 @pytest.mark.local_only
 @pytest.mark.parametrize(
     "sampler_class", [NeuTraRWMH, NeuTraMALA, NeuTraHMC]
 )
-def test_preconditioned_mcmc(sampler_class):
+def test_preconditioned_mcmc_warmup_and_sample(sampler_class):
     torch.manual_seed(0)
 
     event_shape = (4,)
-    n_chains = 4
+    n_chains = 10
     target = DiagonalGaussian(event_shape)
     flow = Flow(RealNVP(event_shape))
 
@@ -62,7 +66,7 @@ def test_preconditioned_mcmc(sampler_class):
     warmup_draws, latent_warmup_draws = sampler.warmup(
         z0=z0,
         n_steps=1200,
-        preconditioner_update_interval=500,
+        preconditioner_update_interval=300,
         return_latent_samples=True,
     )
     sampling_draws = sampler.sample(

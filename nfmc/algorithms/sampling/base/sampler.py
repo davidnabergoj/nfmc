@@ -25,8 +25,8 @@ class MCMCSampler:
         Returns a string that represents this object in sampling/warmup progress bars.
         """
         data = [
-            f'{self.calls_per_second(elapsed_time_seconds)} c/s',
-            f'{self.grads_per_second(elapsed_time_seconds)} g/s',
+            f'{self.calls_per_second(elapsed_time_seconds):.3f} c/s',
+            f'{self.grads_per_second(elapsed_time_seconds):.3f} g/s',
         ]
         return f"{self.kernel.name}, {', '.join(data)}"
 

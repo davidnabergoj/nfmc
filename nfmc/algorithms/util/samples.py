@@ -31,7 +31,7 @@ class Samples:
         self.max_samples = max_samples
 
         if data_transform is None:
-            data_transform = lambda v: v
+            def data_transform(v): return v
         self.data_transform = data_transform
 
         self.first_moment = MCExpectation(event_shape)
@@ -52,11 +52,12 @@ class Samples:
     def n_samples(self):
         return len(self._running_samples)
 
-    def add(self, x: torch.Tensor):
+    def add(self, x: torch.Tensor) -> torch.Tensor:
         """
         Store sample x.
 
         :param torch.Tensor x: tensor with shape `(n_chains, *event_shape)` or `(k, n_chains, *event_shape)`
+        :return: transformed tensor after applying self.data_transform. This tensor has the same shape as the input.
         """
         if len(x) == 0:
             return
@@ -98,6 +99,7 @@ class Samples:
                         low=0, high=self.n_samples, size=()).detach())
                     if _idx < self.max_samples:
                         self._running_samples[_idx] = x[i]
+        return x
 
     def as_tensor(self) -> torch.Tensor:
         """

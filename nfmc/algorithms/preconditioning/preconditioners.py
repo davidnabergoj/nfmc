@@ -8,7 +8,9 @@ from torchflows.flows import Flow
 
 class DiagonalLinearPreconditioner(Preconditioner):
     """
-    Applies diagonal linear preconditioning via `x = diag(v) @ z` where v is a vector with positive scalars.
+    Applies diagonal linear preconditioning via `x = diag(v) @ z + loc`, where:
+    - v is a vector with positive scalars,
+    - loc is a real-valued location vector.
 
     When fitting, v becomes the training data standard deviation plus a small constant.
     """
@@ -16,23 +18,27 @@ class DiagonalLinearPreconditioner(Preconditioner):
     def __init__(self,
                  event_shape: Union[torch.Size, Tuple[int, ...]]):
         super().__init__(event_shape=event_shape)
+        self.loc = torch.zeros(size=self.event_shape)
         self.v = torch.ones(size=self.event_shape)
 
     def inverse_transform(self, z: torch.Tensor):
         batch_shape = z.shape[:-len(self.event_shape)]
         fv = torch.log(self.v).sum()
         log_det = torch.full(size=batch_shape, fill_value=fv).to(z)
-        return diag_mult(z, 1 / self.v, self.event_shape), log_det
+        return diag_mult(z, self.v, self.event_shape) + self.loc, log_det
 
-    def fit(self, z: torch.Tensor, **kwargs):
-        n_batch_dims = len(z.shape) - len(self.event_shape)
+    def fit(self, x: torch.Tensor, **kwargs):
+        n_batch_dims = len(x.shape) - len(self.event_shape)
         batch_dims = list(range(n_batch_dims))
-        self.v = torch.std(z, dim=batch_dims) + 1e-8
+        self.v = torch.std(x, dim=batch_dims) + 1e-8
+        self.loc = torch.mean(x, dim=batch_dims)
 
 
 class DenseLinearPreconditioner(Preconditioner):
     """
-    Applies dense linear preconditioning via `x = L @ z` where L is an upper-triangular positive definite matrix.
+    Applies dense linear preconditioning via `x = L @ z + loc`, where:
+    - L is an upper-triangular positive definite matrix,
+    - loc is a real-valued location vector.
 
     When fitting, L @ L.T = M, where M is the training data covariance plus a scaled identity matrix.
     In other words, M = Cov(z) + epsilon * I.
@@ -41,6 +47,7 @@ class DenseLinearPreconditioner(Preconditioner):
     def __init__(self,
                  event_shape: Union[torch.Size, Tuple[int, ...]]):
         super().__init__(event_shape=event_shape)
+        self.loc = torch.zeros(size=self.event_shape)
         self.tril_mat = torch.eye(self.event_size)  # (event_size, event_size)
 
     @property
@@ -50,21 +57,25 @@ class DenseLinearPreconditioner(Preconditioner):
     def inverse_transform(self, z: torch.Tensor):
         batch_shape = z.shape[:-len(self.event_shape)]
         z_flat = flatten_event(z, self.event_shape)
-        fv = -torch.log(torch.diag(self.tril_mat)).sum()
+        x_flat = z_flat @ self.tril_mat.T  # L is lower-triangular
+        x = x_flat.view_as(z) + self.loc
+        fv = torch.log(torch.diag(self.tril_mat)).sum()
         log_det = torch.full(size=batch_shape, fill_value=fv).to(z)
-        x_flat = torch.linalg.solve_triangular(
-            self.tril_mat, z_flat.T, upper=False).T
-        x = x_flat.view_as(z)
         return x, log_det
 
-    def fit(self, z: torch.Tensor, **kwargs):
+
+    def fit(self, x: torch.Tensor, **kwargs):
         """
-        :param torch.Tensor z: training data tensor with shape `(*batch_shape, *event_shape)`.
+        :param torch.Tensor x: target space training data tensor with shape `(*batch_shape, *event_shape)`.
         """
-        z_flat = flatten_event(z, self.event_shape)
-        cov = torch.cov(z_flat.T)  # (event_size, event_size)
+        n_batch_dims = len(x.shape) - len(self.event_shape)
+        batch_dims = list(range(n_batch_dims))
+        x_flat = flatten_event(x, self.event_shape)
+        cov = torch.cov(x_flat.T)  # (event_size, event_size)
         self.tril_mat = torch.linalg.cholesky(
-            cov + 1e-8 * torch.eye(self.event_size))
+            cov + 1e-8 * torch.eye(self.event_size)
+        )
+        self.loc = torch.mean(x, dim=batch_dims)
 
 
 class NormalizingFlowPreconditioner(Preconditioner):
@@ -77,9 +88,9 @@ class NormalizingFlowPreconditioner(Preconditioner):
         x, log_det = self.flow.bijection.inverse(z)
         return x, log_det
 
-    def fit(self, z: torch.Tensor, **kwargs):
+    def fit(self, x: torch.Tensor, **kwargs):
         """
         Does not use a train/validation split.
         """
-        z_flat = z.view(-1, *self.event_shape)
-        self.flow.fit(z_flat, **kwargs)
+        x_flat = x.view(-1, *self.event_shape)
+        self.flow.fit(x_flat, **kwargs)

@@ -1,7 +1,7 @@
 import pytest
 import torch
 
-from nfmc.algorithms.preconditioning.implementations import NeuTraRWMH, NeuTraMALA, NeuTraHMC
+from nfmc.algorithms.preconditioning.samplers.neutra import NeuTraRWMH, NeuTraMALA, NeuTraHMC
 from nfmc.algorithms.preconditioning.base import PreconditionedMCMCSampler
 from nfmc.algorithms.util.samples import Samples
 from nfmc.util import create_flow_object

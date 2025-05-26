@@ -30,11 +30,12 @@ class Preconditioner(nn.Module):
         """
         raise NotImplementedError
 
-    def fit(self, z: torch.Tensor, **kwargs):
+    def fit(self, x: torch.Tensor, **kwargs):
         """
         Update parameters of this preconditioner.
 
-        :param torch.Tensor z: tensor of samples with shape `(*batch_shape, *event_shape)`.
+        :param torch.Tensor x: tensor of samples with shape `(*batch_shape, *event_shape)`. Note: these should
+         be samples from the target space, not the latent space.
         :param kwargs:
         """
         raise NotImplementedError
@@ -88,13 +89,15 @@ class PreconditionedMCMCSampler(MCMCSampler):
                               train_data_list: List[torch.Tensor],
                               max_training_samples: int):
         # Flatten training data elements
-        train_data_list = [z.view(-1, *self.kernel.event_shape)
-                           for z in train_data_list]
-        z_train = torch.concat(train_data_list, dim=0)
-        z_train = z_train[torch.randperm(len(z_train))]
+        train_data_list = [
+            x.view(-1, *self.kernel.event_shape)
+            for x in train_data_list
+        ]
+        x_train = torch.concat(train_data_list, dim=0)
+        x_train = x_train[torch.randperm(len(x_train))]
         if max_training_samples is not None:
-            z_train = z_train[:max_training_samples]
-        return z_train
+            x_train = x_train[:max_training_samples]
+        return x_train
 
     def warmup(self,
                z0: torch.Tensor,
@@ -139,6 +142,7 @@ class PreconditionedMCMCSampler(MCMCSampler):
                 self.preconditioner.inverse_transform(z)[0]
             )
         )
+
         latent_samples = Samples(
             event_shape=self.kernel.event_shape,
             max_samples=max_samples,
@@ -148,7 +152,7 @@ class PreconditionedMCMCSampler(MCMCSampler):
         z = deepcopy(z0.detach())
 
         # Holds data for preconditioner training/fitting
-        z_train_list = []
+        x_train_list = []
 
         t0 = time.time()
         for step in (pbar := tqdm(range(n_steps),
@@ -157,18 +161,22 @@ class PreconditionedMCMCSampler(MCMCSampler):
 
             if step % preconditioner_update_interval == 0 and 0 < step < n_steps - preconditioner_update_interval:
                 # Update the preconditioner first so drawn sample can contribute toward next preconditioner fit.
-                z_train = self.prepare_training_data(
-                    z_train_list,
-                    max_training_samples
-                )
-                self.preconditioner.fit(z=z_train, **kwargs)
-                z_train_list = []
+                with torch.no_grad():
+                    x_train = self.prepare_training_data(
+                        x_train_list,
+                        max_training_samples
+                    )
+                self.preconditioner.fit(x=x_train, **kwargs)
+                x_train_list = []
+
+                # Reset state
+                z = torch.rand_like(z) * 2 - 1
 
             z = self.kernel.step(z, update=True)
             target_samples.add(z)
+            x_train_list.append(self.preconditioner.inverse_transform(z)[0])
             if return_latent_samples:
                 latent_samples.add(z)
-            z_train_list.append(z)
 
             elapsed_time = time.time() - t0
             pbar.set_postfix_str(self.pbar_repr(elapsed_time))
@@ -210,8 +218,11 @@ class PreconditionedMCMCSampler(MCMCSampler):
         target_samples = Samples(
             event_shape=self.kernel.event_shape,
             max_samples=max_samples,
-            data_transform=data_transform
+            data_transform=lambda z: data_transform(
+                self.preconditioner.inverse_transform(z)[0]
+            )
         )
+
         latent_samples = Samples(
             event_shape=self.kernel.event_shape,
             max_samples=max_samples,
