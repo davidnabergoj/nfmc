@@ -21,24 +21,37 @@ from torchflows.flows import Flow
 
 @pytest.mark.local_only
 @pytest.mark.parametrize('event_shape', [(2,)])
-@pytest.mark.parametrize('sampler_class', [NeuTraRWMH, NeuTraMALA, NeuTraHMC])
+@pytest.mark.parametrize('sampler_class', [
+    DiagonalRWMH,
+    DiagonalMALA,
+    DiagonalHMC,
+    DenseRWMH,
+    DenseMALA,
+    DenseHMC,
+    NeuTraRWMH,
+    NeuTraMALA,
+    NeuTraHMC,
+])
 @pytest.mark.parametrize('n_chains', [4])
 @pytest.mark.parametrize('n_steps', [4, 5, 6])
-def test_warmup(event_shape,
-                sampler_class,
-                n_chains,
-                n_steps):
+def test_output_shape_warmup(event_shape,
+                             sampler_class,
+                             n_chains,
+                             n_steps):
     torch.manual_seed(0)
     original_neg_log_prob_target = StandardGaussian(event_shape).neg_log_prob
 
-    flow = create_flow_object('realnvp', event_shape)
-    sampler = sampler_class(
-        flow=flow,
-        neg_log_prob_target=original_neg_log_prob_target,
-    )
-    assert sampler.kernel._preconditioner is not None
-    assert sampler.kernel._preconditioner.inverse_transform is not None
-    assert sampler.kernel.neg_log_prob_target is not original_neg_log_prob_target
+    if sampler_class in [NeuTraHMC, NeuTraRWMH, NeuTraMALA]:
+        flow = create_flow_object('realnvp', event_shape)
+        sampler = sampler_class(
+            flow=flow,
+            neg_log_prob_target=original_neg_log_prob_target,
+        )
+    else:
+        sampler = sampler_class(
+            event_shape,
+            original_neg_log_prob_target
+        )
 
     z_initial = torch.randn(size=(n_chains, *event_shape))
     samples = sampler.warmup(
@@ -70,10 +83,10 @@ def test_warmup(event_shape,
 ])
 @pytest.mark.parametrize('n_chains', [1, 4])
 @pytest.mark.parametrize('n_steps', [1, 4])
-def test_sample_shape(event_shape,
-                      sampler_class,
-                      n_chains,
-                      n_steps):
+def test_output_shape_sample(event_shape,
+                             sampler_class,
+                             n_chains,
+                             n_steps):
     torch.manual_seed(0)
     original_neg_log_prob_target = StandardGaussian(event_shape).neg_log_prob
 
@@ -105,6 +118,7 @@ def test_sample_shape(event_shape,
     assert samples.as_tensor().shape == (n_steps, n_chains, *event_shape)
     assert samples.as_tensor().dtype == z_initial.dtype
 
+
 @pytest.mark.local_only
 @pytest.mark.parametrize(
     "sampler_class", [
@@ -119,7 +133,7 @@ def test_sample_shape(event_shape,
         DenseHMC,
     ]
 )
-def test_local_mh_warmup_and_sample(sampler_class):
+def test_moments_warmup_and_sample_local_mh(sampler_class):
     torch.manual_seed(0)
 
     event_shape = (2,)
@@ -174,7 +188,7 @@ def test_local_mh_warmup_and_sample(sampler_class):
 
 @pytest.mark.local_only
 @pytest.mark.parametrize('preconditioner', ['diag', 'dense', 'nf'])
-def test_imh(preconditioner):
+def test_moments_warmup_and_sample_imh(preconditioner):
     torch.manual_seed(0)
 
     event_shape = (4,)
@@ -227,7 +241,7 @@ def test_imh(preconditioner):
 
 @pytest.mark.local_only
 @pytest.mark.parametrize('preconditioner', ['diag', 'dense', 'nf'])
-def test_isir(preconditioner):
+def test_moments_warmup_and_sample_isir(preconditioner):
     torch.manual_seed(0)
 
     event_shape = (4,)
@@ -291,7 +305,7 @@ def test_isir(preconditioner):
         'i-sir'
     ]
 )
-def test_jump_mcmc_warmup_and_sample(sampler_class, global_kernel):
+def test_moments_warmup_and_sample_jump_mcmc(sampler_class, global_kernel):
     torch.manual_seed(0)
 
     event_shape = (4,)
