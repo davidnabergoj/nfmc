@@ -39,6 +39,12 @@ class MarkovKernel:
             preconditioner = IdentityPreconditioner(event_shape)
         self._preconditioner = preconditioner
 
+    def reset_parameters(self):
+        """
+        Resets the parameters of this kernel to their default values.
+        """
+        raise NotImplementedError
+
     def neg_log_prob_target(self, z: torch.Tensor):
         """
         Returns the negative log probability density of the preconditioner-adjusted target distribution.
@@ -188,6 +194,10 @@ class CompositionKernel(MarkovKernel):
         self.schedule_index = 0
         self.mode = mode
 
+    def reset_parameters(self):
+        for k in self.kernels:
+            k.reset_parameters()
+
     def set_target(self, new_neg_log_prob_target: callable):
         for k in self.kernels:
             k.neg_log_prob_target = new_neg_log_prob_target
@@ -306,6 +316,10 @@ class MixingKernel(MarkovKernel):
                 dtype=torch.float
             )
         )
+
+    def reset_parameters(self):
+        for k in self.kernels:
+            k.reset_parameters()
 
     def set_target(self, new_neg_log_prob_target: callable):
         for k in self.kernels:

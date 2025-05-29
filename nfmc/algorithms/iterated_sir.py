@@ -17,7 +17,7 @@ class IteratedSIRKernel(MarkovKernel):
                  neg_log_prob_target,
                  proposal_log_prob: callable = None,
                  proposal_sample_with_log_prob: callable = None,
-                 pool_size: int = 20, 
+                 pool_size: int = 20,
                  **kwargs):
         """
         IteratedSIRKernel constructor.
@@ -64,6 +64,9 @@ class IteratedSIRKernel(MarkovKernel):
         self.proposal_sample_with_log_prob = proposal_sample_with_log_prob
 
         self.pool_size = pool_size
+
+    def reset_parameters(self):
+        pass  # Nothing to reset
 
     @property
     def name(self):

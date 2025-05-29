@@ -57,6 +57,9 @@ class IMHKernel(MHKernel):
         self.proposal_log_prob = proposal_log_prob
         self.proposal_sample_with_log_prob = proposal_sample_with_log_prob
 
+    def reset_parameters(self):
+        pass  # Nothing to reset
+
     @property
     def name(self):
         return 'IMH'
@@ -99,5 +102,5 @@ class IMHKernel(MHKernel):
         self.increment_n_attempted_transitions(n_chains=x.shape[0])
         self.increment_n_accepted_transitions(
             int(acceptance_mask.long().sum()))
-        
+
         return x_new

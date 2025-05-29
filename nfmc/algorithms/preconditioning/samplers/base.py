@@ -103,8 +103,9 @@ class PreconditionedMCMCSampler(MCMCSampler):
                 self.kernel.fit_preconditioner(x_train, **kwargs)
                 x_train_list = []
 
-                # Reset state
+                # Reset state and kernel
                 z = torch.rand_like(z) * 2 - 1
+                self.kernel.reset_parameters()
 
             z, x = self.kernel.step_with_preconditioner_inverse(z, update=True)
             x_train_list.append(x)

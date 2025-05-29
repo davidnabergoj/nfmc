@@ -1,3 +1,4 @@
+import math
 from typing import Union, Tuple
 import torch
 from nfmc.algorithms.mh.base import MHKernel
@@ -33,11 +34,31 @@ class LocalMHKernel(MHKernel):
         """
         super().__init__(event_shape, neg_log_prob_target, **kwargs)
 
-        self.step_size = step_size
+        # Store initial step size
+        self._initial_step_size = step_size
+        self._initial_dual_averaging_kwargs = dual_averaging_kwargs
+
+        self.step_size = self._initial_step_size
         self._dual_averaging: DualAveraging = DualAveraging(
             self.step_size, **(dual_averaging_kwargs or {})
         )
         self._target_acceptance_rate: float = target_acceptance_rate
+
+    def reset_parameters(self):
+        self.step_size = self._initial_step_size
+        self._dual_averaging: DualAveraging = DualAveraging(
+            self.step_size, **(self._initial_dual_averaging_kwargs or {})
+        )
+
+    def pbar_repr(self, elapsed_time_seconds: float):
+        data = [
+            self.name,
+            f'log step: {math.log(self.step_size):.3f} [eps: {self._dual_averaging.error_sum:.2f}]',
+            f'{self.calls_per_second(elapsed_time_seconds):.3f} c/s',
+            f'{self.grads_per_second(elapsed_time_seconds):.3f} g/s',
+            f'{self.acceptance_rate:.3f} acc',
+        ]
+        return ', '.join(data)
 
     def step(self,
              x: torch.Tensor,
@@ -67,4 +88,3 @@ class LocalMHKernel(MHKernel):
         error = self._target_acceptance_rate - acc_rate
         self._dual_averaging.step(error)
         self.step_size = self._dual_averaging.value
-
