@@ -77,10 +77,6 @@ class MHSampler(MCMCSampler):
         self.kernel = kernel
 
     @property
-    def acceptance_rate(self):
-        return self.kernel.acceptance_rate
-
-    @property
     def name(self) -> str:
         return "Metropolis-Hastings sampler"
 
@@ -142,7 +138,7 @@ class MHSampler(MCMCSampler):
             samples.add(x)
 
             elapsed_time = time.time() - t0
-            pbar.set_postfix_str(self.pbar_repr(elapsed_time))
+            pbar.set_postfix_str(self.kernel.pbar_repr(elapsed_time))
             if time_limit_seconds is not None and elapsed_time > time_limit_seconds:
                 break
 

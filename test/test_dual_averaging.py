@@ -55,7 +55,7 @@ def test_reach_target_acceptance_rate(kernel_class):
         n_steps=1000,
     )
 
-    assert math.isclose(sampler.acceptance_rate, target_acc_rate, rel_tol=0.05)
+    assert math.isclose(sampler.kernel.acceptance_rate, target_acc_rate, rel_tol=0.05)
 
 @pytest.mark.parametrize('kernel_class', [MALAKernel, RWMHKernel])
 def test_persist_step_size(kernel_class):

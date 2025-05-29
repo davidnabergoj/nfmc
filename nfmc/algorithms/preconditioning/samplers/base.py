@@ -114,7 +114,7 @@ class PreconditionedMCMCSampler(MCMCSampler):
                 latent_samples.add(z)
 
             elapsed_time = time.time() - t0
-            pbar.set_postfix_str(self.pbar_repr(elapsed_time))
+            pbar.set_postfix_str(self.kernel.pbar_repr(elapsed_time))
             if time_limit_seconds is not None and elapsed_time > time_limit_seconds:
                 break
 
@@ -172,7 +172,7 @@ class PreconditionedMCMCSampler(MCMCSampler):
                 latent_samples.add(z)
 
             elapsed_time = time.time() - t0
-            pbar.set_postfix_str(self.pbar_repr(elapsed_time))
+            pbar.set_postfix_str(self.kernel.pbar_repr(elapsed_time))
             if time_limit_seconds is not None and elapsed_time > time_limit_seconds:
                 break
 
