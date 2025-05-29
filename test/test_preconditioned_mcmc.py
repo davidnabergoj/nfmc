@@ -60,10 +60,10 @@ def test_warmup(event_shape,
 @pytest.mark.parametrize('sampler_class', [NeuTraRWMH, NeuTraMALA, NeuTraHMC])
 @pytest.mark.parametrize('n_chains', [1, 4])
 @pytest.mark.parametrize('n_steps', [1, 4])
-def test_sample(event_shape,
-                sampler_class,
-                n_chains,
-                n_steps):
+def test_sample_linear_2(event_shape,
+                         sampler_class,
+                         n_chains,
+                         n_steps):
     torch.manual_seed(0)
     original_neg_log_prob_target = StandardGaussian(event_shape).neg_log_prob
 
@@ -98,7 +98,7 @@ def test_sample(event_shape,
     DiagonalLinearPreconditioner,
     DenseLinearPreconditioner,
 ])
-def test_sample_2(event_shape, kernel_class, n_chains, n_steps, preconditioner_class):
+def test_sample_linear(event_shape, kernel_class, n_chains, n_steps, preconditioner_class):
     torch.manual_seed(0)
 
     kernel = kernel_class(
@@ -125,7 +125,7 @@ def test_sample_2(event_shape, kernel_class, n_chains, n_steps, preconditioner_c
 @pytest.mark.parametrize('kernel_class', [RWMHKernel, HMCKernel, MALAKernel, IMHKernel])
 @pytest.mark.parametrize('n_chains', [1, 2, 4])
 @pytest.mark.parametrize('n_steps', [1, 2, 4])
-def test_sample_3(event_shape, kernel_class, n_chains, n_steps):
+def test_sample_nf(event_shape, kernel_class, n_chains, n_steps):
     torch.manual_seed(0)
 
     flow = create_flow_object('realnvp', event_shape)
@@ -153,6 +153,9 @@ def test_sample_3(event_shape, kernel_class, n_chains, n_steps):
 @pytest.mark.local_only
 @pytest.mark.parametrize(
     "sampler_class", [
+        NeuTraRWMH,
+        NeuTraMALA,
+        NeuTraHMC,
         DiagonalRWMH,
         DiagonalMALA,
         DiagonalHMC,
@@ -161,63 +164,24 @@ def test_sample_3(event_shape, kernel_class, n_chains, n_steps):
         DenseHMC,
     ]
 )
-def test_warmup_and_sample(sampler_class):
-    torch.manual_seed(0)
-
-    event_shape = (4,)
-    n_chains = 10
-    target = DiagonalGaussian(event_shape)
-
-    sampler = sampler_class(
-        event_shape=event_shape,
-        neg_log_prob_target=target.neg_log_prob
-    )
-
-    z0 = torch.rand(size=(n_chains, *event_shape)) * 2 - 1
-    warmup_draws, latent_warmup_draws = sampler.warmup(
-        z0=z0,
-        n_steps=200,
-        preconditioner_update_interval=50,
-        return_latent_samples=True,
-    )
-    sampling_draws, latent_sampling_draws = sampler.sample(
-        z0=latent_warmup_draws.last_sample,
-        n_steps=200,
-        return_latent_samples=True
-    )
-
-    assert torch.allclose(
-        sampling_draws.first_moment.as_tensor(),
-        target.first_moment,
-        rtol=0.2
-    )
-    assert torch.allclose(
-        sampling_draws.second_moment.as_tensor(),
-        target.second_moment,
-        rtol=0.2
-    )
-
-
-@pytest.mark.local_only
-@pytest.mark.parametrize(
-    "sampler_class", [
-        NeuTraRWMH,
-        NeuTraMALA,
-        NeuTraHMC,
-    ]
-)
-def test_warmup_and_sample_2(sampler_class):
+def test_local_mh_warmup_and_sample(sampler_class):
     torch.manual_seed(0)
 
     event_shape = (2,)
     n_chains = 50
     target = DiagonalGaussian(event_shape, mu=1.5, std=0.5)
-    flow = Flow(RealNVP(event_shape, n_layers=1))
 
-    sampler = sampler_class(
-        flow=flow,
-        neg_log_prob_target=target.neg_log_prob
-    )
+    if sampler_class in [NeuTraHMC, NeuTraMALA, NeuTraRWMH]:
+        flow = Flow(RealNVP(event_shape, n_layers=1))
+        sampler = sampler_class(
+            flow=flow,
+            neg_log_prob_target=target.neg_log_prob
+        )
+    else:
+        sampler = sampler_class(
+            event_shape=event_shape,
+            neg_log_prob_target=target.neg_log_prob
+        )
 
     z0 = torch.rand(size=(n_chains, *event_shape)) * 2 - 1
     _, latent_warmup_draws = sampler.warmup(
@@ -231,13 +195,16 @@ def test_warmup_and_sample_2(sampler_class):
         n_steps=400,
     )
 
-    flow_samples = flow.sample((10000,)).detach()
-    flow_first_moment = flow_samples.mean(0)
-    flow_second_moment = flow_samples.square().mean(0)
+    if sampler_class in [NeuTraHMC, NeuTraMALA, NeuTraRWMH]:
+        # Check flow validity for NF preconditioning
+        flow_samples = flow.sample((10000,)).detach()
+        flow_first_moment = flow_samples.mean(0)
+        flow_second_moment = flow_samples.square().mean(0)
+        assert torch.allclose(target.first_moment, flow_first_moment, rtol=0.2)
+        assert torch.allclose(target.second_moment,
+                              flow_second_moment, rtol=0.2)
 
-    assert torch.allclose(target.first_moment, flow_first_moment, rtol=0.2)
-    assert torch.allclose(target.second_moment, flow_second_moment, rtol=0.2)
-
+    # Check MCMC sample validity
     assert torch.allclose(
         sampling_draws.first_moment.as_tensor(),
         target.first_moment,
@@ -369,7 +336,7 @@ def test_isir(preconditioner):
         'i-sir'
     ]
 )
-def test_jump(sampler_class, global_kernel):
+def test_jump_mcmc_warmup_and_sample(sampler_class, global_kernel):
     torch.manual_seed(0)
 
     event_shape = (4,)
