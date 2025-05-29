@@ -7,111 +7,265 @@ from nfmc.algorithms.mh.imh import IMHKernel
 from nfmc.algorithms.mh.local.hmc import HMCKernel
 from nfmc.algorithms.mh.local.mala import MALAKernel
 from nfmc.algorithms.mh.local.rwmh import RWMHKernel
-from nfmc.algorithms.preconditioning.preconditioners import NormalizingFlowPreconditioner
-from torchflows.flows import Flow
+from nfmc.algorithms.preconditioning.preconditioners import DenseLinearPreconditioner, DiagonalLinearPreconditioner, NormalizingFlowPreconditioner
+from torchflows import Flow
 
 
 def _create_latent_global_kernel(name: str,
                                  event_shape: Union[Tuple[int, ...], torch.Size],
-                                 neg_log_prob_target: callable):
+                                 neg_log_prob_target: callable,
+                                 **kwargs):
     if name == 'imh':
-        return IMHKernel(event_shape, neg_log_prob_target)
+        return IMHKernel(event_shape, neg_log_prob_target, **kwargs)
     elif name == 'i-sir':
-        return IteratedSIRKernel(event_shape, neg_log_prob_target)
+        return IteratedSIRKernel(event_shape, neg_log_prob_target, **kwargs)
     else:
         raise ValueError(
             f"Unrecognized global kernel specifier string: {name}"
         )
 
 
-class JumpRWMHKernel(JumpMarkovKernel):
+def _create_local_kernel(name: str,
+                         event_shape: Union[Tuple[int, ...], torch.Size],
+                         neg_log_prob_target: callable,
+                         _prec: Union[str, NormalizingFlowPreconditioner],
+                         **kwargs):
+    if _prec == 'diagonal':
+        preconditioner = DiagonalLinearPreconditioner(event_shape)
+    elif _prec == 'dense':
+        preconditioner = DenseLinearPreconditioner(event_shape)
+    elif isinstance(_prec, NormalizingFlowPreconditioner):
+        preconditioner = _prec
+    else:
+        raise ValueError("Preconditioner specifier not recognized")
+
+    if name == 'rwmh':
+        return RWMHKernel(event_shape, neg_log_prob_target, preconditioner=preconditioner, **kwargs)
+    elif name == 'mala':
+        return MALAKernel(event_shape, neg_log_prob_target, preconditioner=preconditioner, **kwargs)
+    elif name == 'hmc':
+        return HMCKernel(event_shape, neg_log_prob_target, preconditioner=preconditioner, **kwargs)
+    else:
+        raise ValueError(
+            f"Unrecognized local kernel specifier string: {name}"
+        )
+
+
+def _create_kernels(neg_log_prob_target: callable,
+                    global_kernel: str,
+                    flow: Flow,
+                    local_kernel: str,
+                    local_preconditioner: str,
+                    global_kwargs: dict = None,
+                    local_kwargs: dict = None):
+    global_prec = NormalizingFlowPreconditioner(flow)
+    if local_preconditioner == 'nf':
+        local_preconditioner = global_prec
+
+    global_kernel = _create_latent_global_kernel(
+        global_kernel,
+        flow.event_shape,
+        neg_log_prob_target,
+        preconditioner=global_prec,
+        **(global_kwargs or {})
+    )
+    local_kernel = _create_local_kernel(
+        local_kernel,
+        flow.event_shape,
+        neg_log_prob_target,
+        _prec=local_preconditioner,
+        **(local_kwargs or {})
+    )
+    return local_kernel, global_kernel
+
+
+class NeuTraJumpRWMHKernel(JumpMarkovKernel):
     """
     Normalizing flow-preconditioned composition of a local RWMH kernel with a global jump kernel.
     """
 
     def __init__(self,
-                 event_shape: Union[Tuple[int, ...], torch.Size],
+                 flow: Flow,
                  neg_log_prob_target: callable,
                  global_kernel: str = 'imh',
                  **kwargs):
         """
         JumpRWMHKernel constructor.
 
-        :param Union[Tuple[int, ...], torch.Size] event_shape: shape of the event tensor.
+        :param Flow flow: normalizing flow for local and global preconditioning.
         :param neg_log_prob_target: negative log probability density callable.
         :param str global_kernel: type of global kernel. One of ['imh', 'i-sir'].
+        :param kwargs: keyword arguments for both the local and global kernels.
         """
-        latent_global_kernel = _create_latent_global_kernel(
-            global_kernel,
-            event_shape,
-            neg_log_prob_target
-        )
-
-        latent_local_kernel = RWMHKernel(event_shape, neg_log_prob_target)
         super().__init__(
-            latent_local_kernel,
-            latent_global_kernel,
+            *_create_kernels(
+                neg_log_prob_target=neg_log_prob_target,
+                global_kernel=global_kernel,
+                flow=flow,
+                local_kernel='rwmh',
+                local_preconditioner='nf',
+                global_kwargs=kwargs,
+                local_kwargs=kwargs
+            ),
             **kwargs
         )
 
 
-class JumpMALAKernel(JumpMarkovKernel):
+class NeuTraJumpMALAKernel(JumpMarkovKernel):
     """
     Normalizing flow-preconditioned composition of a local MALA kernel with a global jump kernel.
     """
 
     def __init__(self,
-                 event_shape: Union[Tuple[int, ...], torch.Size],
+                 flow: Flow,
                  neg_log_prob_target: callable,
                  global_kernel: str = 'imh',
                  **kwargs):
         """
         JumpMALAKernel constructor.
 
-        :param Union[Tuple[int, ...], torch.Size] event_shape: shape of the event tensor.
+        :param Flow flow: normalizing flow for local and global preconditioning.
         :param neg_log_prob_target: negative log probability density callable.
         :param str global_kernel: type of global kernel. One of ['imh', 'i-sir'].
+        :param kwargs: keyword arguments for both the local and global kernels.
         """
-        latent_global_kernel = _create_latent_global_kernel(
-            global_kernel,
-            event_shape,
-            neg_log_prob_target
-        )
-
-        latent_local_kernel = MALAKernel(event_shape, neg_log_prob_target)
         super().__init__(
-            latent_local_kernel,
-            latent_global_kernel,
+            *_create_kernels(
+                neg_log_prob_target=neg_log_prob_target,
+                global_kernel=global_kernel,
+                flow=flow,
+                local_kernel='mala',
+                local_preconditioner='nf',
+                global_kwargs=kwargs,
+                local_kwargs=kwargs
+            ),
             **kwargs
         )
 
 
-class JumpHMCKernel(JumpMarkovKernel):
+class NeuTraJumpHMCKernel(JumpMarkovKernel):
     """
     Normalizing flow-preconditioned composition of a local HMC kernel with a global jump kernel.
     """
 
     def __init__(self,
-                 event_shape: Union[Tuple[int, ...], torch.Size],
+                 flow: Flow,
                  neg_log_prob_target: callable,
                  global_kernel: str = 'imh',
                  **kwargs):
         """
         JumpHMCKernel constructor.
 
-        :param Union[Tuple[int, ...], torch.Size] event_shape: shape of the event tensor.
+        :param Flow flow: normalizing flow for local and global preconditioning.
         :param neg_log_prob_target: negative log probability density callable.
         :param str global_kernel: type of global kernel. One of ['imh', 'i-sir'].
+        :param kwargs: keyword arguments for both the local and global kernels.
         """
-        latent_global_kernel = _create_latent_global_kernel(
-            global_kernel,
-            event_shape,
-            neg_log_prob_target
+        super().__init__(
+            *_create_kernels(
+                neg_log_prob_target=neg_log_prob_target,
+                global_kernel=global_kernel,
+                flow=flow,
+                local_kernel='hmc',
+                local_preconditioner='nf',
+                global_kwargs=kwargs,
+                local_kwargs=kwargs
+            ),
+            **kwargs
         )
 
-        latent_local_kernel = HMCKernel(event_shape, neg_log_prob_target)
+
+class DiagonalJumpRWMHKernel(JumpMarkovKernel):
+    """
+    Composition of a diagonally-preconditioned local RWMH kernel and a normalizing flow-preconditioned jump kernel.
+    """
+
+    def __init__(self,
+                 flow: Flow,
+                 neg_log_prob_target: callable,
+                 global_kernel: str = 'imh',
+                 **kwargs):
+        """
+        JumpRWMHKernel constructor.
+
+        :param Flow flow: normalizing flow for global preconditioning.
+        :param neg_log_prob_target: negative log probability density callable.
+        :param str global_kernel: type of global kernel. One of ['imh', 'i-sir'].
+        :param kwargs: keyword arguments for both the local and global kernels.
+        """
         super().__init__(
-            latent_local_kernel,
-            latent_global_kernel,
+            *_create_kernels(
+                neg_log_prob_target=neg_log_prob_target,
+                global_kernel=global_kernel,
+                flow=flow,
+                local_kernel='rwmh',
+                local_preconditioner='diagonal',
+                global_kwargs=kwargs,
+                local_kwargs=kwargs
+            ),
+            **kwargs
+        )
+
+
+class DiagonalJumpMALAKernel(JumpMarkovKernel):
+    """
+    Composition of a diagonally-preconditioned local MALA kernel and a normalizing flow-preconditioned jump kernel.
+    """
+
+    def __init__(self,
+                 flow: Flow,
+                 neg_log_prob_target: callable,
+                 global_kernel: str = 'imh',
+                 **kwargs):
+        """
+        JumpMALAKernel constructor.
+
+        :param Flow flow: normalizing flow for global preconditioning.
+        :param neg_log_prob_target: negative log probability density callable.
+        :param str global_kernel: type of global kernel. One of ['imh', 'i-sir'].
+        :param kwargs: keyword arguments for both the local and global kernels.
+        """
+        super().__init__(
+            *_create_kernels(
+                neg_log_prob_target=neg_log_prob_target,
+                global_kernel=global_kernel,
+                flow=flow,
+                local_kernel='mala',
+                local_preconditioner='diagonal',
+                global_kwargs=kwargs,
+                local_kwargs=kwargs
+            ),
+            **kwargs
+        )
+
+
+class DiagonalJumpHMCKernel(JumpMarkovKernel):
+    """
+    Composition of a diagonally-preconditioned local HMC kernel and a normalizing flow-preconditioned jump kernel.
+    """
+
+    def __init__(self,
+                 flow: Flow,
+                 neg_log_prob_target: callable,
+                 global_kernel: str = 'imh',
+                 **kwargs):
+        """
+        JumpHMCKernel constructor.
+
+        :param Flow flow: normalizing flow for global preconditioning.
+        :param neg_log_prob_target: negative log probability density callable.
+        :param str global_kernel: type of global kernel. One of ['imh', 'i-sir'].
+        :param kwargs: keyword arguments for both the local and global kernels.
+        """
+        super().__init__(
+            *_create_kernels(
+                neg_log_prob_target=neg_log_prob_target,
+                global_kernel=global_kernel,
+                flow=flow,
+                local_kernel='hmc',
+                local_preconditioner='diagonal',
+                global_kwargs=kwargs,
+                local_kwargs=kwargs
+            ),
             **kwargs
         )

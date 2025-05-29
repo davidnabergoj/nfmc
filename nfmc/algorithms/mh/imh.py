@@ -13,7 +13,7 @@ class IMHKernel(MHKernel):
                  event_shape: Union[Tuple[int, ...], torch.Size],
                  neg_log_prob_target: callable,
                  proposal_log_prob: callable = None,
-                 proposal_sample_with_log_prob: callable = None):
+                 proposal_sample_with_log_prob: callable = None, **kwargs):
         """
         IMH kernel constructor.
 
@@ -29,14 +29,14 @@ class IMHKernel(MHKernel):
          `(*batch_shape, *event_shape)`, and the corresponding log probability density tensor with shape `batch_shape`.
          If None, use a standard Gaussian proposal.
         """
-        super().__init__(event_shape, neg_log_prob_target)
+        super().__init__(event_shape, neg_log_prob_target, **kwargs)
 
         if proposal_log_prob is None and proposal_sample_with_log_prob is not None:
             raise ValueError(
-                "Both proposal_log_prob and proposal_sample_with_log_prob must be provided")
+                "Both or neither of proposal_log_prob and proposal_sample_with_log_prob must be provided")
         if proposal_log_prob is not None and proposal_sample_with_log_prob is None:
             raise ValueError(
-                "Both proposal_log_prob and proposal_sample_with_log_prob must be provided")
+                "Both or neither of proposal_log_prob and proposal_sample_with_log_prob must be provided")
         if proposal_log_prob is None and proposal_sample_with_log_prob is None:
             dist = torch.distributions.Normal(
                 loc=torch.zeros(size=event_shape),
@@ -92,11 +92,12 @@ class IMHKernel(MHKernel):
 
         log_u = torch.rand_like(log_prob_accept).log()
         acceptance_mask[~divergence_mask] = log_u < log_prob_accept
-        x[acceptance_mask] = x_prime[acceptance_mask]
+        x_new = x.clone()
+        x_new[acceptance_mask] = x_prime[acceptance_mask]
 
         self.increment_n_steps()
         self.increment_n_attempted_transitions(n_chains=x.shape[0])
         self.increment_n_accepted_transitions(
             int(acceptance_mask.long().sum()))
         
-        return x
+        return x_new

@@ -7,7 +7,7 @@ import torch
 from nfmc.algorithms.mh.local.dual_averaging import DualAveraging
 from nfmc.algorithms.mh.local.mala import MALAKernel
 from nfmc.algorithms.mh.local.rwmh import RWMHKernel
-from nfmc.algorithms.mh.local.base import LocalMHSampler
+from nfmc.algorithms.mh.base import MHSampler
 from test.util import DiagonalGaussian
 
 
@@ -48,7 +48,7 @@ def test_reach_target_acceptance_rate(kernel_class):
 
     target = DiagonalGaussian(event_shape)
     kernel = kernel_class(event_shape, target.neg_log_prob, target_acceptance_rate=target_acc_rate)
-    sampler = LocalMHSampler(kernel)
+    sampler = MHSampler(kernel)
 
     warmup_samples = sampler.warmup(
         x0=torch.rand(size=(1, *event_shape)) * 2 - 1,
@@ -65,7 +65,7 @@ def test_persist_step_size(kernel_class):
 
     target = DiagonalGaussian(event_shape)
     kernel = kernel_class(event_shape, target.neg_log_prob, target_acceptance_rate=target_acc_rate)
-    sampler = LocalMHSampler(kernel)
+    sampler = MHSampler(kernel)
 
     sampler.warmup(
         x0=torch.rand(size=(1, *event_shape)) * 2 - 1,

@@ -13,9 +13,13 @@ class JumpMarkovKernel(CompositionKernel):
     def __init__(self,
                  local_kernel: MarkovKernel,
                  global_kernel: MarkovKernel,
+                 local_transitions_per_step: int = 20,
+                 global_transitions_per_step: int = 1,
                  **kwargs):
         super().__init__(
             [local_kernel, global_kernel],
+            mode='cyclic',
+            schedule=[local_transitions_per_step, global_transitions_per_step],
             **kwargs
         )
 

@@ -2,7 +2,7 @@ from nfmc.algorithms.mh.local.hmc import HMCKernel
 from nfmc.algorithms.mh.local.mala import MALAKernel
 from nfmc.algorithms.mh.local.rwmh import RWMHKernel
 from nfmc.algorithms.preconditioning.preconditioners import NormalizingFlowPreconditioner
-from nfmc.algorithms.preconditioning.base import PreconditionedMCMCSampler
+from nfmc.algorithms.preconditioning.samplers.base import PreconditionedMCMCSampler
 from torchflows import Flow
 
 
@@ -21,13 +21,13 @@ class NeuTraRWMH(PreconditionedMCMCSampler):
         :param Flow flow: normalizing flow object.
         :param neg_log_prob_target: negative log probability density callable.
         """
-        latent_kernel = RWMHKernel(
+        kernel = RWMHKernel(
             flow.event_shape,
             neg_log_prob_target,
+            preconditioner = NormalizingFlowPreconditioner(flow),
             **kwargs
         )
-        preconditioner = NormalizingFlowPreconditioner(flow)
-        super().__init__(latent_kernel, preconditioner)
+        super().__init__(kernel)
 
 
 class NeuTraMALA(PreconditionedMCMCSampler):
@@ -45,13 +45,13 @@ class NeuTraMALA(PreconditionedMCMCSampler):
         :param Flow flow: normalizing flow object.
         :param neg_log_prob_target: negative log probability density callable.
         """
-        latent_kernel = MALAKernel(
+        kernel = MALAKernel(
             flow.event_shape,
             neg_log_prob_target,
+            preconditioner = NormalizingFlowPreconditioner(flow),
             **kwargs
         )
-        preconditioner = NormalizingFlowPreconditioner(flow)
-        super().__init__(latent_kernel, preconditioner)
+        super().__init__(kernel)
 
 
 class NeuTraHMC(PreconditionedMCMCSampler):
@@ -69,10 +69,10 @@ class NeuTraHMC(PreconditionedMCMCSampler):
         :param Flow flow: normalizing flow object.
         :param neg_log_prob_target: negative log probability density callable.
         """
-        latent_kernel = HMCKernel(
+        kernel = HMCKernel(
             flow.event_shape,
             neg_log_prob_target,
+            preconditioner = NormalizingFlowPreconditioner(flow),
             **kwargs
         )
-        preconditioner = NormalizingFlowPreconditioner(flow)
-        super().__init__(latent_kernel, preconditioner)
+        super().__init__(kernel)

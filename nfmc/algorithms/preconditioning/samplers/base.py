@@ -1,44 +1,15 @@
-from copy import deepcopy
-import time
-from typing import List, Tuple, Union
-import torch
-import torch.nn as nn
-from tqdm import tqdm
-from nfmc.algorithms.mh.base import MarkovKernel
+from nfmc.algorithms.kernel import MarkovKernel
 from nfmc.algorithms.sampling.base.sampler import MCMCSampler
 from nfmc.algorithms.util.samples import Samples
 
 
-class Preconditioner(nn.Module):
-    """
-    MCMC preconditioning class.
-    """
+import torch
+from tqdm import tqdm
 
-    def __init__(self,
-                 event_shape: Union[torch.Size, Tuple[int, ...]]):
-        super().__init__()
-        self.event_shape = event_shape
 
-    def inverse_transform(self, z: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
-        """
-        Computes the inverse of z under this preconditioner.
-
-        :param torch.Tensor z: latent tensor with shape `(*batch_shape, *event_shape)`.
-        :return: tuple where the first element is the transformed latent tensor with shape 
-         `(*batch_shape, *event_shape)` and the second element is the log of the absolute value of the Jacobian 
-         determinant of this inverse transformation with respect to the latent tensor with shape `batch_shape`.
-        """
-        raise NotImplementedError
-
-    def fit(self, x: torch.Tensor, **kwargs):
-        """
-        Update parameters of this preconditioner.
-
-        :param torch.Tensor x: tensor of samples with shape `(*batch_shape, *event_shape)`. Note: these should
-         be samples from the target space, not the latent space.
-        :param kwargs:
-        """
-        raise NotImplementedError
+import time
+from copy import deepcopy
+from typing import List, Union
 
 
 class PreconditionedMCMCSampler(MCMCSampler):
@@ -47,39 +18,6 @@ class PreconditionedMCMCSampler(MCMCSampler):
 
     All kernel transitions are performed according to a preconditioner-adjusted target density.
     """
-
-    def __init__(self,
-                 kernel: MarkovKernel,
-                 preconditioner: Preconditioner,
-                 **kwargs):
-        """
-        PreconditionedMCMCSampler constructor.
-        Warning: this constructor overrides the negative log probability density callable of the kernel.
-
-        :param MarkovKernel kernel: kernel for MCMC.
-        :param Preconditioner preconditioner: preconditioner object for target density adjustments.
-        """
-        super().__init__(kernel)
-        self.preconditioner = preconditioner
-
-        # Store the original negative log probability callable
-        self.base_neg_log_prob_target = deepcopy(
-            kernel.neg_log_prob_target
-        )
-
-        # Set the negative log probability callable handle to the adjusted one
-        # Note: self._neg_log_prob_adjusted_target is implicitly updated whenever self.preconditioner is updated.
-        self.kernel.neg_log_prob_target = self._neg_log_prob_adjusted_target
-
-    def _neg_log_prob_adjusted_target(self, z: torch.Tensor) -> torch.Tensor:
-        """
-        Returns the negative log probability density of the preconditioner-adjusted target distribution.
-
-        :param torch.Tensor z: latent tensor with shape `(*batch_shape, *event_shape)`.
-        :return: negative log probability tensor with shape `batch_shape`.
-        """
-        x, log_det_inverse = self.preconditioner.inverse_transform(z)
-        return self.base_neg_log_prob_target(x) - log_det_inverse
 
     @property
     def name(self) -> str:
@@ -114,8 +52,9 @@ class PreconditionedMCMCSampler(MCMCSampler):
         Optimize kernel parameters.
 
         The kernel is updated every step unless it internally overrides this.
-        The preconditioner is updated every K steps where K is equal to preconditioner_update_interval.
-        The preconditioner is not updated within the final K steps so that the rest of the kernel can be stably tuned.
+        The kernel's preconditioner is updated every K steps where K is equal to preconditioner_update_interval.
+        The kernel's preconditioner is not updated within the final K steps so that the rest of the kernel can be stably 
+         tuned.
 
         :param torch.Tensor z0: initial latent state with shape `(*batch_shape, *event_shape)`.
         :param int n_steps: number of MCMC steps to perform.
@@ -161,14 +100,13 @@ class PreconditionedMCMCSampler(MCMCSampler):
                         x_train_list,
                         max_training_samples
                     )
-                self.preconditioner.fit(x=x_train, **kwargs)
+                self.kernel.fit_preconditioner(x_train, **kwargs)
                 x_train_list = []
 
                 # Reset state
                 z = torch.rand_like(z) * 2 - 1
 
-            z = self.kernel.step(z, update=True)
-            x = self.preconditioner.inverse_transform(z)[0]
+            z, x = self.kernel.step_with_preconditioner_inverse(z, update=True)
             x_train_list.append(x)
 
             target_samples.add(x)
@@ -196,7 +134,7 @@ class PreconditionedMCMCSampler(MCMCSampler):
         Sample with a fixed kernel.
 
         The kernel is updated every step unless it internally overrides this.
-        The preconditioner is updated every K steps where K is equal to preconditioner_update_interval.
+        The kernel's preconditioner is updated every K steps where K is equal to preconditioner_update_interval.
 
         :param torch.Tensor z0: initial latent state with shape `(*batch_shape, *event_shape)`.
         :param int n_steps: number of MCMC steps to perform.
@@ -227,8 +165,7 @@ class PreconditionedMCMCSampler(MCMCSampler):
         for _ in (pbar := tqdm(range(n_steps),
                                desc=f'Sampling',
                                disable=not show_progress)):
-            z = self.kernel.step(z)
-            x = self.preconditioner.inverse_transform(z)[0]
+            z, x = self.kernel.step_with_preconditioner_inverse(z)
 
             target_samples.add(x)
             if return_latent_samples:

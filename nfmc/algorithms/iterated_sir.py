@@ -17,7 +17,8 @@ class IteratedSIRKernel(MarkovKernel):
                  neg_log_prob_target,
                  proposal_log_prob: callable = None,
                  proposal_sample_with_log_prob: callable = None,
-                 pool_size: int = 20):
+                 pool_size: int = 20, 
+                 **kwargs):
         """
         IteratedSIRKernel constructor.
 
@@ -34,7 +35,7 @@ class IteratedSIRKernel(MarkovKernel):
          If None, use a standard Gaussian proposal.
         :param int pool_size: number of candidate states in each step, including the current state.
         """
-        super().__init__(event_shape, neg_log_prob_target)
+        super().__init__(event_shape, neg_log_prob_target, **kwargs)
 
         if proposal_log_prob is None and proposal_sample_with_log_prob is not None:
             raise ValueError(

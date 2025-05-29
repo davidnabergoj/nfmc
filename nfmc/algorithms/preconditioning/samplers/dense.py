@@ -6,7 +6,7 @@ from nfmc.algorithms.mh.local.hmc import HMCKernel
 from nfmc.algorithms.mh.local.mala import MALAKernel
 from nfmc.algorithms.mh.local.rwmh import RWMHKernel
 from nfmc.algorithms.preconditioning.preconditioners import DenseLinearPreconditioner
-from nfmc.algorithms.preconditioning.base import PreconditionedMCMCSampler
+from nfmc.algorithms.preconditioning.samplers.base import PreconditionedMCMCSampler
 from torchflows import Flow
 
 
@@ -28,10 +28,10 @@ class DenseRWMH(PreconditionedMCMCSampler):
         latent_kernel = RWMHKernel(
             event_shape,
             neg_log_prob_target,
+            preconditioner=DenseLinearPreconditioner(event_shape),
             **kwargs
         )
-        preconditioner = DenseLinearPreconditioner(event_shape)
-        super().__init__(latent_kernel, preconditioner)
+        super().__init__(latent_kernel)
 
 
 class DenseMALA(PreconditionedMCMCSampler):
@@ -52,10 +52,10 @@ class DenseMALA(PreconditionedMCMCSampler):
         latent_kernel = MALAKernel(
             event_shape,
             neg_log_prob_target,
+            preconditioner=DenseLinearPreconditioner(event_shape),
             **kwargs
         )
-        preconditioner = DenseLinearPreconditioner(event_shape)
-        super().__init__(latent_kernel, preconditioner)
+        super().__init__(latent_kernel)
 
 
 class DenseHMC(PreconditionedMCMCSampler):
@@ -76,7 +76,7 @@ class DenseHMC(PreconditionedMCMCSampler):
         latent_kernel = HMCKernel(
             event_shape,
             neg_log_prob_target,
+            preconditioner=DenseLinearPreconditioner(event_shape),
             **kwargs
         )
-        preconditioner = DenseLinearPreconditioner(event_shape)
-        super().__init__(latent_kernel, preconditioner)
+        super().__init__(latent_kernel)

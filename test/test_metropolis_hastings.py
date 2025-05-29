@@ -1,11 +1,11 @@
 import pytest
 import torch
-from nfmc.algorithms.mh.local.base import LocalMHSampler
+from nfmc.algorithms.mh.base import MHSampler
 from nfmc.algorithms.mh.local.rwmh import RWMHKernel
 from nfmc.algorithms.mh.local.hmc import HMCKernel
 from nfmc.algorithms.mh.local.mala import MALAKernel
 from nfmc.algorithms.mh.imh import IMHKernel
-from nfmc.algorithms.preconditioning.base import PreconditionedMCMCSampler
+from nfmc.algorithms.preconditioning.samplers.base import PreconditionedMCMCSampler
 from nfmc.algorithms.preconditioning.preconditioners import DenseLinearPreconditioner, DiagonalLinearPreconditioner, NormalizingFlowPreconditioner
 from nfmc.algorithms.util.samples import Samples
 from nfmc.util import create_flow_object
@@ -43,7 +43,7 @@ def test_local_mh_sampling(event_shape, kernel_class, n_chains, n_steps):
         event_shape=event_shape,
         neg_log_prob_target=StandardGaussian(event_shape).neg_log_prob
     )
-    sampler = LocalMHSampler(kernel)
+    sampler = MHSampler(kernel)
     samples = sampler.sample(
         x_initial,
         n_steps=n_steps,
@@ -67,12 +67,12 @@ def test_local_mh_sampling(event_shape, kernel_class, n_chains, n_steps):
 def test_linear_preconditioned_sampling(event_shape, kernel_class, n_chains, n_steps, preconditioner_class):
     torch.manual_seed(0)
 
-    preconditioner = preconditioner_class(event_shape)
     kernel = kernel_class(
         event_shape=event_shape,
-        neg_log_prob_target=StandardGaussian(event_shape).neg_log_prob
+        neg_log_prob_target=StandardGaussian(event_shape).neg_log_prob,
+        preconditioner=preconditioner_class(event_shape)
     )
-    sampler = PreconditionedMCMCSampler(kernel, preconditioner)
+    sampler = PreconditionedMCMCSampler(kernel)
 
     z_initial = torch.randn(size=(n_chains, *event_shape))
     samples = sampler.sample(
@@ -95,13 +95,13 @@ def test_flow_preconditioned_sampling(event_shape, kernel_class, n_chains, n_ste
     torch.manual_seed(0)
 
     flow = create_flow_object('realnvp', event_shape)
-    preconditioner = NormalizingFlowPreconditioner(flow)
 
     kernel = kernel_class(
         event_shape=event_shape,
-        neg_log_prob_target=StandardGaussian(event_shape).neg_log_prob
+        neg_log_prob_target=StandardGaussian(event_shape).neg_log_prob,
+        preconditioner=NormalizingFlowPreconditioner(flow)
     )
-    sampler = PreconditionedMCMCSampler(kernel, preconditioner)
+    sampler = PreconditionedMCMCSampler(kernel)
 
     z_initial = torch.randn(size=(n_chains, *event_shape))
     samples = sampler.sample(
@@ -128,7 +128,7 @@ def test_local_mh_warmup(event_shape, kernel_class, n_chains, n_steps):
         event_shape=event_shape,
         neg_log_prob_target=StandardGaussian(event_shape).neg_log_prob
     )
-    sampler = LocalMHSampler(kernel)
+    sampler = MHSampler(kernel)
     samples = sampler.warmup(
         x_initial,
         n_steps=n_steps,

@@ -1,9 +1,56 @@
 from typing import Tuple, Union
 import torch
 import torch.nn as nn
-from nfmc.algorithms.preconditioning.base import Preconditioner
 from nfmc.util import diag_mult, flatten_event
 from torchflows.flows import Flow
+
+
+class Preconditioner(nn.Module):
+    """
+    MCMC preconditioning class.
+    """
+
+    def __init__(self,
+                 event_shape: Union[torch.Size, Tuple[int, ...]]):
+        super().__init__()
+        self.event_shape = event_shape
+
+    def inverse_transform(self, z: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
+        """
+        Computes the inverse of z under this preconditioner.
+
+        :param torch.Tensor z: latent tensor with shape `(*batch_shape, *event_shape)`.
+        :return: tuple where the first element is the transformed latent tensor with shape 
+         `(*batch_shape, *event_shape)` and the second element is the log of the absolute value of the Jacobian 
+         determinant of this inverse transformation with respect to the latent tensor with shape `batch_shape`.
+        """
+        raise NotImplementedError
+
+    def fit(self, x: torch.Tensor, **kwargs):
+        """
+        Update parameters of this preconditioner.
+
+        :param torch.Tensor x: tensor of samples with shape `(*batch_shape, *event_shape)`. Note: these should
+         be samples from the target space, not the latent space.
+        :param kwargs:
+        """
+        raise NotImplementedError
+
+
+class IdentityPreconditioner(Preconditioner):
+    """
+    Applies no preconditioning.
+    """
+
+    def __init__(self,
+                 event_shape: Union[torch.Size, Tuple[int, ...]]):
+        super().__init__(event_shape=event_shape)
+
+    def inverse_transform(self, z: torch.Tensor):
+        return z, torch.zeros(size=(z.shape[:-len(self.event_shape)])).to(z)
+
+    def fit(self, x: torch.Tensor, **kwargs):
+        pass
 
 
 class DiagonalLinearPreconditioner(Preconditioner):
@@ -62,7 +109,6 @@ class DenseLinearPreconditioner(Preconditioner):
         fv = torch.log(torch.diag(self.tril_mat)).sum()
         log_det = torch.full(size=batch_shape, fill_value=fv).to(z)
         return x, log_det
-
 
     def fit(self, x: torch.Tensor, **kwargs):
         """

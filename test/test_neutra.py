@@ -2,7 +2,7 @@ import pytest
 import torch
 
 from nfmc.algorithms.preconditioning.samplers.neutra import NeuTraRWMH, NeuTraMALA, NeuTraHMC
-from nfmc.algorithms.preconditioning.base import PreconditionedMCMCSampler
+from nfmc.algorithms.preconditioning.samplers.base import PreconditionedMCMCSampler
 from nfmc.algorithms.util.samples import Samples
 from nfmc.util import create_flow_object
 from test.util import StandardGaussian
@@ -24,8 +24,8 @@ def test_neutra_mh_warmup(event_shape,
         flow=flow,
         neg_log_prob_target=original_neg_log_prob_target,
     )
-    assert sampler.preconditioner is not None
-    assert sampler.preconditioner.inverse_transform is not None
+    assert sampler.kernel._preconditioner is not None
+    assert sampler.kernel._preconditioner.inverse_transform is not None
     assert sampler.kernel.neg_log_prob_target is not original_neg_log_prob_target
 
     z_initial = torch.randn(size=(n_chains, *event_shape))
@@ -59,8 +59,8 @@ def test_neutra_mh_sample(event_shape,
         flow=flow,
         neg_log_prob_target=original_neg_log_prob_target,
     )
-    assert sampler.preconditioner is not None
-    assert sampler.preconditioner.inverse_transform is not None
+    assert sampler.kernel._preconditioner is not None
+    assert sampler.kernel._preconditioner.inverse_transform is not None
     assert sampler.kernel.neg_log_prob_target is not original_neg_log_prob_target
 
     z_initial = torch.randn(size=(n_chains, *event_shape))

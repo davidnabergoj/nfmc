@@ -2,7 +2,7 @@ from typing import Tuple, Union
 
 import torch
 
-from nfmc.algorithms.mh.base import MarkovKernel
+from nfmc.algorithms.kernel import MarkovKernel
 from nfmc.algorithms.util.samples import Samples
 
 
