@@ -269,3 +269,99 @@ class DiagonalJumpHMCKernel(JumpMarkovKernel):
             ),
             **kwargs
         )
+
+
+class DenseJumpRWMHKernel(JumpMarkovKernel):
+    """
+    Composition of a densely-preconditioned local RWMH kernel and a normalizing flow-preconditioned jump kernel.
+    """
+
+    def __init__(self,
+                 flow: Flow,
+                 neg_log_prob_target: callable,
+                 global_kernel: str = 'imh',
+                 **kwargs):
+        """
+        JumpRWMHKernel constructor.
+
+        :param Flow flow: normalizing flow for global preconditioning.
+        :param neg_log_prob_target: negative log probability density callable.
+        :param str global_kernel: type of global kernel. One of ['imh', 'i-sir'].
+        :param kwargs: keyword arguments for both the local and global kernels.
+        """
+        super().__init__(
+            *_create_kernels(
+                neg_log_prob_target=neg_log_prob_target,
+                global_kernel=global_kernel,
+                flow=flow,
+                local_kernel='rwmh',
+                local_preconditioner='dense',
+                global_kwargs=kwargs,
+                local_kwargs=kwargs
+            ),
+            **kwargs
+        )
+
+
+class DenseJumpMALAKernel(JumpMarkovKernel):
+    """
+    Composition of a densely-preconditioned local MALA kernel and a normalizing flow-preconditioned jump kernel.
+    """
+
+    def __init__(self,
+                 flow: Flow,
+                 neg_log_prob_target: callable,
+                 global_kernel: str = 'imh',
+                 **kwargs):
+        """
+        JumpMALAKernel constructor.
+
+        :param Flow flow: normalizing flow for global preconditioning.
+        :param neg_log_prob_target: negative log probability density callable.
+        :param str global_kernel: type of global kernel. One of ['imh', 'i-sir'].
+        :param kwargs: keyword arguments for both the local and global kernels.
+        """
+        super().__init__(
+            *_create_kernels(
+                neg_log_prob_target=neg_log_prob_target,
+                global_kernel=global_kernel,
+                flow=flow,
+                local_kernel='mala',
+                local_preconditioner='dense',
+                global_kwargs=kwargs,
+                local_kwargs=kwargs
+            ),
+            **kwargs
+        )
+
+
+class DenseJumpHMCKernel(JumpMarkovKernel):
+    """
+    Composition of a densely-preconditioned local HMC kernel and a normalizing flow-preconditioned jump kernel.
+    """
+
+    def __init__(self,
+                 flow: Flow,
+                 neg_log_prob_target: callable,
+                 global_kernel: str = 'imh',
+                 **kwargs):
+        """
+        JumpHMCKernel constructor.
+
+        :param Flow flow: normalizing flow for global preconditioning.
+        :param neg_log_prob_target: negative log probability density callable.
+        :param str global_kernel: type of global kernel. One of ['imh', 'i-sir'].
+        :param kwargs: keyword arguments for both the local and global kernels.
+        """
+        super().__init__(
+            *_create_kernels(
+                neg_log_prob_target=neg_log_prob_target,
+                global_kernel=global_kernel,
+                flow=flow,
+                local_kernel='hmc',
+                local_preconditioner='dense',
+                global_kwargs=kwargs,
+                local_kwargs=kwargs
+            ),
+            **kwargs
+        )

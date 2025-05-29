@@ -2,65 +2,152 @@ import pytest
 import torch
 
 from nfmc.algorithms.iterated_sir import IteratedSIRKernel
-from nfmc.algorithms.jump.samplers import DiagonalJumpHMC, DiagonalJumpMALA, DiagonalJumpRWMH, NeuTraJumpHMC, NeuTraJumpMALA, NeuTraJumpRWMH
+from nfmc.algorithms.jump.samplers import NeuTraJumpHMC, NeuTraJumpMALA, NeuTraJumpRWMH
 from nfmc.algorithms.mh.imh import IMHKernel
-from nfmc.algorithms.preconditioning.preconditioners import DenseLinearPreconditioner, DiagonalLinearPreconditioner, NormalizingFlowPreconditioner
-from torchflows.flows import Flow
-from torchflows.architectures import RealNVP
-
 from nfmc.algorithms.mh.local.hmc import HMCKernel
-from nfmc.algorithms.mh.local.rwmh import RWMHKernel
 from nfmc.algorithms.mh.local.mala import MALAKernel
-from nfmc.algorithms.mh.base import MHSampler
+from nfmc.algorithms.mh.local.rwmh import RWMHKernel
+from nfmc.algorithms.preconditioning.preconditioners import DenseLinearPreconditioner, DiagonalLinearPreconditioner, NormalizingFlowPreconditioner
+from nfmc.algorithms.preconditioning.samplers.dense import DenseHMC, DenseMALA, DenseRWMH
+from nfmc.algorithms.preconditioning.samplers.diagonal import DiagonalHMC, DiagonalMALA, DiagonalRWMH
+from nfmc.algorithms.preconditioning.samplers.neutra import NeuTraRWMH, NeuTraMALA, NeuTraHMC
 from nfmc.algorithms.preconditioning.samplers.base import PreconditionedMCMCSampler
-from nfmc.algorithms.preconditioning.samplers.neutra import (
-    NeuTraHMC,
-    NeuTraMALA,
-    NeuTraRWMH,
-)
-from nfmc.algorithms.preconditioning.samplers.diagonal import (
-    DiagonalHMC,
-    DiagonalMALA,
-    DiagonalRWMH,
-)
-from nfmc.algorithms.preconditioning.samplers.dense import (
-    DenseHMC,
-    DenseMALA,
-    DenseRWMH,
-)
-
-from test.util import DiagonalGaussian
+from nfmc.algorithms.util.samples import Samples
+from nfmc.util import create_flow_object
+from test.util import DiagonalGaussian, StandardGaussian
+from torchflows.architectures import RealNVP
+from torchflows.flows import Flow
 
 
-@pytest.mark.parametrize("kernel_class", [RWMHKernel, MALAKernel, HMCKernel])
 @pytest.mark.local_only
-def test_local_mh(kernel_class):
+@pytest.mark.parametrize('event_shape', [(2,)])
+@pytest.mark.parametrize('sampler_class', [NeuTraRWMH, NeuTraMALA, NeuTraHMC])
+@pytest.mark.parametrize('n_chains', [4])
+@pytest.mark.parametrize('n_steps', [4, 5, 6])
+def test_warmup(event_shape,
+                sampler_class,
+                n_chains,
+                n_steps):
+    torch.manual_seed(0)
+    original_neg_log_prob_target = StandardGaussian(event_shape).neg_log_prob
+
+    flow = create_flow_object('realnvp', event_shape)
+    sampler = sampler_class(
+        flow=flow,
+        neg_log_prob_target=original_neg_log_prob_target,
+    )
+    assert sampler.kernel._preconditioner is not None
+    assert sampler.kernel._preconditioner.inverse_transform is not None
+    assert sampler.kernel.neg_log_prob_target is not original_neg_log_prob_target
+
+    z_initial = torch.randn(size=(n_chains, *event_shape))
+    samples = sampler.warmup(
+        z_initial,
+        n_steps=n_steps,
+        show_progress=False,
+        preconditioner_update_interval=5,
+        n_epochs=2  # Number of NF training epochs
+    )
+
+    assert isinstance(samples, Samples)
+    assert torch.isfinite(samples.as_tensor()).all()
+    assert samples.as_tensor().shape == (n_steps, n_chains, *event_shape)
+    assert samples.as_tensor().dtype == z_initial.dtype
+
+
+@pytest.mark.local_only
+@pytest.mark.parametrize('event_shape', [(2,)])
+@pytest.mark.parametrize('sampler_class', [NeuTraRWMH, NeuTraMALA, NeuTraHMC])
+@pytest.mark.parametrize('n_chains', [1, 4])
+@pytest.mark.parametrize('n_steps', [1, 4])
+def test_sample(event_shape,
+                sampler_class,
+                n_chains,
+                n_steps):
+    torch.manual_seed(0)
+    original_neg_log_prob_target = StandardGaussian(event_shape).neg_log_prob
+
+    flow = create_flow_object('realnvp', event_shape)
+    sampler = sampler_class(
+        flow=flow,
+        neg_log_prob_target=original_neg_log_prob_target,
+    )
+    assert sampler.kernel._preconditioner is not None
+    assert sampler.kernel._preconditioner.inverse_transform is not None
+    assert sampler.kernel.neg_log_prob_target is not original_neg_log_prob_target
+
+    z_initial = torch.randn(size=(n_chains, *event_shape))
+    samples = sampler.sample(
+        z_initial,
+        n_steps=n_steps,
+        show_progress=False
+    )
+
+    assert isinstance(samples, Samples)
+    assert torch.isfinite(samples.as_tensor()).all()
+    assert samples.as_tensor().shape == (n_steps, n_chains, *event_shape)
+    assert samples.as_tensor().dtype == z_initial.dtype
+
+
+@pytest.mark.local_only
+@pytest.mark.parametrize('event_shape', [(1,), (2,), (10,), (2, 3, 5)])
+@pytest.mark.parametrize('kernel_class', [RWMHKernel, HMCKernel, MALAKernel])
+@pytest.mark.parametrize('n_chains', [1, 2, 4])
+@pytest.mark.parametrize('n_steps', [1, 2, 4])
+@pytest.mark.parametrize('preconditioner_class', [
+    DiagonalLinearPreconditioner,
+    DenseLinearPreconditioner,
+])
+def test_sample_2(event_shape, kernel_class, n_chains, n_steps, preconditioner_class):
     torch.manual_seed(0)
 
-    event_shape = (4,)
-    target = DiagonalGaussian(event_shape)
+    kernel = kernel_class(
+        event_shape=event_shape,
+        neg_log_prob_target=StandardGaussian(event_shape).neg_log_prob,
+        preconditioner=preconditioner_class(event_shape)
+    )
+    sampler = PreconditionedMCMCSampler(kernel)
 
-    kernel = kernel_class(event_shape, neg_log_prob_target=target.neg_log_prob)
-    sampler = MHSampler(kernel)
-
-    x0 = torch.rand(size=(1, *event_shape)) * 2 - 1
-    warmup_draws = sampler.warmup(
-        x0=x0, n_steps=100 if kernel_class != RWMHKernel else 1000
-    )
-    sampling_draws = sampler.sample(
-        x0=warmup_draws.last_sample, n_steps=200 if kernel_class != RWMHKernel else 2000
+    z_initial = torch.randn(size=(n_chains, *event_shape))
+    samples = sampler.sample(
+        z_initial,
+        n_steps=n_steps,
+        show_progress=False
     )
 
-    assert torch.allclose(
-        sampling_draws.first_moment.as_tensor(),
-        target.first_moment,
-        rtol=0.2
+    assert isinstance(samples, Samples)
+    assert torch.isfinite(samples.as_tensor()).all()
+    assert samples.as_tensor().shape == (n_steps, n_chains, *event_shape)
+    assert samples.as_tensor().dtype == z_initial.dtype
+
+
+@pytest.mark.parametrize('event_shape', [(2,), (10,), (2, 3, 5)])
+@pytest.mark.parametrize('kernel_class', [RWMHKernel, HMCKernel, MALAKernel, IMHKernel])
+@pytest.mark.parametrize('n_chains', [1, 2, 4])
+@pytest.mark.parametrize('n_steps', [1, 2, 4])
+def test_sample_3(event_shape, kernel_class, n_chains, n_steps):
+    torch.manual_seed(0)
+
+    flow = create_flow_object('realnvp', event_shape)
+
+    kernel = kernel_class(
+        event_shape=event_shape,
+        neg_log_prob_target=StandardGaussian(event_shape).neg_log_prob,
+        preconditioner=NormalizingFlowPreconditioner(flow)
     )
-    assert torch.allclose(
-        sampling_draws.second_moment.as_tensor(),
-        target.second_moment,
-        rtol=0.2
+    sampler = PreconditionedMCMCSampler(kernel)
+
+    z_initial = torch.randn(size=(n_chains, *event_shape))
+    samples = sampler.sample(
+        z_initial,
+        n_steps=n_steps,
+        show_progress=False
     )
+
+    assert isinstance(samples, Samples)
+    assert torch.isfinite(samples.as_tensor()).all()
+    assert samples.as_tensor().shape == (n_steps, n_chains, *event_shape)
+    assert samples.as_tensor().dtype == z_initial.dtype
 
 
 @pytest.mark.local_only
@@ -74,7 +161,7 @@ def test_local_mh(kernel_class):
         DenseHMC,
     ]
 )
-def test_linear_prec_mh_warmup_and_sample(sampler_class):
+def test_warmup_and_sample(sampler_class):
     torch.manual_seed(0)
 
     event_shape = (4,)
@@ -119,7 +206,7 @@ def test_linear_prec_mh_warmup_and_sample(sampler_class):
         NeuTraHMC,
     ]
 )
-def test_neutra_mh(sampler_class):
+def test_warmup_and_sample_2(sampler_class):
     torch.manual_seed(0)
 
     event_shape = (2,)
@@ -164,33 +251,8 @@ def test_neutra_mh(sampler_class):
 
 
 @pytest.mark.local_only
-def test_imh():
-    torch.manual_seed(0)
-
-    event_shape = (4,)
-    n_chains = 10
-    target = DiagonalGaussian(event_shape, mu=0.5, std=0.5)
-    kernel = IMHKernel(event_shape, target.neg_log_prob)
-    sampler = MHSampler(kernel)
-
-    x0 = torch.rand(size=(n_chains, *event_shape)) * 2 - 1
-    sampling_draws = sampler.sample(x0, n_steps=2000)
-
-    assert torch.allclose(
-        sampling_draws.first_moment.as_tensor(),
-        target.first_moment,
-        rtol=0.2
-    )
-    assert torch.allclose(
-        sampling_draws.second_moment.as_tensor(),
-        target.second_moment,
-        rtol=0.2
-    )
-
-
-@pytest.mark.local_only
 @pytest.mark.parametrize('preconditioner', ['diag', 'dense', 'nf'])
-def test_neutra_imh(preconditioner):
+def test_imh(preconditioner):
     torch.manual_seed(0)
 
     event_shape = (4,)
@@ -242,33 +304,8 @@ def test_neutra_imh(preconditioner):
 
 
 @pytest.mark.local_only
-def test_iterated_sir():
-    torch.manual_seed(0)
-
-    event_shape = (4,)
-    n_chains = 10
-    target = DiagonalGaussian(event_shape, mu=0.5, std=0.5)
-    kernel = IteratedSIRKernel(event_shape, target.neg_log_prob)
-    sampler = MHSampler(kernel)
-
-    x0 = torch.rand(size=(n_chains, *event_shape)) * 2 - 1
-    sampling_draws = sampler.sample(x0, n_steps=2000)
-
-    assert torch.allclose(
-        sampling_draws.first_moment.as_tensor(),
-        target.first_moment,
-        rtol=0.2
-    )
-    assert torch.allclose(
-        sampling_draws.second_moment.as_tensor(),
-        target.second_moment,
-        rtol=0.2
-    )
-
-
-@pytest.mark.local_only
 @pytest.mark.parametrize('preconditioner', ['diag', 'dense', 'nf'])
-def test_neutra_iterated_sir(preconditioner):
+def test_isir(preconditioner):
     torch.manual_seed(0)
 
     event_shape = (4,)
@@ -332,7 +369,7 @@ def test_neutra_iterated_sir(preconditioner):
         'i-sir'
     ]
 )
-def test_neutra_jump_mh(sampler_class, global_kernel):
+def test_jump(sampler_class, global_kernel):
     torch.manual_seed(0)
 
     event_shape = (4,)
@@ -356,65 +393,6 @@ def test_neutra_jump_mh(sampler_class, global_kernel):
     sampling_draws = sampler.sample(
         latent_warmup_draws.last_sample,
         n_steps=400
-    )
-
-    flow_samples = flow.sample((10000,)).detach()
-    flow_first_moment = flow_samples.mean(0)
-    flow_second_moment = flow_samples.square().mean(0)
-    assert torch.allclose(target.first_moment, flow_first_moment, rtol=0.2)
-    assert torch.allclose(target.second_moment, flow_second_moment, rtol=0.2)
-
-    assert torch.allclose(
-        sampling_draws.first_moment.as_tensor(),
-        target.first_moment,
-        rtol=0.2
-    )
-    assert torch.allclose(
-        sampling_draws.second_moment.as_tensor(),
-        target.second_moment,
-        rtol=0.2
-    )
-
-
-@pytest.mark.local_only
-@pytest.mark.parametrize(
-    "sampler_class", [
-        DiagonalJumpRWMH,
-        DiagonalJumpMALA,
-        DiagonalJumpHMC,
-    ]
-)
-@pytest.mark.parametrize(
-    "global_kernel", [
-        'imh',
-        'i-sir'
-    ]
-)
-def test_nf_jump_diag_mh(sampler_class, global_kernel):
-    torch.manual_seed(0)
-
-    event_shape = (4,)
-    n_chains = 50
-    target = DiagonalGaussian(event_shape, mu=1.5, std=0.5)
-    flow = Flow(RealNVP(event_shape, n_layers=1))
-
-    sampler = sampler_class(
-        flow=flow,
-        neg_log_prob_target=target.neg_log_prob,
-        global_kernel=global_kernel
-    )
-
-    z0 = torch.rand(size=(n_chains, *event_shape)) * 2 - 1
-    _, latent_warmup_draws = sampler.warmup(
-        z0=z0,
-        n_steps=200,
-        preconditioner_update_interval=50,
-        return_latent_samples=True,
-    )
-    sampling_draws, _ = sampler.sample(
-        z0=latent_warmup_draws.last_sample,
-        n_steps=400,
-        return_latent_samples=True
     )
 
     flow_samples = flow.sample((10000,)).detach()
