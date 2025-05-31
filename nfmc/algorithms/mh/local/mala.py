@@ -51,7 +51,7 @@ class MALAKernel(LocalMHKernel):
         :param kwargs: keyword arguments for the LocalMHKernel constructor.
         """
         if 'target_acceptance_rate' not in kwargs:
-            kwargs['target_acceptance_rate'] = 0.57
+            kwargs['target_acceptance_rate'] = 0.574
         super().__init__(event_shape, neg_log_prob_target, **kwargs)
 
     @property
