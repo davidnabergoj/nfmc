@@ -169,7 +169,7 @@ def test_warmup_and_sample(sampler_class, global_kernel):
     z0 = torch.rand(size=(n_chains, *event_shape)) * 2 - 1
     _, latent_warmup_draws = sampler.warmup(
         z0=z0,
-        n_steps=200,
+        n_steps=400,
         preconditioner_update_interval=50,
         return_latent_samples=True,
     )

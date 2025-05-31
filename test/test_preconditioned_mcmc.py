@@ -218,7 +218,7 @@ def test_moments_warmup_and_sample_imh(preconditioner):
 
     _, latent_warmup_draws = sampler.warmup(
         z0,
-        n_steps=200,
+        n_steps=400,
         preconditioner_update_interval=50,
         return_latent_samples=True
     )

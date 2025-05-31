@@ -82,11 +82,16 @@ class PreconditionedMCMCSampler(MCMCSampler):
             max_samples=max_samples,
         )
 
+        _adj_max = max_training_samples
+        if max_training_samples is not None:
+            _adj_max /= len(z0)  # divide by number of chains
+        training_samples = Samples(
+            event_shape=self.kernel.event_shape,
+            max_samples=_adj_max,
+        )
+
         self.kernel.reset_statistics()
         z = deepcopy(z0.detach())
-
-        # Holds data for preconditioner training/fitting
-        x_train_list = []
 
         t0 = time.time()
         for step in (pbar := tqdm(range(n_steps),
@@ -95,20 +100,29 @@ class PreconditionedMCMCSampler(MCMCSampler):
 
             if step % preconditioner_update_interval == 0 and 0 < step < n_steps - preconditioner_update_interval:
                 # Update the preconditioner first so drawn sample can contribute toward next preconditioner fit.
-                with torch.no_grad():
-                    x_train = self.prepare_training_data(
-                        x_train_list,
-                        max_training_samples
-                    )
+                x_train = training_samples.as_tensor().view(-1, *self.kernel.event_shape)
+
                 self.kernel.fit_preconditioner(x_train, **kwargs)
-                x_train_list = []
+                training_samples = Samples(
+                    event_shape=self.kernel.event_shape,
+                    max_samples=_adj_max,
+                )
 
                 # Reset state and kernel
                 z = torch.rand_like(z) * 2 - 1
                 self.kernel.reset_parameters()
 
-            z, x = self.kernel.step_with_preconditioner_inverse(z, update=True)
-            x_train_list.append(x)
+            # Step. Update if at least K // 2 steps from the next preconditioner update.
+            do_update = (
+                step % preconditioner_update_interval < (preconditioner_update_interval // 2)  # not too close
+                or step >= (n_steps - preconditioner_update_interval)  # final stage: always update
+            )
+            z, x = self.kernel.step_with_preconditioner_inverse(
+                z,
+                update=do_update
+            )
+            if do_update:
+                training_samples.add(x)
 
             target_samples.add(x)
             if return_latent_samples:
