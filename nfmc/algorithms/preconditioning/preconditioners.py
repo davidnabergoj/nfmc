@@ -65,8 +65,8 @@ class DiagonalLinearPreconditioner(Preconditioner):
     def __init__(self,
                  event_shape: Union[torch.Size, Tuple[int, ...]]):
         super().__init__(event_shape=event_shape)
-        self.loc = torch.zeros(size=self.event_shape)
-        self.v = torch.ones(size=self.event_shape)
+        self.register_buffer('loc', torch.zeros(size=self.event_shape))
+        self.register_buffer('v', torch.ones(size=self.event_shape))
 
     def inverse_transform(self, z: torch.Tensor):
         batch_shape = z.shape[:-len(self.event_shape)]
@@ -84,7 +84,7 @@ class DiagonalLinearPreconditioner(Preconditioner):
 class DenseLinearPreconditioner(Preconditioner):
     """
     Applies dense linear preconditioning via `x = L @ z + loc`, where:
-    - L is an upper-triangular positive definite matrix,
+    - L is a lower-triangular positive definite matrix,
     - loc is a real-valued location vector.
 
     When fitting, L @ L.T = M, where M is the training data covariance plus a scaled identity matrix.
@@ -94,8 +94,8 @@ class DenseLinearPreconditioner(Preconditioner):
     def __init__(self,
                  event_shape: Union[torch.Size, Tuple[int, ...]]):
         super().__init__(event_shape=event_shape)
-        self.loc = torch.zeros(size=self.event_shape)
-        self.tril_mat = torch.eye(self.event_size)  # (event_size, event_size)
+        self.register_buffer('loc', torch.zeros(size=self.event_shape))
+        self.register_buffer('tril_mat', torch.eye(self.event_size))
 
     @property
     def event_size(self):
