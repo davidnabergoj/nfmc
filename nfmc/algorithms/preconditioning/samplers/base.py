@@ -114,8 +114,10 @@ class PreconditionedMCMCSampler(MCMCSampler):
 
             # Step. Update if at least K // 2 steps from the next preconditioner update.
             do_update = (
-                step % preconditioner_update_interval < (preconditioner_update_interval // 2)  # not too close
-                or step >= (n_steps - preconditioner_update_interval)  # final stage: always update
+                step % preconditioner_update_interval < (
+                    preconditioner_update_interval // 2)  # not too close
+                # final stage: always update
+                or step >= (n_steps - preconditioner_update_interval)
             )
             z, x = self.kernel.step_with_preconditioner_inverse(
                 z,

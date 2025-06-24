@@ -24,7 +24,7 @@ class NeuTraRWMH(PreconditionedMCMCSampler):
         kernel = RWMHKernel(
             flow.event_shape,
             neg_log_prob_target,
-            preconditioner = NormalizingFlowPreconditioner(flow),
+            preconditioner=NormalizingFlowPreconditioner(flow),
             **kwargs
         )
         super().__init__(kernel)
@@ -48,7 +48,7 @@ class NeuTraMALA(PreconditionedMCMCSampler):
         kernel = MALAKernel(
             flow.event_shape,
             neg_log_prob_target,
-            preconditioner = NormalizingFlowPreconditioner(flow),
+            preconditioner=NormalizingFlowPreconditioner(flow),
             **kwargs
         )
         super().__init__(kernel)
@@ -72,7 +72,7 @@ class NeuTraHMC(PreconditionedMCMCSampler):
         kernel = HMCKernel(
             flow.event_shape,
             neg_log_prob_target,
-            preconditioner = NormalizingFlowPreconditioner(flow),
+            preconditioner=NormalizingFlowPreconditioner(flow),
             **kwargs
         )
         super().__init__(kernel)

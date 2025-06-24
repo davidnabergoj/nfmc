@@ -307,8 +307,13 @@ class MixingKernel(MarkovKernel):
             selection_probabilities = [
                 1 / len(kernels) for _ in kernels
             ]
-        self.set_selection_probabilities(
-            selection_probabilities)  # creates self.dist
+
+        # creates self.dist
+        self.set_selection_probabilities(selection_probabilities)
+
+    @property
+    def name(self) -> str:
+        return f"Mix[{', '.join([k.name for k in self.kernels])}]"
 
     def set_selection_probabilities(self, probs: List[float]):
         """
@@ -327,6 +332,10 @@ class MixingKernel(MarkovKernel):
         )
 
     def reset_parameters(self):
+        """
+        Resets the parameters of all kernels to their default values.
+        Does not reset the selection probabilities.
+        """
         for k in self.kernels:
             k.reset_parameters()
 
