@@ -7,6 +7,7 @@ from tqdm import tqdm
 from nfmc.algorithms.kernel import MixingKernel
 from nfmc.algorithms.mh.base import MHKernel
 from nfmc.algorithms.mh.local.mala import MALAKernel
+from nfmc.algorithms.mh.local.hmc import HMCKernel
 from nfmc.algorithms.mh.local.rwmh import RWMHKernel
 from nfmc.algorithms.preconditioning.preconditioners import DiagonalLinearPreconditioner, NormalizingFlowPreconditioner
 from nfmc.algorithms.preconditioning.samplers.base import PreconditionedMCMCSampler
@@ -157,6 +158,7 @@ class MixingNeuTraRWMH(BinaryMixedPreconditionedMCMCSampler):
     def __init__(self,
                  flow: Flow,
                  neg_log_prob_target: callable,
+                 warmup_prob_schedule: callable = None,
                  **kwargs):
         """
         NeuTraRWMH constructor.
@@ -164,24 +166,22 @@ class MixingNeuTraRWMH(BinaryMixedPreconditionedMCMCSampler):
         :param Flow flow: normalizing flow object.
         :param neg_log_prob_target: negative log probability density callable.
         """
-        diag_kernel = RWMHKernel(
-            flow.event_shape,
-            neg_log_prob_target,
-            preconditioner=DiagonalLinearPreconditioner(flow.event_shape),
-            **kwargs
-        )
-        nf_kernel = RWMHKernel(
-            flow.event_shape,
-            neg_log_prob_target,
-            preconditioner=NormalizingFlowPreconditioner(flow),
-            **kwargs
-        )
-        mixing_kernel = MixingKernel(
-            kernels=[diag_kernel, nf_kernel],
-            selection_probabilities=[0.5, 0.5]
-        )
 
-        super().__init__(mixing_kernel)
+        super().__init__(
+            RWMHKernel(
+                flow.event_shape,
+                neg_log_prob_target,
+                preconditioner=DiagonalLinearPreconditioner(flow.event_shape),
+                **kwargs
+            ),
+            RWMHKernel(
+                flow.event_shape,
+                neg_log_prob_target,
+                preconditioner=NormalizingFlowPreconditioner(flow),
+                **kwargs
+            ),
+            warmup_prob_schedule=warmup_prob_schedule
+        )
 
 
 class MixingNeuTraMALA(BinaryMixedPreconditionedMCMCSampler):
@@ -192,6 +192,7 @@ class MixingNeuTraMALA(BinaryMixedPreconditionedMCMCSampler):
     def __init__(self,
                  flow: Flow,
                  neg_log_prob_target: callable,
+                 warmup_prob_schedule: callable = None,
                  **kwargs):
         """
         NeuTraMALA constructor.
@@ -199,24 +200,21 @@ class MixingNeuTraMALA(BinaryMixedPreconditionedMCMCSampler):
         :param Flow flow: normalizing flow object.
         :param neg_log_prob_target: negative log probability density callable.
         """
-        diag_kernel = MALAKernel(
-            flow.event_shape,
-            neg_log_prob_target,
-            preconditioner=DiagonalLinearPreconditioner(flow.event_shape),
-            **kwargs
+        super().__init__(
+            MALAKernel(
+                flow.event_shape,
+                neg_log_prob_target,
+                preconditioner=DiagonalLinearPreconditioner(flow.event_shape),
+                **kwargs
+            ),
+            MALAKernel(
+                flow.event_shape,
+                neg_log_prob_target,
+                preconditioner=NormalizingFlowPreconditioner(flow),
+                **kwargs
+            ),
+            warmup_prob_schedule=warmup_prob_schedule
         )
-        nf_kernel = MALAKernel(
-            flow.event_shape,
-            neg_log_prob_target,
-            preconditioner=NormalizingFlowPreconditioner(flow),
-            **kwargs
-        )
-        mixing_kernel = MixingKernel(
-            kernels=[diag_kernel, nf_kernel],
-            selection_probabilities=[0.5, 0.5]
-        )
-
-        super().__init__(mixing_kernel)
 
 
 class MixingNeuTraHMC(BinaryMixedPreconditionedMCMCSampler):
@@ -227,6 +225,7 @@ class MixingNeuTraHMC(BinaryMixedPreconditionedMCMCSampler):
     def __init__(self,
                  flow: Flow,
                  neg_log_prob_target: callable,
+                 warmup_prob_schedule: callable = None,
                  **kwargs):
         """
         NeuTraHMC constructor.
@@ -234,21 +233,18 @@ class MixingNeuTraHMC(BinaryMixedPreconditionedMCMCSampler):
         :param Flow flow: normalizing flow object.
         :param neg_log_prob_target: negative log probability density callable.
         """
-        diag_kernel = MALAKernel(
-            flow.event_shape,
-            neg_log_prob_target,
-            preconditioner=DiagonalLinearPreconditioner(flow.event_shape),
-            **kwargs
+        super().__init__(
+            HMCKernel(
+                flow.event_shape,
+                neg_log_prob_target,
+                preconditioner=DiagonalLinearPreconditioner(flow.event_shape),
+                **kwargs
+            ),
+            HMCKernel(
+                flow.event_shape,
+                neg_log_prob_target,
+                preconditioner=NormalizingFlowPreconditioner(flow),
+                **kwargs
+            ),
+            warmup_prob_schedule=warmup_prob_schedule
         )
-        nf_kernel = MALAKernel(
-            flow.event_shape,
-            neg_log_prob_target,
-            preconditioner=NormalizingFlowPreconditioner(flow),
-            **kwargs
-        )
-        mixing_kernel = MixingKernel(
-            kernels=[diag_kernel, nf_kernel],
-            selection_probabilities=[0.5, 0.5]
-        )
-
-        super().__init__(mixing_kernel)

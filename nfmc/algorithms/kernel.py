@@ -314,6 +314,12 @@ class MixingKernel(MarkovKernel):
     @property
     def name(self) -> str:
         return f"Mix[{', '.join([k.name for k in self.kernels])}]"
+    
+    def pbar_repr(self, elapsed_time_seconds):
+        return ", ".join([
+            f"[{k.pbar_repr(elapsed_time_seconds)}]"
+            for k in self.kernels
+        ])
 
     def set_selection_probabilities(self, probs: List[float]):
         """
