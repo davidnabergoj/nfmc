@@ -295,24 +295,33 @@ class MixingKernel(MarkovKernel):
                     f'Kernel {k} uses different negative log probability density callable than kernel {kernels[0]}. '
                     f'Ensure that the target distribution is left invariant!'
                 )
-        if selection_probabilities is None:
-            selection_probabilities = [
-                1 / len(kernels) for _ in kernels]
-        else:
-            if len(selection_probabilities) != len(kernels):
-                raise ValueError(
-                    "The number of kernels and selection probabilities must be the same.")
-            if not math.isclose(sum(selection_probabilities), 1.0):
-                raise ValueError("Selection probabilities must sum to 1")
 
         super().__init__(
             event_shape=kernels[0].event_shape,
             neg_log_prob_target=kernels[0].neg_log_prob_target
         )
         self.kernels = kernels
+        self.dist = None  # Categorical distribution for kernel selection
+
+        if selection_probabilities is None:
+            selection_probabilities = [
+                1 / len(kernels) for _ in kernels
+            ]
+        self.set_selection_probabilities(
+            selection_probabilities)  # creates self.dist
+
+    def set_selection_probabilities(self, probs: List[float]):
+        """
+        Sets new selection probabilities.
+        """
+        if len(probs) != len(self.kernels):
+            raise ValueError(
+                "The number of kernels and selection probabilities must be the same.")
+        if not math.isclose(sum(probs), 1.0):
+            raise ValueError("Selection probabilities must sum to 1")
         self.dist = torch.distributions.Categorical(
             probs=torch.tensor(
-                selection_probabilities,
+                probs,
                 dtype=torch.float
             )
         )
