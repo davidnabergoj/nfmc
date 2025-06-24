@@ -65,8 +65,8 @@ class PreconditionedMCMCSampler(MCMCSampler):
         :param int max_training_samples: maximum number of training samples to train the preconditioner.
         :param callable data_transform: function that transforms each generated sample. Receives as input a tensor with
          shape `(*batch_shape, *event_shape)` and outputs a tensor with shape `(*batch_shape, *event_shape)`.
-        :param bool return_latent_samples: if True, return tuple with two Samples object. The first object holds samples
-         from the target distribution, the second holds latent samples. The specified data_transform callable is still 
+        :param bool return_latent_samples: if True, return tuple with two Samples objects. The first object holds samples
+         from the target distribution, the second holds latent samples. The specified data_transform callable is still
          applied to samples in each object.
         :param kwargs: keyword arguments for `preconditioner.fit`.
         :return: Samples object with MCMC draws.
@@ -98,7 +98,7 @@ class PreconditionedMCMCSampler(MCMCSampler):
                                   desc=f'Warmup',
                                   disable=not show_progress)):
 
-            if step % preconditioner_update_interval == 0 and 0 < step < n_steps - preconditioner_update_interval:
+            if step % preconditioner_update_interval == 0 and 0 < step <= n_steps - preconditioner_update_interval:
                 # Update the preconditioner first so drawn sample can contribute toward next preconditioner fit.
                 x_train = training_samples.as_tensor().view(-1, *self.kernel.event_shape)
 
