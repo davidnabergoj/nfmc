@@ -40,7 +40,7 @@ class BinaryMixedPreconditionedMCMCSampler(PreconditionedMCMCSampler):
             )
 
     def warmup(self,
-               z0: torch.Tensor,
+               x0: torch.Tensor,
                n_steps: int,
                preconditioner_update_interval: int,
                show_progress: bool = True,
@@ -48,7 +48,6 @@ class BinaryMixedPreconditionedMCMCSampler(PreconditionedMCMCSampler):
                max_samples: int = None,
                max_training_samples: int = None,
                data_transform: callable = None,
-               return_latent_samples: bool = False,
                **kwargs) -> Samples:
         """
         Optimize kernel parameters.
@@ -60,7 +59,7 @@ class BinaryMixedPreconditionedMCMCSampler(PreconditionedMCMCSampler):
 
         The mixing kernel's selection probabilities are updated after every preconditioner update.
 
-        :param torch.Tensor z0: initial latent state with shape `(*batch_shape, *event_shape)`.
+        :param torch.Tensor x0: initial target-space state with shape `(*batch_shape, *event_shape)`.
         :param int n_steps: number of MCMC steps to perform.
         :param int preconditioner_update_interval: update the preconditioner after this number of MCMC steps.
         :param bool show_progress: if True, display a progress bar.
@@ -69,9 +68,6 @@ class BinaryMixedPreconditionedMCMCSampler(PreconditionedMCMCSampler):
         :param int max_training_samples: maximum number of training samples to train the preconditioner.
         :param callable data_transform: function that transforms each generated sample. Receives as input a tensor with
          shape `(*batch_shape, *event_shape)` and outputs a tensor with shape `(*batch_shape, *event_shape)`.
-        :param bool return_latent_samples: if True, return tuple with two Samples objects. The first object holds samples
-         from the target distribution, the second holds latent samples. The specified data_transform callable is still
-         applied to samples in each object.
         :param kwargs: keyword arguments for `preconditioner.fit`.
         :return: Samples object with MCMC draws.
         """
@@ -81,27 +77,21 @@ class BinaryMixedPreconditionedMCMCSampler(PreconditionedMCMCSampler):
             data_transform=data_transform
         )
 
-        latent_samples = Samples(
-            event_shape=self.kernel.event_shape,
-            max_samples=max_samples,
-        )
-
         _adj_max = max_training_samples
         if max_training_samples is not None:
-            _adj_max /= len(z0)  # divide by number of chains
+            _adj_max /= len(x0)  # divide by number of chains
         training_samples = Samples(
             event_shape=self.kernel.event_shape,
             max_samples=_adj_max,
         )
 
         self.kernel.reset_statistics()
-        z = deepcopy(z0.detach())
+        x = deepcopy(x0.detach())
 
         t0 = time.time()
         for step in (pbar := tqdm(range(n_steps),
                                   desc=f'Warmup',
                                   disable=not show_progress)):
-
             if step % preconditioner_update_interval == 0 and 0 < step <= n_steps - preconditioner_update_interval:
                 # Update the preconditioner first so drawn sample can contribute toward next preconditioner fit.
                 x_train = training_samples.as_tensor().view(-1, *self.kernel.event_shape)
@@ -112,8 +102,7 @@ class BinaryMixedPreconditionedMCMCSampler(PreconditionedMCMCSampler):
                     max_samples=_adj_max,
                 )
 
-                # Reset state and kernel
-                z = torch.rand_like(z) * 2 - 1
+                # Reset kernel
                 self.kernel.reset_parameters()
 
                 # Set selection probabilities for the mixing kernel
@@ -129,7 +118,7 @@ class BinaryMixedPreconditionedMCMCSampler(PreconditionedMCMCSampler):
                 # final stage: always update
                 or step >= (n_steps - preconditioner_update_interval)
             )
-            z, x = self.kernel.step_with_preconditioner_inverse(
+            _, x = self.kernel.step_with_preconditioner_inverse(
                 z,
                 update=do_update
             )
