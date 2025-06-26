@@ -356,7 +356,7 @@ class MixingKernel(MarkovKernel):
         """
         Performs a transition with a randomly chosen kernel.
 
-        :param torch.Tensor x: current state tensor with shape `(*batch_shape, *event_shape)`.
+        :param torch.Tensor x: current target-space state tensor with shape `(*batch_shape, *event_shape)`.
         :param bool update: if True, update this kernel's parameters.
         :return: new state tensor with shape `(*batch_shape, *event_shape)`.
         """
@@ -367,10 +367,22 @@ class MixingKernel(MarkovKernel):
             **kwargs
         )
 
-    def step_with_preconditioner_inverse(self, *args, **kwargs):
+    def step_with_preconditioner_inverse(self,
+             x: torch.Tensor,
+             update: bool = False,
+             **kwargs):
+        """
+        Performs a transition with a randomly chosen kernel.
+        Returns the preconditioner-inverse of the new state.
+
+        :param torch.Tensor x: current target-space state tensor with shape `(*batch_shape, *event_shape)`.
+        :param bool update: if True, update this kernel's parameters.
+        :return: new state tensor with shape `(*batch_shape, *event_shape)`.
+        """
         idx = self.dist.sample()
         return self.kernels[idx].step_with_preconditioner_inverse(
-            *args,
+            x=x,
+            update=update,
             **kwargs
         )
 
