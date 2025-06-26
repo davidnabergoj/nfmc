@@ -1,3 +1,5 @@
+from typing import List
+from nfmc.algorithms.mh.local.base import LocalMHKernel
 from nfmc.algorithms.mh.local.hmc import HMCKernel
 from nfmc.algorithms.mh.local.mala import MALAKernel
 from nfmc.algorithms.mh.local.rwmh import RWMHKernel
@@ -14,6 +16,7 @@ class NeuTraRWMH(PreconditionedMCMCSampler):
     def __init__(self,
                  flow: Flow,
                  neg_log_prob_target: callable,
+                 extra_warmup_kernels: List[LocalMHKernel] = None,
                  **kwargs):
         """
         NeuTraRWMH constructor.
@@ -27,7 +30,7 @@ class NeuTraRWMH(PreconditionedMCMCSampler):
             preconditioner=NormalizingFlowPreconditioner(flow),
             **kwargs
         )
-        super().__init__(kernel)
+        super().__init__(kernel, extra_warmup_kernels=extra_warmup_kernels)
 
 
 class NeuTraMALA(PreconditionedMCMCSampler):
@@ -38,6 +41,7 @@ class NeuTraMALA(PreconditionedMCMCSampler):
     def __init__(self,
                  flow: Flow,
                  neg_log_prob_target: callable,
+                 extra_warmup_kernels: List[LocalMHKernel] = None,
                  **kwargs):
         """
         NeuTraMALA constructor.
@@ -51,7 +55,7 @@ class NeuTraMALA(PreconditionedMCMCSampler):
             preconditioner=NormalizingFlowPreconditioner(flow),
             **kwargs
         )
-        super().__init__(kernel)
+        super().__init__(kernel, extra_warmup_kernels=extra_warmup_kernels)
 
 
 class NeuTraHMC(PreconditionedMCMCSampler):
@@ -62,6 +66,7 @@ class NeuTraHMC(PreconditionedMCMCSampler):
     def __init__(self,
                  flow: Flow,
                  neg_log_prob_target: callable,
+                 extra_warmup_kernels: List[LocalMHKernel] = None,
                  **kwargs):
         """
         NeuTraHMC constructor.
@@ -75,4 +80,4 @@ class NeuTraHMC(PreconditionedMCMCSampler):
             preconditioner=NormalizingFlowPreconditioner(flow),
             **kwargs
         )
-        super().__init__(kernel)
+        super().__init__(kernel, extra_warmup_kernels=extra_warmup_kernels)

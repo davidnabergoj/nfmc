@@ -19,6 +19,23 @@ class PreconditionedMCMCSampler(MCMCSampler):
     All kernel transitions are performed according to a preconditioner-adjusted target density.
     """
 
+    def __init__(self,
+                 kernel: MarkovKernel,
+                 extra_warmup_kernels: List[MarkovKernel] = None,
+                 **kwargs):
+        """Preconditioned MCMC sampler constructor.
+
+        :param MarkovKernel kernel: MCMC kernel to use.
+        :param List[MarkovKernel] warmup_kernel_sequence: sequence of additional 
+         kernels to use for warmup. Each kernel in the sequence is used for a 
+         single warmup cycle. After the last of the extra warmup kernels is 
+         used, the main kernel is used for the remainder of warmup.
+        """
+        if extra_warmup_kernels is None:
+            extra_warmup_kernels = []
+        self.extra_warmup_kernels = extra_warmup_kernels
+        super().__init__(kernel, **kwargs)
+
     @property
     def name(self) -> str:
         return "Generic preconditioned MCMC sampler"
@@ -37,6 +54,20 @@ class PreconditionedMCMCSampler(MCMCSampler):
             x_train = x_train[:max_training_samples]
         return x_train
 
+    @property
+    def active_warmup_kernel(self):
+        if len(self.extra_warmup_kernels) > 0:
+            return self.extra_warmup_kernels[0]
+        else:
+            return self.kernel
+
+    def discard_current_warmup_kernel(self) -> MarkovKernel:
+        """
+        Discard the current warmup kernel.
+        """
+        if self.extra_warmup_kernels:
+            self.extra_warmup_kernels.pop(0)
+
     def warmup(self,
                z0: torch.Tensor,
                n_steps: int,
@@ -52,8 +83,8 @@ class PreconditionedMCMCSampler(MCMCSampler):
         Optimize kernel parameters.
 
         The kernel is updated every step unless it internally overrides this.
-        The kernel's preconditioner is updated every K steps where K is equal to preconditioner_update_interval.
-        The kernel's preconditioner is not updated within the final K steps so that the rest of the kernel can be stably 
+        The kernel's preconditioner is updated every K steps (i.e., one cycle) where K is equal to preconditioner_update_interval.
+        The kernel's preconditioner is not updated within the final K steps (cycle) so that the rest of the kernel can be stably 
          tuned.
 
         :param torch.Tensor z0: initial latent state with shape `(*batch_shape, *event_shape)`.
@@ -97,20 +128,27 @@ class PreconditionedMCMCSampler(MCMCSampler):
         for step in (pbar := tqdm(range(n_steps),
                                   desc=f'Warmup',
                                   disable=not show_progress)):
+            current_warmup_kernel = self.active_warmup_kernel
+            if (
+                step % preconditioner_update_interval == 0
+                and 0 < step <= n_steps - preconditioner_update_interval
+            ):
+                self.discard_current_warmup_kernel()
+                current_warmup_kernel = self.active_warmup_kernel
 
-            if step % preconditioner_update_interval == 0 and 0 < step <= n_steps - preconditioner_update_interval:
                 # Update the preconditioner first so drawn sample can contribute toward next preconditioner fit.
-                x_train = training_samples.as_tensor().view(-1, *self.kernel.event_shape)
+                x_train = training_samples.as_tensor().view(-1, *current_warmup_kernel.event_shape)
 
-                self.kernel.fit_preconditioner(x_train, **kwargs)
+                current_warmup_kernel.fit_preconditioner(x_train, **kwargs)
                 training_samples = Samples(
-                    event_shape=self.kernel.event_shape,
+                    event_shape=current_warmup_kernel.event_shape,
                     max_samples=_adj_max,
                 )
 
                 # Reset state and kernel
                 z = torch.rand_like(z) * 2 - 1
-                self.kernel.reset_parameters()
+                current_warmup_kernel.reset_parameters()
+
 
             # Step. Update if at least K // 2 steps from the next preconditioner update.
             do_update = (
@@ -119,7 +157,7 @@ class PreconditionedMCMCSampler(MCMCSampler):
                 # final stage: always update
                 or step >= (n_steps - preconditioner_update_interval)
             )
-            z, x = self.kernel.step_with_preconditioner_inverse(
+            z, x = current_warmup_kernel.step_with_preconditioner_inverse(
                 z,
                 update=do_update
             )
@@ -131,7 +169,7 @@ class PreconditionedMCMCSampler(MCMCSampler):
                 latent_samples.add(z)
 
             elapsed_time = time.time() - t0
-            pbar.set_postfix_str(self.kernel.pbar_repr(elapsed_time))
+            pbar.set_postfix_str(current_warmup_kernel.pbar_repr(elapsed_time))
             if time_limit_seconds is not None and elapsed_time > time_limit_seconds:
                 break
 
