@@ -126,17 +126,11 @@ class PreconditionedMCMCSampler(MCMCSampler):
 
                 # Update the preconditioner first so drawn sample can contribute toward next preconditioner fit.
                 x_train = training_samples.as_tensor().view(-1, *current_warmup_kernel.event_shape)
-
                 current_warmup_kernel.fit_preconditioner(x_train, **kwargs)
-                training_samples = Samples(
-                    event_shape=current_warmup_kernel.event_shape,
-                    max_samples=_adj_max,
-                )
 
                 # Reset state and kernel
                 z = torch.rand_like(z) * 2 - 1
                 current_warmup_kernel.reset_parameters()
-
 
             # Step. Update if at least K // 2 steps from the next preconditioner update.
             do_update = (
