@@ -40,20 +40,6 @@ class PreconditionedMCMCSampler(MCMCSampler):
     def name(self) -> str:
         return "Generic preconditioned MCMC sampler"
 
-    def prepare_training_data(self,
-                              train_data_list: List[torch.Tensor],
-                              max_training_samples: int):
-        # Flatten training data elements
-        train_data_list = [
-            x.view(-1, *self.kernel.event_shape)
-            for x in train_data_list
-        ]
-        x_train = torch.concat(train_data_list, dim=0)
-        x_train = x_train[torch.randperm(len(x_train))]
-        if max_training_samples is not None:
-            x_train = x_train[:max_training_samples]
-        return x_train
-
     @property
     def active_warmup_kernel(self):
         if len(self.extra_warmup_kernels) > 0:
@@ -128,6 +114,8 @@ class PreconditionedMCMCSampler(MCMCSampler):
         for step in (pbar := tqdm(range(n_steps),
                                   desc=f'Warmup',
                                   disable=not show_progress)):
+            z = z.detach()
+
             current_warmup_kernel = self.active_warmup_kernel
             if (
                 step % preconditioner_update_interval == 0
@@ -162,11 +150,11 @@ class PreconditionedMCMCSampler(MCMCSampler):
                 update=do_update
             )
             if do_update:
-                training_samples.add(x)
+                training_samples.add(x.detach())
 
-            target_samples.add(x)
+            target_samples.add(x.detach())
             if return_latent_samples:
-                latent_samples.add(z)
+                latent_samples.add(z.detach())
 
             elapsed_time = time.time() - t0
             pbar.set_postfix_str(current_warmup_kernel.pbar_repr(elapsed_time))
@@ -220,11 +208,12 @@ class PreconditionedMCMCSampler(MCMCSampler):
         for _ in (pbar := tqdm(range(n_steps),
                                desc=f'Sampling',
                                disable=not show_progress)):
+            z = z.detach()
             z, x = self.kernel.step_with_preconditioner_inverse(z)
 
-            target_samples.add(x)
+            target_samples.add(x.detach())
             if return_latent_samples:
-                latent_samples.add(z)
+                latent_samples.add(z.detach())
 
             elapsed_time = time.time() - t0
             pbar.set_postfix_str(self.kernel.pbar_repr(elapsed_time))
