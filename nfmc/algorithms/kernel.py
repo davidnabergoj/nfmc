@@ -56,7 +56,11 @@ class MarkovKernel:
         return self.base_neg_log_prob_target(x) - log_det_inverse
 
     def fit_preconditioner(self, x_train, **kwargs):
-        self._preconditioner.fit(x=x_train, **kwargs)
+        self._preconditioner.fit(
+            x=x_train,
+            reset_optimizer=False,
+            **kwargs
+        )
 
     def calls_per_second(self, elapsed_time_seconds):
         if elapsed_time_seconds > 0:
@@ -368,9 +372,9 @@ class MixingKernel(MarkovKernel):
         )
 
     def step_with_preconditioner_inverse(self,
-             x: torch.Tensor,
-             update: bool = False,
-             **kwargs):
+                                         x: torch.Tensor,
+                                         update: bool = False,
+                                         **kwargs):
         """
         Performs a transition with a randomly chosen kernel.
         Returns the preconditioner-inverse of the new state.
