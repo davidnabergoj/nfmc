@@ -1,7 +1,6 @@
 from torchflows.flows import Flow
 from nfmc.algorithms.preconditioning.samplers.base import PreconditionedMCMCSampler
 from nfmc.algorithms.jump.kernels import DiagonalJumpHMCKernel, DiagonalJumpMALAKernel, DiagonalJumpRWMHKernel, NeuTraJumpRWMHKernel, NeuTraJumpHMCKernel, NeuTraJumpMALAKernel
-from nfmc.algorithms.preconditioning.preconditioners import NormalizingFlowPreconditioner
 
 
 class NeuTraJumpRWMH(PreconditionedMCMCSampler):
