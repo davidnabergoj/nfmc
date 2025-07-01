@@ -1,7 +1,7 @@
 import pytest
 import torch
 
-from nfmc.algorithms.jump.samplers import DiagonalJumpHMC, DiagonalJumpMALA, DiagonalJumpRWMH, NeuTraJumpHMC, NeuTraJumpMALA, NeuTraJumpRWMH
+from nfmc.algorithms.jump.samplers import DiagonalJumpHMC, DiagonalJumpMALA, DiagonalJumpRWMH
 from nfmc.algorithms.jump.kernels import (
     NeuTraJumpHMCKernel,
     NeuTraJumpMALAKernel,
@@ -16,8 +16,11 @@ from nfmc.algorithms.jump.kernels import (
 from nfmc.algorithms.util.samples import Samples
 from nfmc.util import create_flow_object
 from test.util import DiagonalGaussian, StandardGaussian
-from torchflows import Flow, RealNVP
-from torchflows.architectures import RealNVP
+from torchflows import Flow, ElementwiseAffine
+
+
+def create_small_flow(event_shape):
+    return Flow(ElementwiseAffine(event_shape))
 
 
 @pytest.mark.parametrize('event_shape', [(2,), (10,), (2, 3, 5)])
@@ -40,7 +43,7 @@ def test_step(event_shape,
               n_chains):
     torch.manual_seed(0)
 
-    flow = Flow(RealNVP(event_shape))
+    flow = create_small_flow(event_shape)
     kernel = kernel_class(
         flow=flow,
         neg_log_prob_target=StandardGaussian(event_shape).neg_log_prob,
@@ -59,9 +62,9 @@ def test_step(event_shape,
 @pytest.mark.local_only
 @pytest.mark.parametrize('event_shape', [(2,)])
 @pytest.mark.parametrize('sampler_class', [
-    NeuTraJumpRWMH,
-    NeuTraJumpHMC,
-    NeuTraJumpMALA
+    DiagonalJumpRWMH,
+    DiagonalJumpHMC,
+    DiagonalJumpMALA
 ])
 @pytest.mark.parametrize('global_kernel', ['imh', 'i-sir'])
 @pytest.mark.parametrize('n_chains', [4])
@@ -104,9 +107,9 @@ def test_warmup(event_shape,
 @pytest.mark.local_only
 @pytest.mark.parametrize('event_shape', [(2,)])
 @pytest.mark.parametrize('sampler_class', [
-    NeuTraJumpRWMH,
-    NeuTraJumpHMC,
-    NeuTraJumpMALA
+    DiagonalJumpRWMH,
+    DiagonalJumpHMC,
+    DiagonalJumpMALA
 ])
 @pytest.mark.parametrize('global_kernel', ['imh', 'i-sir'])
 @pytest.mark.parametrize('n_chains', [1, 2, 4])
@@ -158,7 +161,7 @@ def test_warmup_and_sample(sampler_class, global_kernel):
     event_shape = (4,)
     n_chains = 50
     target = DiagonalGaussian(event_shape, mu=1.5, std=0.5)
-    flow = Flow(RealNVP(event_shape, n_layers=1))
+    flow = create_small_flow(event_shape)
 
     sampler = sampler_class(
         flow=flow,
@@ -172,6 +175,7 @@ def test_warmup_and_sample(sampler_class, global_kernel):
         n_steps=600,
         preconditioner_update_interval=50,
         return_latent_samples=True,
+        n_epochs=2
     )
     sampling_draws, _ = sampler.sample(
         z0=latent_warmup_draws.last_sample,

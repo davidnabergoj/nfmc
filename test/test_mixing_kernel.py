@@ -108,7 +108,7 @@ def test_set_selection_probabilities_invalid_length():
     with pytest.raises(ValueError):
         mixing_kernel.set_selection_probabilities([0.3, 0.7, 0.1])
 
-@pytest.skip(reason='Invalid method')
+@pytest.mark.skip(reason='Invalid method')
 def test_binary_mixed_preconditioned_sampler_adaptation():
     event_shape = (2, 3)
     n = 20
