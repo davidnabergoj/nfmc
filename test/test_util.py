@@ -6,9 +6,10 @@ from test.util import StandardGaussian
 
 @pytest.mark.parametrize('batch_shape', [(1,), (2,), (2, 3, 5)])
 @pytest.mark.parametrize('event_shape', [(1,), (2,), (2, 3, 5)])
-def test_grad_f(batch_shape, event_shape):
+@pytest.mark.parametrize('dtype', [torch.float32, torch.float64])
+def test_grad_f(batch_shape, event_shape, dtype):
     torch.manual_seed(0)
-    x = torch.randn(size=(*batch_shape, *event_shape))
+    x = torch.randn(size=(*batch_shape, *event_shape), dtype=dtype)
 
     fval, gval, nc, ng = grad_f(
         x,
