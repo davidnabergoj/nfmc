@@ -2,7 +2,7 @@ import pytest
 import torch
 
 from nfmc.algorithms.iterated_sir import IteratedSIRKernel
-from nfmc.algorithms.jump.samplers import DiagonalJumpHMC, DiagonalJumpMALA, DiagonalJumpRWMH, NeuTraJumpHMC, NeuTraJumpMALA, NeuTraJumpRWMH
+from nfmc.algorithms.jump.samplers import DiagonalJumpMALA
 from nfmc.algorithms.mh.imh import IMHKernel
 from nfmc.algorithms.preconditioning.preconditioners import DenseLinearPreconditioner, DiagonalLinearPreconditioner, NormalizingFlowPreconditioner
 from nfmc.algorithms.preconditioning.samplers.dense import DenseHMC, DenseMALA, DenseRWMH
