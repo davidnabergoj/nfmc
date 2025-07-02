@@ -14,10 +14,11 @@ import torch
 @pytest.mark.parametrize('event_shape', [(1,), (4,), (2, 3)])
 @pytest.mark.parametrize('kernel_class', [RWMHKernel, HMCKernel, IMHKernel, MALAKernel])
 @pytest.mark.parametrize('n_chains', [1, 4])
-def test_step(event_shape, kernel_class, n_chains):
+@pytest.mark.parametrize('dtype', [torch.float32, torch.float64])
+def test_step(event_shape, kernel_class, n_chains, dtype):
     torch.manual_seed(0)
 
-    x_current = torch.randn(size=(n_chains, *event_shape))
+    x_current = torch.randn(size=(n_chains, *event_shape), dtype=dtype)
     kernel = kernel_class(
         event_shape=event_shape,
         neg_log_prob_target=StandardGaussian(event_shape).neg_log_prob

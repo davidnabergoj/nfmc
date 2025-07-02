@@ -75,7 +75,10 @@ class IMHKernel(MHKernel):
         batch_shape = x.shape[:-len(self.event_shape)]
         u_x = -self.proposal_log_prob(x)
         x_prime, log_prob_x_prime = self.proposal_sample_with_log_prob(
-            batch_shape)
+            batch_shape
+        )
+        x_prime = x_prime.to(x)
+        log_prob_x_prime = log_prob_x_prime.to(x)
         u_x_prime = -log_prob_x_prime
 
         # Compute divergence mask

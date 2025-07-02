@@ -489,7 +489,7 @@ def grad_f(x: torch.Tensor,
             x_finite.requires_grad_(True)
 
             try:
-                f_val_finite = f(x_finite)
+                f_val_finite = f(x_finite).to(x)
                 f_val_finite[~torch.isfinite(f_val_finite)] = torch.nan
                 function_value[finite_mask] = f_val_finite
             except ValueError as _:
@@ -501,7 +501,7 @@ def grad_f(x: torch.Tensor,
                     f_val_finite.sum(),
                     x_finite,
                     create_graph=False
-                )[0]
+                )[0].to(x)
                 grad_value[~torch.isfinite(grad_value)] = torch.nan
                 n_grads += n_finite
 
