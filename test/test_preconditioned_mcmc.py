@@ -13,7 +13,7 @@ from nfmc.algorithms.util.samples import Samples
 from nfmc.util import create_flow_object
 from test.util import DiagonalGaussian, StandardGaussian
 from torchflows import Flow, ElementwiseAffine
-from torchflows.bijections.finite.matrix import IdentityMatrix
+from torchflows.bijections.matrices import IdentityMatrix
 
 
 @pytest.mark.local_only
