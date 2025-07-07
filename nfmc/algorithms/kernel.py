@@ -44,6 +44,13 @@ class MarkovKernel:
         Resets the parameters of this kernel to their default values.
         """
         raise NotImplementedError
+    
+    def finalize_parameters(self):
+        """
+        Finalizes the parameters of this kernel after performing warmup.
+        Default: do nothing.
+        """
+        pass
 
     def neg_log_prob_target(self, z: torch.Tensor):
         """

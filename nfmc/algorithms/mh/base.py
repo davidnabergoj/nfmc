@@ -87,7 +87,7 @@ class MHSampler(MCMCSampler):
                time_limit_seconds: Union[float, int] = None,
                max_samples: int = None,
                data_transform: callable = None):
-        return self.sample(
+        out = self.sample(
             x0=x0,
             n_steps=n_steps,
             show_progress=show_progress,
@@ -96,6 +96,8 @@ class MHSampler(MCMCSampler):
             data_transform=data_transform,
             _tuning=True,
         )
+        self.kernel.finalize_parameters()
+        return out
 
     def sample(self,
                x0: torch.Tensor,

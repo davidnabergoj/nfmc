@@ -50,6 +50,13 @@ class LocalMHKernel(MHKernel):
             self.step_size, **(self._initial_dual_averaging_kwargs or {})
         )
 
+    def finalize_parameters(self):
+        """
+        Use the weighted average of observed step sizes after warmup.
+        """
+        if len(self._dual_averaging.error_history) > 0:
+            self.step_size = self._dual_averaging.weighted_value()
+
     def pbar_repr(self, elapsed_time_seconds: float):
         data = [
             self.name,

@@ -110,6 +110,8 @@ class PreconditionedMCMCSampler(MCMCSampler):
         self.kernel.reset_statistics()
         z = deepcopy(z0.detach())
 
+        _prev_do_update = False
+
         t0 = time.time()
         for step in (pbar := tqdm(range(n_steps),
                                   desc=f'Warmup',
@@ -139,6 +141,11 @@ class PreconditionedMCMCSampler(MCMCSampler):
                 # final stage: always update
                 or step >= (n_steps - preconditioner_update_interval)
             )
+            if _prev_do_update and not do_update:
+                # We are now in the first iteration where the kernel parameters
+                # will not be updated. Need to finalize kernel parameters.
+                current_warmup_kernel.finalize_parameters()
+
             z, x = current_warmup_kernel.step_with_preconditioner_inverse(
                 z,
                 update=do_update
@@ -150,10 +157,14 @@ class PreconditionedMCMCSampler(MCMCSampler):
             if return_latent_samples:
                 latent_samples.add(z.detach())
 
+            _prev_do_update = do_update
             elapsed_time = time.time() - t0
             pbar.set_postfix_str(current_warmup_kernel.pbar_repr(elapsed_time))
             if time_limit_seconds is not None and elapsed_time > time_limit_seconds:
                 break
+
+        # Finalize kernel parameters
+        current_warmup_kernel.finalize_parameters()
 
         if return_latent_samples:
             return target_samples, latent_samples
