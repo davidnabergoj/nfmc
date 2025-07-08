@@ -68,13 +68,14 @@ def test_step(event_shape,
 ])
 @pytest.mark.parametrize('global_kernel', ['imh', 'i-sir'])
 @pytest.mark.parametrize('n_chains', [4])
-@pytest.mark.parametrize('n_steps', [4, 5, 6])
+@pytest.mark.parametrize('cycle_length', [2, 3, 4])
 def test_warmup(event_shape,
                 sampler_class,
                 global_kernel,
                 n_chains,
-                n_steps):
+                cycle_length):
     torch.manual_seed(0)
+    n_cycles = 2
     original_neg_log_prob_target = StandardGaussian(event_shape).neg_log_prob
 
     flow = create_flow_object('realnvp', event_shape)
@@ -92,15 +93,17 @@ def test_warmup(event_shape,
     z_initial = torch.randn(size=(n_chains, *event_shape))
     samples = sampler.warmup(
         z_initial,
-        n_steps=n_steps,
+        n_cycles=n_cycles,
+        cycle_length=cycle_length,
         show_progress=False,
-        preconditioner_update_interval=5,
         n_epochs=2  # Number of NF training epochs
     )
 
     assert isinstance(samples, Samples)
     assert torch.isfinite(samples.as_tensor()).all()
-    assert samples.as_tensor().shape == (n_steps, n_chains, *event_shape)
+    assert samples.as_tensor().shape == (
+        cycle_length * n_cycles, n_chains, *event_shape
+        )
     assert samples.as_tensor().dtype == z_initial.dtype
 
 
@@ -172,8 +175,8 @@ def test_warmup_and_sample(sampler_class, global_kernel):
     z0 = torch.rand(size=(n_chains, *event_shape)) * 2 - 1
     _, latent_warmup_draws = sampler.warmup(
         z0=z0,
-        n_steps=600,
-        preconditioner_update_interval=50,
+        n_cycles=12,
+        cycle_length=50,
         return_latent_samples=True,
         n_epochs=2
     )

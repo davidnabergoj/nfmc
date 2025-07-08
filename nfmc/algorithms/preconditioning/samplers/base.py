@@ -9,7 +9,7 @@ from tqdm import tqdm
 
 import time
 from copy import deepcopy
-from typing import List, Union
+from typing import List, Tuple, Union
 
 
 class PreconditionedMCMCSampler(MCMCSampler):
@@ -21,19 +21,19 @@ class PreconditionedMCMCSampler(MCMCSampler):
 
     def __init__(self,
                  kernel: MarkovKernel,
-                 extra_warmup_kernels: List[MarkovKernel] = None,
+                 extra_warmup_kernels: List[Tuple[MarkovKernel, int]] = None,
                  **kwargs):
         """Preconditioned MCMC sampler constructor.
 
         :param MarkovKernel kernel: MCMC kernel to use.
-        :param List[MarkovKernel] warmup_kernel_sequence: sequence of additional 
-         kernels to use for warmup. Each kernel in the sequence is used for a 
-         single warmup cycle. After the last of the extra warmup kernels is 
+        :param List[Tuple[MarkovKernel, int]] warmup_kernel_sequence: sequence of tuples. Each tuple
+         contains a kernel object and an integer representing the number of cycles. The kernel is
+         used for this many cycles during warmup. After the last of the extra warmup kernels is 
          used, the main kernel is used for the remainder of warmup.
         """
         if extra_warmup_kernels is None:
             extra_warmup_kernels = []
-        self.extra_warmup_kernels = extra_warmup_kernels
+        self.extra_warmup_kernels = [[x[0], x[1]] for x in extra_warmup_kernels]  # Convert to list of lists
         super().__init__(kernel, **kwargs)
 
     @property
@@ -43,21 +43,24 @@ class PreconditionedMCMCSampler(MCMCSampler):
     @property
     def active_warmup_kernel(self):
         if len(self.extra_warmup_kernels) > 0:
-            return self.extra_warmup_kernels[0]
+            return self.extra_warmup_kernels[0][0]
         else:
             return self.kernel
 
-    def discard_current_warmup_kernel(self) -> MarkovKernel:
+    def advance_warmup_kernel(self) -> MarkovKernel:
         """
-        Discard the current warmup kernel.
+        Advance to the next warmup kernel.
         """
         if self.extra_warmup_kernels:
-            self.extra_warmup_kernels.pop(0)
+            if self.extra_warmup_kernels[0][1] > 0:
+                self.extra_warmup_kernels[0][1] -= 1
+            else:
+                self.extra_warmup_kernels.pop(0)
 
     def warmup(self,
                z0: torch.Tensor,
-               n_steps: int,
-               preconditioner_update_interval: int,
+               n_cycles: int,
+               cycle_length: int,
                show_progress: bool = True,
                time_limit_seconds: Union[float, int] = None,
                max_samples: int = None,
@@ -74,8 +77,8 @@ class PreconditionedMCMCSampler(MCMCSampler):
          tuned.
 
         :param torch.Tensor z0: initial latent state with shape `(*batch_shape, *event_shape)`.
-        :param int n_steps: number of MCMC steps to perform.
-        :param int preconditioner_update_interval: update the preconditioner after this number of MCMC steps.
+        :param int n_cycles: number of warmup cycles.
+        :param int cycle_length: number of MCMC steps in each warmup cycle.
         :param bool show_progress: if True, display a progress bar.
         :param float time_limit_seconds: maximum sampling time. Sampling stops if this time is exceeded.
         :param int max_samples: maximum number of samples to store.
@@ -110,20 +113,16 @@ class PreconditionedMCMCSampler(MCMCSampler):
         self.kernel.reset_statistics()
         z = deepcopy(z0.detach())
 
-        _prev_do_update = False
-
         t0 = time.time()
-        for step in (pbar := tqdm(range(n_steps),
+        for cycle_index in (pbar := tqdm(range(n_cycles),
                                   desc=f'Warmup',
                                   disable=not show_progress)):
             z = z.detach()
 
             current_warmup_kernel = self.active_warmup_kernel
-            if (
-                step % preconditioner_update_interval == 0
-                and 0 < step <= n_steps - preconditioner_update_interval
-            ):
-                self.discard_current_warmup_kernel()
+
+            if cycle_index > 0:
+                self.advance_warmup_kernel()
                 current_warmup_kernel = self.active_warmup_kernel
 
                 # Update the preconditioner first so drawn sample can contribute toward next preconditioner fit.
@@ -133,35 +132,30 @@ class PreconditionedMCMCSampler(MCMCSampler):
                 # Reset state and kernel
                 z = torch.rand_like(z) * 2 - 1
                 current_warmup_kernel.reset_parameters()
+            
+            for step_index in range(cycle_length):
+                # Step. Update if in first half of cycle or in last cycle.
+                do_update = step_index < (cycle_length // 2) or cycle_index == (cycle_length - 1)
+                if step_index == (cycle_length // 2) and cycle_index != (cycle_length - 1):
+                    # We are now in the first iteration where the kernel parameters
+                    # will not be updated. Need to finalize kernel parameters.
+                    current_warmup_kernel.finalize_parameters()
 
-            # Step. Update if at least K // 2 steps from the next preconditioner update.
-            do_update = (
-                step % preconditioner_update_interval < (
-                    preconditioner_update_interval // 2)  # not too close
-                # final stage: always update
-                or step >= (n_steps - preconditioner_update_interval)
-            )
-            if _prev_do_update and not do_update:
-                # We are now in the first iteration where the kernel parameters
-                # will not be updated. Need to finalize kernel parameters.
-                current_warmup_kernel.finalize_parameters()
+                z, x = current_warmup_kernel.step_with_preconditioner_inverse(
+                    z,
+                    update=do_update
+                )
+                if do_update:
+                    training_samples.add(x.detach())
 
-            z, x = current_warmup_kernel.step_with_preconditioner_inverse(
-                z,
-                update=do_update
-            )
-            if do_update:
-                training_samples.add(x.detach())
+                target_samples.add(x.detach())
+                if return_latent_samples:
+                    latent_samples.add(z.detach())
 
-            target_samples.add(x.detach())
-            if return_latent_samples:
-                latent_samples.add(z.detach())
-
-            _prev_do_update = do_update
-            elapsed_time = time.time() - t0
-            pbar.set_postfix_str(current_warmup_kernel.pbar_repr(elapsed_time))
-            if time_limit_seconds is not None and elapsed_time > time_limit_seconds:
-                break
+                elapsed_time = time.time() - t0
+                pbar.set_postfix_str(current_warmup_kernel.pbar_repr(elapsed_time))
+                if time_limit_seconds is not None and elapsed_time > time_limit_seconds:
+                    break
 
         # Finalize kernel parameters
         current_warmup_kernel.finalize_parameters()

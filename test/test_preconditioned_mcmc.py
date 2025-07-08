@@ -13,7 +13,7 @@ from nfmc.algorithms.util.samples import Samples
 from nfmc.util import create_flow_object
 from test.util import DiagonalGaussian, StandardGaussian
 from torchflows import Flow, ElementwiseAffine
-from torchflows.bijections.matrices import IdentityMatrix
+from torchflows.bijections.finite.matrix.identity import IdentityMatrix
 
 
 @pytest.mark.local_only
@@ -30,13 +30,14 @@ from torchflows.bijections.matrices import IdentityMatrix
     NeuTraHMC,
 ])
 @pytest.mark.parametrize('n_chains', [4])
-@pytest.mark.parametrize('n_steps', [4, 5, 6])
+@pytest.mark.parametrize('n_cycles', [4, 5, 6])
 def test_output_shape_warmup(event_shape,
                              sampler_class,
                              n_chains,
-                             n_steps):
+                             n_cycles):
     torch.manual_seed(0)
     original_neg_log_prob_target = StandardGaussian(event_shape).neg_log_prob
+    cycle_length = 5
 
     if sampler_class in [NeuTraHMC, NeuTraRWMH, NeuTraMALA]:
         flow = create_flow_object('realnvp', event_shape)
@@ -53,15 +54,15 @@ def test_output_shape_warmup(event_shape,
     z_initial = torch.randn(size=(n_chains, *event_shape))
     samples = sampler.warmup(
         z_initial,
-        n_steps=n_steps,
+        n_cycles=n_cycles,
         show_progress=False,
-        preconditioner_update_interval=5,
+        cycle_length=cycle_length,
         n_epochs=2  # Number of NF training epochs
     )
 
     assert isinstance(samples, Samples)
     assert torch.isfinite(samples.as_tensor()).all()
-    assert samples.as_tensor().shape == (n_steps, n_chains, *event_shape)
+    assert samples.as_tensor().shape == (cycle_length * n_cycles, n_chains, *event_shape)
     assert samples.as_tensor().dtype == z_initial.dtype
 
 
@@ -152,8 +153,8 @@ def test_moments_warmup_and_sample_local_mh(sampler_class):
     z0 = torch.rand(size=(n_chains, *event_shape)) * 2 - 1
     _, latent_warmup_draws = sampler.warmup(
         z0=z0,
-        n_steps=500,
-        preconditioner_update_interval=100,
+        n_cycles=5,
+        cycle_length=100,
         return_latent_samples=True,
         n_epochs=2
     )
@@ -216,8 +217,8 @@ def test_moments_warmup_and_sample_imh(preconditioner):
 
     _, latent_warmup_draws = sampler.warmup(
         z0,
-        n_steps=400,
-        preconditioner_update_interval=50,
+        n_cycles=8,
+        cycle_length=50,
         return_latent_samples=True,
         n_epochs=2
     )
@@ -269,8 +270,8 @@ def test_moments_warmup_and_sample_isir(preconditioner):
     z0 = torch.rand(size=(n_chains, *event_shape)) * 2 - 1
     _, latent_warmup_draws = sampler.warmup(
         z0,
-        n_steps=200,
-        preconditioner_update_interval=50,
+        n_cycles=4,
+        cycle_length=50,
         return_latent_samples=True,
         n_epochs=2
     )
@@ -323,8 +324,8 @@ def test_moments_warmup_and_sample_jump_mcmc(sampler_class, global_kernel):
     z0 = torch.rand(size=(n_chains, *event_shape)) * 2 - 1
     _, latent_warmup_draws = sampler.warmup(
         z0,
-        n_steps=1000,
-        preconditioner_update_interval=50,
+        n_cycles=20,
+        cycle_length=50,
         return_latent_samples=True,
     )
     sampling_draws = sampler.sample(
