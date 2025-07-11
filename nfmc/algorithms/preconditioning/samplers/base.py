@@ -54,7 +54,8 @@ class PreconditionedMCMCSampler(MCMCSampler):
         if self.extra_warmup_kernels:
             if self.extra_warmup_kernels[0][1] > 0:
                 self.extra_warmup_kernels[0][1] -= 1
-            else:
+            
+            if self.extra_warmup_kernels[0][1] == 0:
                 self.extra_warmup_kernels.pop(0)
 
     def warmup(self,
@@ -136,7 +137,7 @@ class PreconditionedMCMCSampler(MCMCSampler):
             for step_index in range(cycle_length):
                 # Step. Update if in first half of cycle or in last cycle.
                 do_update = step_index < (cycle_length // 2) or cycle_index == (cycle_length - 1)
-                if step_index == (cycle_length // 2) and cycle_index != (cycle_length - 1):
+                if step_index == (cycle_length // 2) and cycle_index != (n_cycles - 1):
                     # We are now in the first iteration where the kernel parameters
                     # will not be updated. Need to finalize kernel parameters.
                     current_warmup_kernel.finalize_parameters()
