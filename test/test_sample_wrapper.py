@@ -8,12 +8,14 @@ import torch
 def test_mcmc(kernel, n_chains):
     event_shape = (2,)
     out = sample(
-        target=lambda v: torch.sum(v ** 2, dim=-1),
+        neg_log_prob_target=lambda v: torch.sum(v ** 2, dim=-1),
         event_shape=event_shape,
         kernel=kernel,
         warmup=True,
         n_sampling_steps=2,
-        n_warmup_steps=2,
+        warmup_kwargs={
+            'n_steps': 2,
+        },
         n_chains=n_chains,
         show_progress=True
     )
@@ -38,12 +40,16 @@ def test_mcmc(kernel, n_chains):
 def test_preconditioned_mcmc(kernel, n_chains):
     event_shape = (5,)
     out = sample(
-        target=lambda v: torch.sum(v ** 2, dim=-1),
+        neg_log_prob_target=lambda v: torch.sum(v ** 2, dim=-1),
         event_shape=event_shape,
         kernel=kernel,
         flow='realnvp',
+        warmup=True,
         n_sampling_steps=2,
-        n_warmup_steps=2,
+        warmup_kwargs={
+            'n_cycles': 1,
+            'cycle_length': 2
+        },
         n_chains=n_chains,
         show_progress=True
     )

@@ -34,25 +34,25 @@ PRECONDITIONED_SAMPLERS = [
 ]
 
 
-def create_sampler(target: callable,
+def create_sampler(neg_log_prob_target: callable,
                    event_shape: Optional[Union[torch.Size, Tuple[int]]] = None,
                    flow: Optional[Union[str, Any]] = 'realnvp',
-                   strategy: str = "imh",
+                   kernel: str = "imh",
                    kernel_kwargs: Optional[dict] = None,
                    device: torch.device = torch.device("cpu"),
                    flow_kwargs: Optional[dict] = None) -> MCMCSampler:
     """
     Create the Sampler object.
 
-    :param Union[callable, Potential] target: target distribution, specified by a negative log probability density.
-     This function takes as input a batch of tensors with shape `(batch_size, *event_shape)` and outputs a batch with
-     shape `(batch_size,)`.
+    :param Union[callable, Potential] neg_log_prob_target: target distribution, specified by a negative log probability 
+     density. This function takes as input a batch of tensors with shape `(batch_size, *event_shape)` and outputs a 
+     batch with shape `(batch_size,)`.
     :param Tuple[int, ...] event_shape: shape of the event tensor. If `target` is an instance of Potential, this
      argument is unused.
     :param Union[str, Flow] flow: normalizing flow used in sampling. Must be provided when using a NFMC sampler.
      Can be either a `Flow` object or a string specifying the architecture.
      See `nfmc.util.get_supported_normalizing_flows` for a list of supported normalizing flows.
-    :param str strategy: sampling strategy. See `nfmc.util.get_supported_samplers` for a list of sampling strategies.
+    :param str kernel: sampling strategy. See `nfmc.util.get_supported_samplers` for a list of sampling strategies.
     :param Union[callable, Potential] negative_log_likelihood: auxiliary negative log probability density. Used in
      specific samplers like DLMC and TESS. This function takes as input a batch of tensors with shape
      `(batch_size, *event_shape)` and outputs a batch with shape `(batch_size,)`.
@@ -72,34 +72,34 @@ def create_sampler(target: callable,
 
     if flow is not None and not isinstance(flow, str):
         event_shape = flow.event_shape
-    elif hasattr(target, "event_shape"):
-        event_shape = target.event_shape
+    elif hasattr(neg_log_prob_target, "event_shape"):
+        event_shape = neg_log_prob_target.event_shape
 
-    if strategy in ['hmc', 'mala', 'rwmh']:
+    if kernel in ['hmc', 'mala', 'rwmh']:
         # MCMC
-        if strategy == "hmc":
-            kernel = HMCKernel(
+        if kernel == "hmc":
+            kernel_object = HMCKernel(
                 event_shape=event_shape,
-                neg_log_prob_target=target,
+                neg_log_prob_target=neg_log_prob_target,
                 **kernel_kwargs
             )
-        elif strategy == "mala":
-            kernel = MALAKernel(
+        elif kernel == "mala":
+            kernel_object = MALAKernel(
                 event_shape=event_shape,
-                neg_log_prob_target=target,
+                neg_log_prob_target=neg_log_prob_target,
                 **kernel_kwargs
             )
-        elif strategy == "rwmh":
-            kernel = RWMHKernel(
+        elif kernel == "rwmh":
+            kernel_object = RWMHKernel(
                 event_shape=event_shape,
-                neg_log_prob_target=target,
+                neg_log_prob_target=neg_log_prob_target,
                 **kernel_kwargs
             )
         else:
-            raise ValueError(f"Unsupported sampling strategy: {strategy}")
-        return MHSampler(kernel=kernel)
+            raise ValueError(f"Unsupported sampling strategy: {kernel}")
+        return MHSampler(kernel=kernel_object)
 
-    elif strategy in PRECONDITIONED_SAMPLERS:
+    elif kernel in PRECONDITIONED_SAMPLERS:
         # Create NF object
         if flow is None:
             raise ValueError("Flow object must be provided")
@@ -112,104 +112,104 @@ def create_sampler(target: callable,
             raise ValueError(
                 f"Unknown type for normalizing flow: {type(flow)}")
 
-        if strategy in ["imh", "fixed_imh"]:
-            kernel = IMHKernel(
+        if kernel in ["imh", "fixed_imh"]:
+            kernel_object = IMHKernel(
                 event_shape=event_shape,
-                neg_log_prob_target=target,
+                neg_log_prob_target=neg_log_prob_target,
                 preconditioner=NormalizingFlowPreconditioner(flow=flow_object),
                 **kernel_kwargs
             )
-        elif strategy in ["i-sir", "isir"]:
-            kernel = IteratedSIRKernel(
+        elif kernel in ["i-sir", "isir"]:
+            kernel_object = IteratedSIRKernel(
                 event_shape=event_shape,
-                neg_log_prob_target=target,
+                neg_log_prob_target=neg_log_prob_target,
                 preconditioner=NormalizingFlowPreconditioner(flow=flow_object),
                 **kernel_kwargs
             )
-        elif strategy == 'jump_hmc':
-            kernel = NeuTraJumpHMCKernel(
+        elif kernel == 'jump_hmc':
+            kernel_object = NeuTraJumpHMCKernel(
                 flow=flow_object,
-                neg_log_prob_target=target,
+                neg_log_prob_target=neg_log_prob_target,
                 global_kernel='imh',
                 **kernel_kwargs
             )
-        elif strategy == 'jump_mala':
-            kernel = NeuTraJumpMALAKernel(
+        elif kernel == 'jump_mala':
+            kernel_object = NeuTraJumpMALAKernel(
                 flow=flow_object,
-                neg_log_prob_target=target,
+                neg_log_prob_target=neg_log_prob_target,
                 global_kernel='imh',
                 **kernel_kwargs
             )
-        elif strategy == 'jump_rwmh':
-            kernel = NeuTraJumpRWMHKernel(
+        elif kernel == 'jump_rwmh':
+            kernel_object = NeuTraJumpRWMHKernel(
                 flow=flow_object,
-                neg_log_prob_target=target,
+                neg_log_prob_target=neg_log_prob_target,
                 global_kernel='imh',
                 **kernel_kwargs
             )
-        elif strategy == 'ex2_hmc':
-            kernel = NeuTraJumpHMCKernel(
+        elif kernel == 'ex2_hmc':
+            kernel_object = NeuTraJumpHMCKernel(
                 flow=flow_object,
-                neg_log_prob_target=target,
+                neg_log_prob_target=neg_log_prob_target,
                 global_kernel='i-sir',
                 **kernel_kwargs
             )
-        elif strategy == 'ex2_mala':
-            kernel = NeuTraJumpMALAKernel(
+        elif kernel == 'ex2_mala':
+            kernel_object = NeuTraJumpMALAKernel(
                 flow=flow_object,
-                neg_log_prob_target=target,
+                neg_log_prob_target=neg_log_prob_target,
                 global_kernel='i-sir',
                 **kernel_kwargs
             )
-        elif strategy == 'ex2_rwmh':
-            kernel = NeuTraJumpRWMHKernel(
+        elif kernel == 'ex2_rwmh':
+            kernel_object = NeuTraJumpRWMHKernel(
                 flow=flow_object,
-                neg_log_prob_target=target,
+                neg_log_prob_target=neg_log_prob_target,
                 global_kernel='i-sir',
                 **kernel_kwargs
             )
-        elif strategy == 'neutra_hmc':
-            kernel = HMCKernel(
+        elif kernel == 'neutra_hmc':
+            kernel_object = HMCKernel(
                 event_shape=event_shape,
-                neg_log_prob_target=target,
+                neg_log_prob_target=neg_log_prob_target,
                 preconditioner=NormalizingFlowPreconditioner(
                     flow=flow_object
                 ),
                 **kernel_kwargs
             )
-        elif strategy == 'neutra_mala':
-            kernel = MALAKernel(
+        elif kernel == 'neutra_mala':
+            kernel_object = MALAKernel(
                 event_shape=event_shape,
-                neg_log_prob_target=target,
+                neg_log_prob_target=neg_log_prob_target,
                 preconditioner=NormalizingFlowPreconditioner(
                     flow=flow_object
                 ),
                 **kernel_kwargs
             )
-        elif strategy == 'neutra_rwmh':
-            kernel = RWMHKernel(
+        elif kernel == 'neutra_rwmh':
+            kernel_object = RWMHKernel(
                 event_shape=event_shape,
-                neg_log_prob_target=target,
+                neg_log_prob_target=neg_log_prob_target,
                 preconditioner=NormalizingFlowPreconditioner(
                     flow=flow_object
                 ),
                 **kernel_kwargs
             )
         else:
-            raise ValueError(f"Unsupported sampling strategy: {strategy}")
-        return PreconditionedMCMCSampler(kernel=kernel)
-    raise ValueError(f"Unsupported sampling strategy: {strategy}")
+            raise ValueError(f"Unsupported sampling strategy: {kernel}")
+        return PreconditionedMCMCSampler(kernel=kernel_object)
+    raise ValueError(f"Unsupported sampling strategy: {kernel}")
 
 
-def sample(target: Union[callable, Any],
+def sample(neg_log_prob_target: Union[callable, Any],
            event_shape: Optional[Union[torch.Size, Tuple[int, ...]]] = None,
            flow: Optional[Union[str, Any]] = 'realnvp',
            kernel: str = "imh",
            n_sampling_steps: int = 100,
-           n_warmup_steps: int = 100,
            n_chains: int = 100,
            x0: torch.Tensor = None,
            warmup: bool = False,
+           warmup_kwargs: dict = None,
            show_progress: bool = True,
            sampling_time_limit_seconds: Union[float, int] = None,
            warmup_time_limit_seconds: Union[float, int] = None,
@@ -218,8 +218,8 @@ def sample(target: Union[callable, Any],
     """
     Sample from a target distributions.
 
-    :param Union[callable, Potential] target: target distribution, specified by a negative log probability density.
-     This function takes as input a batch of tensors with shape `(batch_size, *event_shape)` and outputs a batch with
+    :param Union[callable, Potential] neg_log_prob_target: target distribution, specified by a negative log probability 
+     density. This function takes as input a batch of tensors with shape `(batch_size, *event_shape)` and outputs a batch with
      shape `(batch_size,)`.
     :param Tuple[int, ...] event_shape: shape of the event tensor. If `target` is an instance of Potential, this
      argument is unused.
@@ -240,18 +240,19 @@ def sample(target: Union[callable, Any],
     :return: sampling output object.
     :rtype: Samples
     """
+    warmup_kwargs = warmup_kwargs or {}
     if flow == 'None':
         flow = None
     if flow is not None and not isinstance(flow, str):
         event_shape = flow.event_shape
-    elif hasattr(target, "event_shape"):
-        event_shape = target.event_shape
+    elif hasattr(neg_log_prob_target, "event_shape"):
+        event_shape = neg_log_prob_target.event_shape
 
     sampler = create_sampler(
-        target=target,
+        neg_log_prob_target=neg_log_prob_target,
         event_shape=event_shape,
         flow=flow,
-        strategy=kernel,
+        kernel=kernel,
         **kwargs
     )
 
@@ -264,10 +265,10 @@ def sample(target: Union[callable, Any],
         if warmup:
             warmup_output, _latent_output = sampler.warmup(
                 x0,
-                n_steps=n_warmup_steps,
                 show_progress=show_progress,
                 time_limit_seconds=warmup_time_limit_seconds,
                 return_latent_samples=True,
+                **warmup_kwargs
             )
             x0 = _latent_output.last_sample
         else:
@@ -283,9 +284,9 @@ def sample(target: Union[callable, Any],
         if warmup:
             warmup_output = sampler.warmup(
                 x0=x0,
-                n_steps=n_warmup_steps,
                 show_progress=show_progress,
-                time_limit_seconds=warmup_time_limit_seconds
+                time_limit_seconds=warmup_time_limit_seconds,
+                **warmup_kwargs,
             )
             x0 = warmup_output.last_sample
         else:
