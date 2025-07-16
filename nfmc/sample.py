@@ -1,33 +1,46 @@
 from typing import Union, Tuple, Optional, Any
+import torch.nn as nn
 
 import torch
 
-from nfmc.algorithms.sampling.base import NFMCKernel, MCMCOutput, Sampler
-from nfmc.algorithms.sampling.mcmc.ess import ESSKernel, ESSParameters, ESS
-from nfmc.algorithms.sampling.mcmc.hmc import HMCKernel, HMCParameters, UHMC, HMC
-from nfmc.algorithms.sampling.mcmc.langevin import LangevinKernel, LangevinParameters, ULA, MALA
-from nfmc.algorithms.sampling.mcmc.mh import MHKernel, MHParameters, MH
-from nfmc.algorithms.sampling.nfmc.dlmc import DLMCKernel, DLMCParameters, DLMC
-from nfmc.algorithms.sampling.nfmc.imh import FlowIMHKernel, FlowIMHParameters, FixedFlowIMH, AdaptiveFlowIMH
-from nfmc.algorithms.sampling.nfmc.jump import JumpNFMCParameters, JumpULA, JumpHMC, JumpUHMC, JumpMALA, JumpMH, JumpESS
-from nfmc.algorithms.sampling.nfmc.neutra import NeuTraKernel, NeuTraParameters, NeuTraHMC, NeuTraMH
-from nfmc.algorithms.sampling.nfmc.tess import TESSKernel, TESSParameters, TESS
-from nfmc.algorithms.sampling.nfmc.ex2mcmc import Ex2MCMCKernel, Ex2MCMCParameters, Ex2MH, Ex2HMC
+from nfmc.algorithms.mh.base import MHSampler
+
+from nfmc.algorithms.mh.local.hmc import HMCKernel
+from nfmc.algorithms.mh.local.mala import MALAKernel
+from nfmc.algorithms.mh.local.rwmh import RWMHKernel
+
+from nfmc.algorithms.preconditioning.preconditioners import NormalizingFlowPreconditioner
+from nfmc.algorithms.preconditioning.samplers.base import PreconditionedMCMCSampler
+
+from nfmc.algorithms.mh.imh import IMHKernel
+from nfmc.algorithms.iterated_sir import IteratedSIRKernel
+from nfmc.algorithms.jump.kernels import NeuTraJumpHMCKernel, NeuTraJumpMALAKernel, NeuTraJumpRWMHKernel
+from nfmc.algorithms.sampling.base.sampler import MCMCSampler
+from nfmc.algorithms.util.samples import Samples
 from nfmc.util import create_flow_object
-import torch.nn as nn
+
+PRECONDITIONED_SAMPLERS = [
+    "imh", "fixed_imh",  # "imh" means "fixed_imh" by default
+    "i-sir",
+    "jump_hmc",
+    "jump_mala",
+    "jump_rwmh",
+    "neutra_hmc",
+    "neutra_mala",
+    "neutra_rwmh",
+    "ex2_hmc",
+    "ex2_mala",
+    "ex2_rwmh",
+]
 
 
 def create_sampler(target: callable,
                    event_shape: Optional[Union[torch.Size, Tuple[int]]] = None,
                    flow: Optional[Union[str, Any]] = 'realnvp',
                    strategy: str = "imh",
-                   negative_log_likelihood: callable = None,
                    kernel_kwargs: Optional[dict] = None,
-                   param_kwargs: Optional[dict] = None,
-                   inner_kernel_kwargs: Optional[dict] = None,
-                   inner_param_kwargs: Optional[dict] = None,
                    device: torch.device = torch.device("cpu"),
-                   flow_kwargs: Optional[dict] = None) -> Sampler:
+                   flow_kwargs: Optional[dict] = None) -> MCMCSampler:
     """
     Create the Sampler object.
 
@@ -56,232 +69,152 @@ def create_sampler(target: callable,
     """
     flow_kwargs = flow_kwargs or {}
     kernel_kwargs = kernel_kwargs or {}
-    param_kwargs = param_kwargs or {'n_iterations': 100}
-    inner_kernel_kwargs = inner_kernel_kwargs or {}
-    inner_param_kwargs = inner_param_kwargs or {}
 
     if flow is not None and not isinstance(flow, str):
         event_shape = flow.event_shape
     elif hasattr(target, "event_shape"):
         event_shape = target.event_shape
 
-    if strategy in ['hmc', 'uhmc', 'ula', 'mala', 'mh', 'ess']:
+    if strategy in ['hmc', 'mala', 'rwmh']:
         # MCMC
         if strategy == "hmc":
-            kernel = HMCKernel(event_shape, target, **kernel_kwargs)
-            params = HMCParameters(**param_kwargs)
-            return HMC(event_shape, target, kernel, params)
-        elif strategy == "uhmc":
-            kernel = HMCKernel(event_shape, target, **kernel_kwargs)
-            params = HMCParameters(**param_kwargs)
-            return UHMC(event_shape, target, kernel, params)
+            kernel = HMCKernel(
+                event_shape=event_shape,
+                neg_log_prob_target=target,
+                **kernel_kwargs
+            )
         elif strategy == "mala":
-            kernel = LangevinKernel(event_shape, target, **kernel_kwargs)
-            params = LangevinParameters(**param_kwargs)
-            return MALA(event_shape, target, kernel, params)
-        elif strategy == "ula":
-            kernel = LangevinKernel(event_shape, target, **kernel_kwargs)
-            params = LangevinParameters(**param_kwargs)
-            return ULA(event_shape, target, kernel, params)
-        elif strategy == "mh":
-            kernel = MHKernel(event_shape, target, **kernel_kwargs)
-            params = MHParameters(**param_kwargs)
-            return MH(event_shape, target, kernel, params)
-        elif strategy == "ess":
-            if negative_log_likelihood is None:
-                raise ValueError("Negative log likelihood must be provided")
-            kernel = ESSKernel(event_shape, target, **kernel_kwargs)
-            params = ESSParameters(**param_kwargs)
-            return ESS(event_shape, target, negative_log_likelihood, kernel, params)
+            kernel = MALAKernel(
+                event_shape=event_shape,
+                neg_log_prob_target=target,
+                **kernel_kwargs
+            )
+        elif strategy == "rwmh":
+            kernel = RWMHKernel(
+                event_shape=event_shape,
+                neg_log_prob_target=target,
+                **kernel_kwargs
+            )
         else:
             raise ValueError(f"Unsupported sampling strategy: {strategy}")
-    elif strategy in [
-        "imh", "fixed_imh",  # "imh" means "fixed_imh" by default
-        "adaptive_imh",
-        "jump_mala",
-        "jump_ula",
-        "jump_hmc",
-        "jump_uhmc",
-        "jump_ess",
-        "jump_mh",
-        "neutra_hmc",
-        "neutra_mh",
-        "ex2_hmc",
-        "ex2_mh",
-        "tess",
-        "dlmc"
-    ]:
-        # NFMC
+        return MHSampler(kernel=kernel)
+
+    elif strategy in PRECONDITIONED_SAMPLERS:
+        # Create NF object
         if flow is None:
             raise ValueError("Flow object must be provided")
         if isinstance(flow, str):
-            flow_object = create_flow_object(flow_string=flow, event_shape=event_shape, **flow_kwargs).to(device)
+            flow_object = create_flow_object(
+                flow_string=flow, event_shape=event_shape, **flow_kwargs).to(device)
         elif isinstance(flow, nn.Module):
             flow_object = flow.to(device)
         else:
-            raise ValueError(f"Unknown type for normalizing flow: {type(flow)}")
+            raise ValueError(
+                f"Unknown type for normalizing flow: {type(flow)}")
+
         if strategy in ["imh", "fixed_imh"]:
-            kernel = FlowIMHKernel(event_shape, target, flow=flow_object)
-            params = FlowIMHParameters(**param_kwargs)
-            return FixedFlowIMH(event_shape, target, kernel, params)
-        if strategy == "adaptive_imh":
-            kernel = FlowIMHKernel(event_shape, target, flow=flow_object)
-            params = FlowIMHParameters(**param_kwargs)
-            return AdaptiveFlowIMH(event_shape, target, kernel, params)
-        elif strategy == 'jump_mala':
-            kernel = NFMCKernel(event_shape, target, flow=flow_object)
-            params = JumpNFMCParameters(**param_kwargs)
-            inner_kernel = LangevinKernel(event_shape, target, **inner_kernel_kwargs)
-            inner_params = LangevinParameters(**inner_param_kwargs)
-            return JumpMALA(
-                event_shape,
-                target,
-                kernel=kernel,
-                params=params,
-                inner_kernel=inner_kernel,
-                inner_params=inner_params
+            kernel = IMHKernel(
+                event_shape=event_shape,
+                neg_log_prob_target=target,
+                preconditioner=NormalizingFlowPreconditioner(flow=flow_object),
+                **kernel_kwargs
             )
-        elif strategy == 'jump_ula':
-            kernel = NFMCKernel(event_shape, target, flow=flow_object)
-            params = JumpNFMCParameters(**param_kwargs)
-            inner_kernel = LangevinKernel(event_shape, target, **inner_kernel_kwargs)
-            inner_params = LangevinParameters(**inner_param_kwargs)
-            return JumpULA(
-                event_shape,
-                target,
-                kernel=kernel,
-                params=params,
-                inner_kernel=inner_kernel,
-                inner_params=inner_params
+        elif strategy in ["i-sir", "isir"]:
+            kernel = IteratedSIRKernel(
+                event_shape=event_shape,
+                neg_log_prob_target=target,
+                preconditioner=NormalizingFlowPreconditioner(flow=flow_object),
+                **kernel_kwargs
             )
         elif strategy == 'jump_hmc':
-            kernel = NFMCKernel(event_shape, target, flow=flow_object)
-            params = JumpNFMCParameters(**param_kwargs)
-            inner_kernel = HMCKernel(event_shape, target, **inner_kernel_kwargs)
-            if 'n_iterations' not in inner_param_kwargs:
-                inner_param_kwargs['n_iterations'] = 5
-            inner_params = HMCParameters(**inner_param_kwargs)
-            return JumpHMC(
-                event_shape,
-                target,
-                kernel=kernel,
-                params=params,
-                inner_kernel=inner_kernel,
-                inner_params=inner_params
+            kernel = NeuTraJumpHMCKernel(
+                flow=flow_object,
+                neg_log_prob_target=target,
+                global_kernel='imh',
+                **kernel_kwargs
             )
-        elif strategy == 'jump_uhmc':
-            kernel = NFMCKernel(event_shape, target, flow=flow_object)
-            params = JumpNFMCParameters(**param_kwargs)
-            inner_kernel = HMCKernel(event_shape, target, **inner_kernel_kwargs)
-            inner_params = HMCParameters(**inner_param_kwargs)
-            return JumpUHMC(
-                event_shape,
-                target,
-                kernel=kernel,
-                params=params,
-                inner_kernel=inner_kernel,
-                inner_params=inner_params
+        elif strategy == 'jump_mala':
+            kernel = NeuTraJumpMALAKernel(
+                flow=flow_object,
+                neg_log_prob_target=target,
+                global_kernel='imh',
+                **kernel_kwargs
             )
-        elif strategy == 'jump_mh':
-            kernel = NFMCKernel(event_shape, target, flow=flow_object)
-            params = JumpNFMCParameters(**param_kwargs)
-            inner_kernel = MHKernel(event_shape, target, **inner_kernel_kwargs)
-            inner_params = MHParameters(**inner_param_kwargs)
-            return JumpMH(
-                event_shape,
-                target,
-                kernel=kernel,
-                params=params,
-                inner_kernel=inner_kernel,
-                inner_params=inner_params
-            )
-        elif strategy == 'jump_ess':
-            if negative_log_likelihood is None:
-                raise ValueError("Negative log likelihood must be provided")
-            kernel = NFMCKernel(event_shape, target, flow=flow_object)
-            params = JumpNFMCParameters(**param_kwargs)
-            inner_kernel = ESSKernel(event_shape, target, **inner_kernel_kwargs)
-            inner_params = ESSParameters(**inner_param_kwargs)
-            return JumpESS(
-                event_shape,
-                target,
-                negative_log_likelihood=negative_log_likelihood,
-                kernel=kernel,
-                params=params,
-                inner_kernel=inner_kernel,
-                inner_params=inner_params
+        elif strategy == 'jump_rwmh':
+            kernel = NeuTraJumpRWMHKernel(
+                flow=flow_object,
+                neg_log_prob_target=target,
+                global_kernel='imh',
+                **kernel_kwargs
             )
         elif strategy == 'ex2_hmc':
-            kernel = Ex2MCMCKernel(event_shape, target, flow=flow_object)
-            params = Ex2MCMCParameters(**param_kwargs)
-            inner_kernel = HMCKernel(event_shape, target, **inner_kernel_kwargs)
-            if 'n_iterations' not in inner_param_kwargs:
-                inner_param_kwargs['n_iterations'] = 5
-            inner_params = HMCParameters(**inner_param_kwargs)
-            return Ex2HMC(
-                event_shape,
-                target,
-                kernel=kernel,
-                params=params,
-                inner_kernel=inner_kernel,
-                inner_params=inner_params
+            kernel = NeuTraJumpHMCKernel(
+                flow=flow_object,
+                neg_log_prob_target=target,
+                global_kernel='i-sir',
+                **kernel_kwargs
             )
-        elif strategy == 'ex2_mh':
-            kernel = Ex2MCMCKernel(event_shape, target, flow=flow_object)
-            params = Ex2MCMCParameters(**param_kwargs)
-            inner_kernel = MHKernel(event_shape, target, **inner_kernel_kwargs)
-            inner_params = MHParameters(**inner_param_kwargs)
-            return Ex2MH(
-                event_shape,
-                target,
-                kernel=kernel,
-                params=params,
-                inner_kernel=inner_kernel,
-                inner_params=inner_params
+        elif strategy == 'ex2_mala':
+            kernel = NeuTraJumpMALAKernel(
+                flow=flow_object,
+                neg_log_prob_target=target,
+                global_kernel='i-sir',
+                **kernel_kwargs
             )
-        elif strategy == "tess":
-            if negative_log_likelihood is None:
-                raise ValueError("Negative log likelihood must be provided")
-            kernel = TESSKernel(event_shape, target, flow=flow_object)
-            params = TESSParameters(**param_kwargs)
-            return TESS(event_shape, target, negative_log_likelihood, kernel, params)
-        elif strategy == "dlmc":
-            if negative_log_likelihood is None:
-                raise ValueError("Negative log likelihood must be provided")
-            kernel = DLMCKernel(event_shape, target, flow=flow_object)
-            params = DLMCParameters(**param_kwargs)
-            return DLMC(event_shape, target, negative_log_likelihood, kernel, params)
+        elif strategy == 'ex2_rwmh':
+            kernel = NeuTraJumpRWMHKernel(
+                flow=flow_object,
+                neg_log_prob_target=target,
+                global_kernel='i-sir',
+                **kernel_kwargs
+            )
         elif strategy == 'neutra_hmc':
-            kernel = NeuTraKernel(event_shape, target, flow=flow_object)
-            params = NeuTraParameters(**param_kwargs)
-            inner_kernel = HMCKernel(event_shape, target, **inner_kernel_kwargs)
-            inner_params = HMCParameters(**inner_param_kwargs)
-            return NeuTraHMC(event_shape, target, inner_kernel, inner_params, kernel, params)
-        elif strategy == 'neutra_mh':
-            kernel = NeuTraKernel(event_shape, target, flow=flow_object)
-            params = NeuTraParameters(**param_kwargs)
-            inner_kernel = MHKernel(event_shape, target, **inner_kernel_kwargs)
-            inner_params = MHParameters(**inner_param_kwargs)
-            return NeuTraMH(event_shape, target, inner_kernel, inner_params, kernel, params)
+            kernel = HMCKernel(
+                event_shape=event_shape,
+                neg_log_prob_target=target,
+                preconditioner=NormalizingFlowPreconditioner(
+                    flow=flow_object
+                ),
+                **kernel_kwargs
+            )
+        elif strategy == 'neutra_mala':
+            kernel = MALAKernel(
+                event_shape=event_shape,
+                neg_log_prob_target=target,
+                preconditioner=NormalizingFlowPreconditioner(
+                    flow=flow_object
+                ),
+                **kernel_kwargs
+            )
+        elif strategy == 'neutra_rwmh':
+            kernel = RWMHKernel(
+                event_shape=event_shape,
+                neg_log_prob_target=target,
+                preconditioner=NormalizingFlowPreconditioner(
+                    flow=flow_object
+                ),
+                **kernel_kwargs
+            )
         else:
             raise ValueError(f"Unsupported sampling strategy: {strategy}")
+        return PreconditionedMCMCSampler(kernel=kernel)
     raise ValueError(f"Unsupported sampling strategy: {strategy}")
 
 
 def sample(target: Union[callable, Any],
            event_shape: Optional[Union[torch.Size, Tuple[int, ...]]] = None,
            flow: Optional[Union[str, Any]] = 'realnvp',
-           strategy: str = "imh",  # todo rename to 'sampler'
-           n_iterations: int = 100,
-           n_warmup_iterations: int = 100,
+           kernel: str = "imh",
+           n_sampling_steps: int = 100,
+           n_warmup_steps: int = 100,
            n_chains: int = 100,
            x0: torch.Tensor = None,
            warmup: bool = False,
            show_progress: bool = True,
            sampling_time_limit_seconds: Union[float, int] = None,
            warmup_time_limit_seconds: Union[float, int] = None,
-           return_warmup_output: bool = False,
-           **kwargs) -> Union[MCMCOutput, Tuple[MCMCOutput, MCMCOutput]]:
+           return_warmup_samples: bool = False,
+           **kwargs) -> Union[Samples, Tuple[Samples, Samples]]:
     """
     Sample from a target distributions.
 
@@ -305,7 +238,7 @@ def sample(target: Union[callable, Any],
     :param Union[float, int] warmup_time_limit_seconds: time limit for warmup.
     :param dict kwargs: keyword arguments for `create_sampler`.
     :return: sampling output object.
-    :rtype: MCMCOutput
+    :rtype: Samples
     """
     if flow == 'None':
         flow = None
@@ -313,33 +246,56 @@ def sample(target: Union[callable, Any],
         event_shape = flow.event_shape
     elif hasattr(target, "event_shape"):
         event_shape = target.event_shape
-    if 'param_kwargs' not in kwargs:
-        kwargs['param_kwargs'] = {}
-    kwargs['param_kwargs'] = {
-        **kwargs['param_kwargs'],
-        **dict(
-            n_iterations=n_iterations,
-            n_warmup_iterations=n_warmup_iterations
-        )
-    }
 
     sampler = create_sampler(
         target=target,
         event_shape=event_shape,
         flow=flow,
-        strategy=strategy,
+        strategy=kernel,
         **kwargs
     )
+
+    # Create initial state
     if x0 is None:
-        x0 = torch.randn(size=(n_chains, *event_shape))
+        x0 = torch.rand(size=(n_chains, *event_shape)) * 2 - 1
 
-    if warmup:
-        warmup_output = sampler.warmup(x0=x0, show_progress=show_progress, time_limit_seconds=warmup_time_limit_seconds)
-        x0 = warmup_output.running_samples.last_sample
+    if kernel in PRECONDITIONED_SAMPLERS:
+        # x0 is treated as a latent state
+        if warmup:
+            warmup_output, _latent_output = sampler.warmup(
+                x0,
+                n_steps=n_warmup_steps,
+                show_progress=show_progress,
+                time_limit_seconds=warmup_time_limit_seconds,
+                return_latent_samples=True,
+            )
+            x0 = _latent_output.last_sample
+        else:
+            warmup_output = None
+        sampling_output = sampler.sample(
+            x0,
+            n_steps=n_sampling_steps,
+            show_progress=show_progress,
+            time_limit_seconds=sampling_time_limit_seconds
+        )
     else:
-        warmup_output = None
-
-    sampling_output = sampler.sample(x0=x0, show_progress=show_progress, time_limit_seconds=sampling_time_limit_seconds)
-    if return_warmup_output:
+        # x0 is treated as the target state
+        if warmup:
+            warmup_output = sampler.warmup(
+                x0=x0,
+                n_steps=n_warmup_steps,
+                show_progress=show_progress,
+                time_limit_seconds=warmup_time_limit_seconds
+            )
+            x0 = warmup_output.last_sample
+        else:
+            warmup_output = None
+        sampling_output = sampler.sample(
+            x0=x0,
+            n_steps=n_sampling_steps,
+            show_progress=show_progress,
+            time_limit_seconds=sampling_time_limit_seconds
+        )
+    if return_warmup_samples:
         return sampling_output, warmup_output
     return sampling_output
