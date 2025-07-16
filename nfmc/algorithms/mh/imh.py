@@ -13,7 +13,8 @@ class IMHKernel(MHKernel):
                  event_shape: Union[Tuple[int, ...], torch.Size],
                  neg_log_prob_target: callable,
                  proposal_log_prob: callable = None,
-                 proposal_sample_with_log_prob: callable = None, **kwargs):
+                 proposal_sample_with_log_prob: callable = None, 
+                 **kwargs):
         """
         IMH kernel constructor.
 
