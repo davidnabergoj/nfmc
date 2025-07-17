@@ -33,7 +33,9 @@ class PreconditionedMCMCSampler(MCMCSampler):
         """
         if extra_warmup_kernels is None:
             extra_warmup_kernels = []
-        self.extra_warmup_kernels = [[x[0], x[1]] for x in extra_warmup_kernels]  # Convert to list of lists
+        # Convert to list of lists
+        self.extra_warmup_kernels = [[x[0], x[1]]
+                                     for x in extra_warmup_kernels]
         super().__init__(kernel, **kwargs)
 
     @property
@@ -54,7 +56,7 @@ class PreconditionedMCMCSampler(MCMCSampler):
         if self.extra_warmup_kernels:
             if self.extra_warmup_kernels[0][1] > 0:
                 self.extra_warmup_kernels[0][1] -= 1
-            
+
             if self.extra_warmup_kernels[0][1] == 0:
                 self.extra_warmup_kernels.pop(0)
 
@@ -115,9 +117,13 @@ class PreconditionedMCMCSampler(MCMCSampler):
         z = deepcopy(z0.detach())
 
         t0 = time.time()
-        for cycle_index in (pbar := tqdm(range(n_cycles),
-                                  desc=f'Warmup',
-                                  disable=not show_progress)):
+        pbar = tqdm(
+            range(n_cycles * cycle_length),
+            desc=f'Warmup',
+            disable=not show_progress
+        )
+
+        for cycle_index in range(n_cycles):
             z = z.detach()
 
             current_warmup_kernel = self.active_warmup_kernel
@@ -133,10 +139,11 @@ class PreconditionedMCMCSampler(MCMCSampler):
                 # Reset state and kernel
                 z = torch.rand_like(z) * 2 - 1
                 current_warmup_kernel.reset_parameters()
-            
+
             for step_index in range(cycle_length):
                 # Step. Update if in first half of cycle or in last cycle.
-                do_update = step_index < (cycle_length // 2) or cycle_index == (cycle_length - 1)
+                do_update = step_index < (
+                    cycle_length // 2) or cycle_index == (cycle_length - 1)
                 if step_index == (cycle_length // 2) and cycle_index != (n_cycles - 1):
                     # We are now in the first iteration where the kernel parameters
                     # will not be updated. Need to finalize kernel parameters.
@@ -154,7 +161,11 @@ class PreconditionedMCMCSampler(MCMCSampler):
                     latent_samples.add(z.detach())
 
                 elapsed_time = time.time() - t0
-                pbar.set_postfix_str(current_warmup_kernel.pbar_repr(elapsed_time))
+                pbar.set_postfix_str(
+                    current_warmup_kernel.pbar_repr(elapsed_time)
+                )
+                pbar.update(1)
+                pbar.refresh()
                 if time_limit_seconds is not None and elapsed_time > time_limit_seconds:
                     break
 
