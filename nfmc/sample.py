@@ -39,6 +39,7 @@ def create_sampler(neg_log_prob_target: callable,
                    flow: Optional[Union[str, Any]] = 'realnvp',
                    kernel: str = "imh",
                    kernel_kwargs: Optional[dict] = None,
+                   sampler_kwargs: Optional[dict] = None,
                    device: torch.device = torch.device("cpu"),
                    flow_kwargs: Optional[dict] = None) -> MCMCSampler:
     """
@@ -69,6 +70,7 @@ def create_sampler(neg_log_prob_target: callable,
     """
     flow_kwargs = flow_kwargs or {}
     kernel_kwargs = kernel_kwargs or {}
+    sampler_kwargs = sampler_kwargs or {}
 
     if flow is not None and not isinstance(flow, str):
         event_shape = flow.event_shape
@@ -97,7 +99,10 @@ def create_sampler(neg_log_prob_target: callable,
             )
         else:
             raise ValueError(f"Unsupported sampling strategy: {kernel}")
-        return MHSampler(kernel=kernel_object)
+        return MHSampler(
+            kernel=kernel_object,
+            **sampler_kwargs
+        )
 
     elif kernel in PRECONDITIONED_SAMPLERS:
         # Create NF object
@@ -197,7 +202,10 @@ def create_sampler(neg_log_prob_target: callable,
             )
         else:
             raise ValueError(f"Unsupported sampling strategy: {kernel}")
-        return PreconditionedMCMCSampler(kernel=kernel_object)
+        return PreconditionedMCMCSampler(
+            kernel=kernel_object,
+            **sampler_kwargs
+        )
     raise ValueError(f"Unsupported sampling strategy: {kernel}")
 
 
@@ -208,6 +216,7 @@ def sample(neg_log_prob_target: Union[callable, Any],
            n_sampling_steps: int = 100,
            n_chains: int = 100,
            x0: torch.Tensor = None,
+           sample_kwargs: dict = None,
            warmup: bool = False,
            warmup_kwargs: dict = None,
            show_progress: bool = True,
@@ -241,6 +250,8 @@ def sample(neg_log_prob_target: Union[callable, Any],
     :rtype: Samples
     """
     warmup_kwargs = warmup_kwargs or {}
+    sample_kwargs = sample_kwargs or {}
+
     if flow == 'None':
         flow = None
     if flow is not None and not isinstance(flow, str):
@@ -277,7 +288,8 @@ def sample(neg_log_prob_target: Union[callable, Any],
             x0,
             n_steps=n_sampling_steps,
             show_progress=show_progress,
-            time_limit_seconds=sampling_time_limit_seconds
+            time_limit_seconds=sampling_time_limit_seconds,
+            **sample_kwargs
         )
     else:
         # x0 is treated as the target state
@@ -295,7 +307,8 @@ def sample(neg_log_prob_target: Union[callable, Any],
             x0=x0,
             n_steps=n_sampling_steps,
             show_progress=show_progress,
-            time_limit_seconds=sampling_time_limit_seconds
+            time_limit_seconds=sampling_time_limit_seconds,
+            **sample_kwargs
         )
     if return_warmup_samples:
         return sampling_output, warmup_output
