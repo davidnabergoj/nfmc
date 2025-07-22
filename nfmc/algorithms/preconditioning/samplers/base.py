@@ -74,10 +74,11 @@ class PreconditionedMCMCSampler(MCMCSampler):
         """
         Optimize kernel parameters.
 
-        The kernel is updated every step unless it internally overrides this.
-        The kernel's preconditioner is updated every K steps (i.e., one cycle) where K is equal to preconditioner_update_interval.
-        The kernel's preconditioner is not updated within the final K steps (cycle) so that the rest of the kernel can be stably 
+        The kernel's preconditioner is updated every cycle.
+        The kernel's preconditioner is not updated within the final cycle so that the rest of the kernel can be stably 
          tuned.
+        The kernel is updated in each step within the first half of a cycle unless it internally overrides this.
+        There are no kernel updates in the last half-cycle, which is instead reserved for burn-in.
 
         :param torch.Tensor z0: initial latent state with shape `(*batch_shape, *event_shape)`.
         :param int n_cycles: number of warmup cycles.
@@ -141,10 +142,9 @@ class PreconditionedMCMCSampler(MCMCSampler):
                 current_warmup_kernel.reset_parameters()
 
             for step_index in range(cycle_length):
-                # Step. Update if in first half of cycle or in last cycle.
-                do_update = step_index < (
-                    cycle_length // 2) or cycle_index == (cycle_length - 1)
-                if step_index == (cycle_length // 2) and cycle_index != (n_cycles - 1):
+                # Step. Update if in first half of cycle.
+                do_update = step_index < cycle_length // 2
+                if step_index == (cycle_length // 2):
                     # We are now in the first iteration where the kernel parameters
                     # will not be updated. Need to finalize kernel parameters.
                     current_warmup_kernel.finalize_parameters()
@@ -153,7 +153,7 @@ class PreconditionedMCMCSampler(MCMCSampler):
                     z,
                     update=do_update
                 )
-                if do_update:
+                if not do_update:
                     training_samples.add(x.detach())
 
                 target_samples.add(x.detach())
