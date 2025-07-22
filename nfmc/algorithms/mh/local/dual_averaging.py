@@ -71,7 +71,7 @@ class DualAveraging:
     def value(self):
         return math.exp(self.log_step_averaged)
 
-    def weighted_value(self, sigma: float = 0.05):
+    def weighted_value(self, sigma: float = 1.0):
         """
         Compute a weighted average of step sizes based on closeness to the target acceptance rate.
 
@@ -89,19 +89,20 @@ class DualAveraging:
 
         # Prepare variables
         _errs = np.array(self._error_history).astype(np.float32)
-        _steps = np.array(self._step_size_history).astype(np.float32)
+        _log_steps = np.log(np.array(self._step_size_history).astype(np.float32))
 
+        _ws = np.exp(-(_errs ** 2) / (2 * sigma ** 2))
         _ws = np.exp(-(_errs ** 2) / (2 * sigma ** 2))
         _w_sum = np.sum(_ws)
 
         # Return last step if weights are zero (probably should not happen)
         if _w_sum == 0:
             warnings.warn("Weights sum to zero, returning last step")
-            return _steps[-1]  # fallback
+            return np.exp(_log_steps[-1])  # fallback
 
         # Compute weighted step
-        _w_step = np.sum(_ws * _steps) / _w_sum
-        return _w_step
+        _w_log_step = np.sum(_ws * _log_steps) / _w_sum
+        return np.exp(_w_log_step)
 
     def __repr__(self):
         return f'DA error: {self.error_sum:.2f}'
