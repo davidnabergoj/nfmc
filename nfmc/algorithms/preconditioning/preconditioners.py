@@ -26,6 +26,9 @@ class Preconditioner(nn.Module):
         """
         raise NotImplementedError
 
+    def forward_transform(self, x: torch.Tensor):
+        raise NotImplementedError
+
     def fit(self, x: torch.Tensor, **kwargs):
         """
         Update parameters of this preconditioner.
@@ -48,6 +51,9 @@ class IdentityPreconditioner(Preconditioner):
 
     def inverse_transform(self, z: torch.Tensor):
         return z, torch.zeros(size=(z.shape[:-len(self.event_shape)])).to(z)
+
+    def forward_transform(self, x: torch.Tensor):
+        return x, torch.zeros(size=(x.shape[:-len(self.event_shape)])).to(x)
 
     def fit(self, x: torch.Tensor, **kwargs):
         pass
@@ -73,6 +79,14 @@ class DiagonalLinearPreconditioner(Preconditioner):
         fv = torch.log(self.v).sum()
         log_det = torch.full(size=batch_shape, fill_value=fv).to(z)
         return diag_mult(z, self.v, self.event_shape) + self.loc, log_det
+
+    def forward_transform(self, x: torch.Tensor):
+        batch_shape = x.shape[:-len(self.event_shape)]
+        inv_v = 1.0 / self.v
+        log_det = -torch.log(self.v).sum()
+        log_det = torch.full(size=batch_shape, fill_value=log_det).to(x)
+        z = diag_mult(x - self.loc, inv_v, self.event_shape)
+        return z, log_det
 
     def fit(self, x: torch.Tensor, **kwargs):
         n_batch_dims = len(x.shape) - len(self.event_shape)
@@ -110,6 +124,18 @@ class DenseLinearPreconditioner(Preconditioner):
         log_det = torch.full(size=batch_shape, fill_value=fv).to(z)
         return x, log_det
 
+    def forward_transform(self, x: torch.Tensor):
+        batch_shape = x.shape[:-len(self.event_shape)]
+        x_centered = x - self.loc
+        x_flat = flatten_event(x_centered, self.event_shape)
+        z_flat = torch.linalg.solve_triangular(
+            self.tril_mat, x_flat.T, upper=False).T
+        z = z_flat.view_as(x)
+
+        log_det = -torch.log(torch.diag(self.tril_mat)).sum()
+        log_det = torch.full(size=batch_shape, fill_value=log_det).to(x)
+        return z, log_det
+
     def fit(self, x: torch.Tensor, **kwargs):
         """
         :param torch.Tensor x: target space training data tensor with shape `(*batch_shape, *event_shape)`.
@@ -133,6 +159,10 @@ class NormalizingFlowPreconditioner(Preconditioner):
     def inverse_transform(self, z: torch.Tensor):
         x, log_det = self.flow.bijection.inverse(z)
         return x, log_det
+
+    def forward_transform(self, x: torch.Tensor):
+        z, log_det = self.flow.bijection.forward(x)
+        return z, log_det
 
     def fit(self, x: torch.Tensor, **kwargs):
         """

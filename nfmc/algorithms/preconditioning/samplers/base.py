@@ -130,6 +130,9 @@ class PreconditionedMCMCSampler(MCMCSampler):
             current_warmup_kernel = self.active_warmup_kernel
 
             if cycle_index > 0:
+                # Transform current latent state to target space
+                x = current_warmup_kernel._preconditioner.inverse_transform(z)[0]
+
                 self.advance_warmup_kernel()
                 current_warmup_kernel = self.active_warmup_kernel
 
@@ -138,8 +141,12 @@ class PreconditionedMCMCSampler(MCMCSampler):
                 current_warmup_kernel.fit_preconditioner(x_train, **kwargs)
 
                 # Reset state and kernel
-                z = torch.rand_like(z) * 2 - 1
+                z = current_warmup_kernel._preconditioner.forward_transform(x)[0]
                 current_warmup_kernel.reset_parameters()
+                training_samples = Samples(
+                    event_shape=self.kernel.event_shape,
+                    max_samples=_adj_max,
+                )
 
             for step_index in range(cycle_length):
                 # Step. Update if in first half of cycle.
