@@ -561,3 +561,16 @@ def flatten_event(x: torch.Tensor,
     event_size = int(torch.as_tensor(event_shape).prod()) if event_shape else 1
     x = x.view(-1, event_size)
     return x
+
+def stuck_chain_mask(x: torch.Tensor, fraction: float = 0.85):
+    _dim = 0
+    _m = [False] * x.shape[1]
+    for _c_id in range(x.shape[1]):
+        _, counts = torch.unique(
+            x[:, _c_id, _dim].flatten(),
+            return_counts=True,
+            sorted=False
+        )
+        if int(torch.max(counts)) > (x.shape[0] * fraction):
+            _m[_c_id] = True
+    return torch.tensor(_m)
