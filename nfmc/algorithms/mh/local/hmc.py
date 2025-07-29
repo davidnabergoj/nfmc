@@ -124,7 +124,7 @@ class HMCKernel(LocalMHKernel):
         # Sample momentum and simulate trajectory
         p = torch.randn_like(x)
         x_prime, p_prime, nc, ng = hmc_trajectory(
-            x=x,
+            x=x.clone(),
             momentum=p,
             event_shape=self.event_shape,
             step_size=self.step_size,
@@ -166,8 +166,8 @@ class HMCKernel(LocalMHKernel):
             log_prob_accept = -hamiltonian_end - (-hamiltonian_start)
             log_u = torch.rand_like(log_prob_accept).log()
             acceptance_mask[~divergence_mask] = (log_u < log_prob_accept)
-        x[acceptance_mask] = x_prime[acceptance_mask]
-        x = x.detach()
+        x[acceptance_mask] = x_prime[acceptance_mask].clone()
+        x = x.detach().clone()
 
         if update:
             self._update(acceptance_mask)
