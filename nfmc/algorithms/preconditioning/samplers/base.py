@@ -124,24 +124,43 @@ class PreconditionedMCMCSampler(MCMCSampler):
             disable=not show_progress
         )
 
+        def resample(states):
+            neg_log_prob_states = current_warmup_kernel.neg_log_prob_target(states)
+            log_weights = -neg_log_prob_states
+            log_weights[~torch.isfinite(log_weights)] = 1e-8
+            weights = torch.exp(log_weights - torch.max(log_weights))  # for stability
+            probabilities = weights / torch.sum(weights)
+
+            # Sample indices with replacement
+            indices = torch.multinomial(probabilities, num_samples=len(states), replacement=True)
+            return states[indices]
+
         for cycle_index in range(n_cycles):
-            z = z.detach()
+            z = z.detach().clone()
 
             current_warmup_kernel = self.active_warmup_kernel
 
             if cycle_index > 0:
                 # Transform current latent state to target space
-                x = current_warmup_kernel._preconditioner.inverse_transform(z)[0]
+                x = current_warmup_kernel._preconditioner.inverse_transform(z.clone())[0]
+
+                # Resample target states according to the target log probability density
+                # This gets rid of stuck chains
+                x = resample(x.clone())
 
                 self.advance_warmup_kernel()
                 current_warmup_kernel = self.active_warmup_kernel
 
                 # Update the preconditioner first so drawn sample can contribute toward next preconditioner fit.
-                x_train = training_samples.as_tensor().view(-1, *current_warmup_kernel.event_shape)
-                current_warmup_kernel.fit_preconditioner(x_train, **kwargs)
+
+                x_train = training_samples.as_tensor()  # Convert training data to torch.Tensor
+                x_train = x_train.view(-1, *current_warmup_kernel.event_shape)  # Flatten steps and chains
+                if torch.numel(x_train) == 0:
+                    raise ValueError("Got zero training data points")
+                current_warmup_kernel.fit_preconditioner(x_train.clone(), **kwargs)
 
                 # Reset state and kernel
-                z = current_warmup_kernel._preconditioner.forward_transform(x)[0]
+                z = current_warmup_kernel._preconditioner.forward_transform(x.clone())[0]
                 current_warmup_kernel.reset_parameters()
                 training_samples = Samples(
                     event_shape=self.kernel.event_shape,
@@ -155,17 +174,23 @@ class PreconditionedMCMCSampler(MCMCSampler):
                     # We are now in the first iteration where the kernel parameters
                     # will not be updated. Need to finalize kernel parameters.
                     current_warmup_kernel.finalize_parameters()
+                    
+                    # Resample states again
+                    # x = current_warmup_kernel._preconditioner.inverse_transform(z.clone())[0]
+                    # x = resample(x.clone())
+                    # z = current_warmup_kernel._preconditioner.forward_transform(x.clone())[0]
+                    pass
 
                 z, x = current_warmup_kernel.step_with_preconditioner_inverse(
-                    z,
+                    z.clone(),
                     update=do_update
                 )
                 if not do_update:
-                    training_samples.add(x.detach())
+                    training_samples.add(x.detach().clone())
 
-                target_samples.add(x.detach())
+                target_samples.add(x.detach().clone())
                 if return_latent_samples:
-                    latent_samples.add(z.detach())
+                    latent_samples.add(z.detach().clone())
 
                 elapsed_time = time.time() - t0
                 pbar.set_postfix_str(
@@ -226,12 +251,12 @@ class PreconditionedMCMCSampler(MCMCSampler):
         for _ in (pbar := tqdm(range(n_steps),
                                desc=f'Sampling',
                                disable=not show_progress)):
-            z = z.detach()
-            z, x = self.kernel.step_with_preconditioner_inverse(z)
+            z = z.detach().clone()
+            z, x = self.kernel.step_with_preconditioner_inverse(z.clone())
 
-            target_samples.add(x.detach())
+            target_samples.add(x.detach().clone())
             if return_latent_samples:
-                latent_samples.add(z.detach())
+                latent_samples.add(z.detach().clone())
 
             elapsed_time = time.time() - t0
             pbar.set_postfix_str(self.kernel.pbar_repr(elapsed_time))
