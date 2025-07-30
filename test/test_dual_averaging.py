@@ -12,6 +12,8 @@ from test.util import DiagonalGaussian
 
 @pytest.mark.parametrize('n_chains', [1, 2, 10])
 def test_step(n_chains):
+    torch.manual_seed(0)
+
     initial_step_size = 1.0
     da = DualAveraging(
         initial_step_size=initial_step_size,
@@ -26,6 +28,8 @@ def test_step(n_chains):
 
 @pytest.mark.parametrize('n_chains', [1, 2, 10])
 def test_history(n_chains):
+    torch.manual_seed(0)
+
     initial_step_size = 1.0
     target_acc_rate = 0.5
 
@@ -47,11 +51,15 @@ def test_history(n_chains):
     for i in range(n_steps):
         assert torch.isfinite(da.step_size_history[i]).all()
         assert (da.step_size_history[i] > 0).all()
+        assert da.step_size_history[i].shape == (n_chains,)
+        if n_chains > 2:
+            assert len(torch.unique(da.step_size_history[i])) > 1
 
 
 @pytest.mark.parametrize('kernel_class', [MALAKernel, RWMHKernel])
 def test_reach_target_acceptance_rate(kernel_class):
     torch.manual_seed(0)
+
     target_acc_rate = 0.764321
     event_shape = (4,)
 
@@ -85,6 +93,7 @@ def test_reach_target_acceptance_rate(kernel_class):
 @pytest.mark.parametrize('kernel_class', [MALAKernel, RWMHKernel])
 def test_persist_step_size(kernel_class):
     torch.manual_seed(0)
+    
     target_acc_rate = 0.764321
     event_shape = (4,)
 
