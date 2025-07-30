@@ -87,7 +87,7 @@ class MHSampler(MCMCSampler):
                time_limit_seconds: Union[float, int] = None,
                max_samples: int = None,
                data_transform: callable = None):
-        self._warmup_flag = True
+        self.kernel.start_warmup()
         out = self.sample(
             x0=x0,
             n_steps=n_steps,
@@ -97,7 +97,7 @@ class MHSampler(MCMCSampler):
             data_transform=data_transform,
             _tuning=True,
         )
-        self._warmup_flag = False
+        self.kernel.end_warmup()
         return out
 
     def sample(self,

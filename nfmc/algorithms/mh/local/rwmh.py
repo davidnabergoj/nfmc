@@ -5,8 +5,15 @@ from nfmc.algorithms.mh.local.base import LocalMHKernel
 from nfmc.util import compute_divergence_mask, metropolis_acceptance_log_ratio
 
 
-def propose_state(x: torch.Tensor,
-                  step_size: Union[torch.Tensor, float]):
+def propose_state(x: torch.Tensor, step_size: torch.Tensor):
+    """
+    
+    :param torch.Tensor x: event tensor with shape `(n_chains, *event_shape)`.
+    :param torch.Tensor step_size: step size tensor with shape `(n_chains,)` or `()`.
+    """
+    if len(step_size.shape) == 1:
+        step_size = step_size.view(step_size.shape[0], *[1] * (len(x.shape) - 1))
+    
     x_prime = x + step_size * torch.randn_like(x)
     return x_prime
 
@@ -56,7 +63,7 @@ class RWMHKernel(LocalMHKernel):
         :param bool update: if True, update kernel parameters.
         :return: new state tensor with shape `(*batch_shape, *event_shape)`.
         """
-        if self._warmup_flag:
+        if self.warmup_active:
             step_size = self._dual_averaging.value
         else:
             step_size = self.step_size

@@ -51,6 +51,8 @@ class DualAveraging:
         """
         Return step size history tensor with shape `(n_steps, n_chains)`.
         """
+        if len(self._step_size_history) == 0:
+            return self._step_size_history
         return torch.stack(self._step_size_history)
 
     @property
@@ -58,6 +60,8 @@ class DualAveraging:
         """
         Return error history tensor with shape `(n_steps, n_chains)`.
         """
+        if len(self._error_history) == 0:
+            return self._error_history
         return torch.stack(self._error_history)
 
     def step(self, acceptance_mask: torch.Tensor):
@@ -104,7 +108,7 @@ class DualAveraging:
         """
         Return step size tensor with shape `(n_chains,)`.
         """
-        return torch.exp(self.log_step_averaged)
+        return torch.exp(torch.as_tensor(self.log_step_averaged))
 
     def weighted_value(self, sigma: float = 1.0):
         """
@@ -123,8 +127,8 @@ class DualAveraging:
             )
 
         # Prepare variables
-        _errs = self.error_history.astype(torch.float32)
-        _log_steps = torch.log(self.step_size_history.astype(torch.float32))
+        _errs = self.error_history.float()
+        _log_steps = torch.log(self.step_size_history.float())
 
         _ws = torch.exp(-(_errs ** 2) / (2 * sigma ** 2))
         _ws = torch.exp(-(_errs ** 2) / (2 * sigma ** 2))
@@ -132,7 +136,7 @@ class DualAveraging:
 
         # Compute weighted step
         _w_log_step = torch.sum(_ws * _log_steps, dim=0) / _w_sum
-        _w_log_step[_w_sum == 0] = _log_steps[-1]  # Use last log step size if weights are zero for a chain
+        _w_log_step[_w_sum == 0] = _log_steps[-1][_w_sum == 0]  # Use last log step size if weights are zero for a chain
 
         _w_step = torch.exp(_w_log_step)
         return _w_step

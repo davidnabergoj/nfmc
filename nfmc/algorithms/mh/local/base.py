@@ -34,8 +34,6 @@ class LocalMHKernel(MHKernel):
         """
         super().__init__(event_shape, neg_log_prob_target, **kwargs)
 
-        self._warmup_flag = False
-
         # Store initial step size
         step_size = torch.as_tensor(step_size)
         self._initial_step_size = step_size
@@ -58,13 +56,16 @@ class LocalMHKernel(MHKernel):
         Use the weighted average of observed step sizes after warmup.
         """
         if len(self._dual_averaging.error_history) > 0:
-            self.step_size = self._dual_averaging.weighted_value()
+            self.step_size = self._dual_averaging.weighted_value().mean()
 
     def pbar_repr(self, elapsed_time_seconds: float):
-        da_eps = torch.mean(torch.as_tensor(self._dual_averaging.error_sum))
+        eps_mean = torch.mean(torch.as_tensor(self._dual_averaging.error_sum))
+        eps_max = torch.max(torch.as_tensor(self._dual_averaging.error_sum))
+        eps_min = torch.min(torch.as_tensor(self._dual_averaging.error_sum))
         data = [
             self.name,
-            f'log step: {math.log(self.step_size):.3f} [eps: {da_eps:.2f}]',
+            f'log step: {math.log(self.step_size):.3f}',
+            f'DA[e: {eps_mean:.2f} ^{eps_max:.2f} v{eps_min:.2f}]',
             f'{self.calls_per_second(elapsed_time_seconds):.3f} c/s',
             f'{self.grads_per_second(elapsed_time_seconds):.3f} g/s',
             f'{self.acceptance_rate:.3f} acc',

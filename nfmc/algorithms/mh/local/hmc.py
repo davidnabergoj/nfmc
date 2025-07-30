@@ -8,7 +8,7 @@ from nfmc.util import compute_divergence_mask, grad_f, sum_except_batch
 
 def hmc_step_b(x: torch.Tensor,
                momentum: torch.Tensor,
-               step_size: Union[torch.Tensor, float],
+               step_size: torch.Tensor,
                neg_log_prob_target: callable,
                event_shape: Union[Tuple[int, ...], torch.Size]):
     """
@@ -16,33 +16,38 @@ def hmc_step_b(x: torch.Tensor,
 
     :param torch.Tensor x: state tensor with shape `(n_chains, *event_shape)`.
     :param torch.Tensor momentum: momentum tensor with shape `(n_chains, *event_shape)`.
-    :param torch.Tensor step_size: step size scalar or tensor with shape `(n_chains,)`.
+    :param torch.Tensor step_size: step size tensor with shape `(n_chains,)` or `()`.
 
     :return: transformed momentum, number of target density calls, number of target density gradient calls.
     """
+    if len(step_size.shape) == 1:
+        step_size = step_size.view(step_size.shape[0], *[1] * (len(x.shape) - 1))
+
     _, g, nc, ng = grad_f(x, neg_log_prob_target, event_shape)
     return momentum - step_size / 2 * g, nc, ng
 
 
 def hmc_step_a(x: torch.Tensor,
                momentum: torch.Tensor,
-               step_size: Union[torch.Tensor, float]):
+               step_size: torch.Tensor):
     """
     HMC position update.
 
     :param torch.Tensor x: state tensor with shape `(n_chains, *event_shape)`.
     :param torch.Tensor momentum: momentum tensor with shape `(n_chains, *event_shape)`.
-    :param torch.Tensor step_size: step size scalar or tensor with shape `(n_chains,)`.
+    :param torch.Tensor step_size: step size tensor with shape `(n_chains,)` or `()`.
 
     :return: transformed position.
     """
+    if len(step_size.shape) == 1:
+        step_size = step_size.view(step_size.shape[0], *[1] * (len(x.shape) - 1))
     return x + step_size * momentum
 
 
 def hmc_trajectory(x: torch.Tensor,
                    momentum: torch.Tensor,
                    event_shape: Union[Tuple[int, ...], torch.Size],
-                   step_size: Union[torch.Tensor, float],
+                   step_size: torch.Tensor,
                    n_leapfrog_steps: int,
                    neg_log_prob_target: callable,
                    full_output: bool = False):
@@ -52,7 +57,7 @@ def hmc_trajectory(x: torch.Tensor,
     :param torch.Tensor x: position tensor with shape `(n_chains, *event_shape)`.
     :param torch.Tensor x: momentum tensor with shape `(n_chains, *event_shape)`.
     :param Union[Tuple[int, ...], torch.Size] event_shape: event shape of the input tensor.
-    :param torch.Tensor step_size: HMC step size scalar or tensor with shape `(n_chains, *event_shape)`.
+    :param torch.Tensor step_size: step size tensor with shape `(n_chains,)` or `()`.
     :param int n_leapfrog_steps: number of leapfrog steps, i.e., the trajectory length.
     :param callable neg_log_prob_target: function that computes the negative log target probability density.
     :param bool full_output: if True, return the entire trajectory as the output tuple element.
@@ -137,7 +142,7 @@ class HMCKernel(LocalMHKernel):
         :param bool update: if True, update kernel parameters.
         :return: new state tensor with shape `(*batch_shape, *event_shape)`.
         """
-        if self._warmup_flag:
+        if self.warmup_active:
             step_size = self._dual_averaging.value
         else:
             step_size = self.step_size

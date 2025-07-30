@@ -8,13 +8,16 @@ from nfmc.util import compute_divergence_mask, grad_f, metropolis_acceptance_log
 
 def propose_state(x: torch.Tensor,
                   event_shape: Union[Tuple[int, ...], torch.Size],
-                  step_size: Union[torch.Tensor, float],
+                  step_size: torch.Tensor,
                   neg_log_prob_target: callable):
     """
     
     :param torch.Tensor x: event tensor with shape `(n_chains, *event_shape)`.
-    :param torch.Tensor step_size: step size scalar or tensor with shape `(n_chains,)`.
+    :param torch.Tensor step_size: step size tensor with shape `(n_chains,)` or `()`.
     """
+    if len(step_size.shape) == 1:
+        step_size = step_size.view(step_size.shape[0], *[1] * (len(x.shape) - 1))
+
     x = x.detach()
     noise = torch.randn_like(x).to(x)
 
@@ -31,16 +34,19 @@ def proposal_neg_log_prob(x_prime: torch.Tensor,
                           event_shape: Union[Tuple[int, ...], torch.Size],
                           x: torch.Tensor,
                           grad_u_x: torch.Tensor,
-                          tau: Union[torch.Tensor, float]):
+                          tau: torch.Tensor):
     """
     Compute the negative log probability density of the MALA proposal q(x_prime | x).
     
     :param torch.Tensor x: event tensor with shape `(n_chains, *event_shape)`.
     :param torch.Tensor x_prime: proposed event tensor with shape `(n_chains, *event_shape)`.
-    :param torch.Tensor tau: step size scalar or tensor with shape `(n_chains,)`.
+    :param torch.Tensor tau: step size tensor with shape `(n_chains,)` or `()`.
     """
+    if len(tau.shape) == 1:
+        tau = tau.view(tau.shape[0], *[1] * (len(x.shape) - 1))
+    
     term = x_prime - (x - tau * grad_u_x)
-    return sum_except_batch(term ** 2, event_shape) / (4 * tau)
+    return sum_except_batch(term ** 2 / (4 * tau), event_shape)
 
 
 class MALAKernel(LocalMHKernel):
@@ -82,7 +88,7 @@ class MALAKernel(LocalMHKernel):
         :param bool update: if True, update kernel parameters.
         :return: new state tensor with shape `(*batch_shape, *event_shape)`.
         """
-        if self._warmup_flag:
+        if self.warmup_active:
             step_size = self._dual_averaging.value
         else:
             step_size = self.step_size

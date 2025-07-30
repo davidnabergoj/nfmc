@@ -95,7 +95,7 @@ class PreconditionedMCMCSampler(MCMCSampler):
         :param kwargs: keyword arguments for `preconditioner.fit`.
         :return: Samples object with MCMC draws.
         """
-        self._warmup_flag = True
+        self.kernel.start_warmup()
 
         target_samples = Samples(
             event_shape=self.kernel.event_shape,
@@ -137,7 +137,10 @@ class PreconditionedMCMCSampler(MCMCSampler):
 
             # Sample indices with replacement
             indices = torch.multinomial(
-                probabilities, num_samples=len(states), replacement=True)
+                probabilities,
+                num_samples=len(states),
+                replacement=True
+            )
             return states[indices]
 
         for cycle_index in range(n_cycles):
@@ -180,10 +183,6 @@ class PreconditionedMCMCSampler(MCMCSampler):
                 # Step. Update if in first half of cycle.
                 do_update = step_index < cycle_length // 2
                 if step_index == (cycle_length // 2):
-                    # Resample states again
-                    # x = current_warmup_kernel._preconditioner.inverse_transform(z.clone())[0]
-                    # x = resample(x.clone())
-                    # z = current_warmup_kernel._preconditioner.forward_transform(x.clone())[0]
                     pass
 
                 z, x = current_warmup_kernel.step_with_preconditioner_inverse(
@@ -206,8 +205,9 @@ class PreconditionedMCMCSampler(MCMCSampler):
                 if time_limit_seconds is not None and elapsed_time > time_limit_seconds:
                     break
 
-        self._warmup_flag = False
-        
+        self.kernel.end_warmup()
+        self.kernel.finalize_parameters()
+
         if return_latent_samples:
             return target_samples, latent_samples
         return target_samples

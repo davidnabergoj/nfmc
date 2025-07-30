@@ -39,6 +39,20 @@ class MarkovKernel:
             preconditioner = IdentityPreconditioner(event_shape)
         self._preconditioner = preconditioner
 
+        # Used to determine warmup behavior in kernel implementations
+        self._warmup_flag = False
+
+    @property
+    def warmup_active(self):
+        return self._warmup_flag
+
+    def start_warmup(self):
+        self._warmup_flag = True
+
+    def end_warmup(self):
+        self._warmup_flag = False
+        
+
     def reset_parameters(self):
         """
         Resets the parameters of this kernel to their default values.
