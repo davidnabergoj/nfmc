@@ -32,6 +32,7 @@ def test_step(event_shape, kernel_class, n_chains):
 
     x_new = mixing_kernel.step(x_current)
 
+    assert x_new is not x_current
     assert not x_new.requires_grad
     assert x_new.shape == x_current.shape
     assert torch.isfinite(x_new).all()

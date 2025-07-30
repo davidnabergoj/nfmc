@@ -25,6 +25,7 @@ def test_step(event_shape, kernel_class, n_chains, dtype):
     )
     x_new = kernel.step(x_current)
 
+    assert x_new is not x_current
     assert not x_new.requires_grad
     assert x_new.shape == x_current.shape
     assert torch.isfinite(x_new).all()
@@ -96,10 +97,11 @@ def test_warmup_and_sample(kernel_class):
 
     x0 = torch.rand(size=(1, *event_shape)) * 2 - 1
     warmup_draws = sampler.warmup(
-        x0=x0, n_steps=100 if kernel_class != RWMHKernel else 1000
+        x0=x0, 
+        n_steps=500 if kernel_class == HMCKernel else 2000
     )
     sampling_draws = sampler.sample(
-        x0=warmup_draws.last_sample, n_steps=200 if kernel_class != RWMHKernel else 2000
+        x0=warmup_draws.last_sample, n_steps=2000
     )
 
     assert torch.allclose(

@@ -71,6 +71,7 @@ def test_isir_step():
     )
     x_new = kernel.step(x0)
 
+    assert x_new is not x0
     assert x_new.shape == x0.shape
     assert x_new.dtype == x0.dtype
     assert torch.isfinite(x_new).all()

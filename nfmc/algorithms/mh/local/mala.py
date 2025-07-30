@@ -8,8 +8,13 @@ from nfmc.util import compute_divergence_mask, grad_f, metropolis_acceptance_log
 
 def propose_state(x: torch.Tensor,
                   event_shape: Union[Tuple[int, ...], torch.Size],
-                  step_size: float,
+                  step_size: Union[torch.Tensor, float],
                   neg_log_prob_target: callable):
+    """
+    
+    :param torch.Tensor x: event tensor with shape `(n_chains, *event_shape)`.
+    :param torch.Tensor step_size: step size scalar or tensor with shape `(n_chains,)`.
+    """
     x = x.detach()
     noise = torch.randn_like(x).to(x)
 
@@ -17,7 +22,7 @@ def propose_state(x: torch.Tensor,
     u_x, grad_u_x, nc, ng = grad_f(x, neg_log_prob_target, event_shape)
 
     grad_term = -0.5 * step_size * grad_u_x
-    noise_term = noise * math.sqrt(step_size)
+    noise_term = noise * torch.sqrt(step_size)
     x_prime = x + grad_term + noise_term
     return x_prime, u_x, grad_u_x, nc, ng
 
@@ -26,9 +31,13 @@ def proposal_neg_log_prob(x_prime: torch.Tensor,
                           event_shape: Union[Tuple[int, ...], torch.Size],
                           x: torch.Tensor,
                           grad_u_x: torch.Tensor,
-                          tau: float):
+                          tau: Union[torch.Tensor, float]):
     """
     Compute the negative log probability density of the MALA proposal q(x_prime | x).
+    
+    :param torch.Tensor x: event tensor with shape `(n_chains, *event_shape)`.
+    :param torch.Tensor x_prime: proposed event tensor with shape `(n_chains, *event_shape)`.
+    :param torch.Tensor tau: step size scalar or tensor with shape `(n_chains,)`.
     """
     term = x_prime - (x - tau * grad_u_x)
     return sum_except_batch(term ** 2, event_shape) / (4 * tau)
@@ -50,8 +59,13 @@ class MALAKernel(LocalMHKernel):
         :param callable neg_log_prob_target: negative log probability density function. Takes as input a tensor with 
         :param kwargs: keyword arguments for the LocalMHKernel constructor.
         """
-        if 'target_acceptance_rate' not in kwargs:
-            kwargs['target_acceptance_rate'] = 0.574
+        if 'dual_averaging_kwargs' not in kwargs:
+            kwargs['dual_averaging_kwargs'] = dict(
+                target_acceptance_rate=0.571
+            )
+        else:
+            if 'target_acceptance_rate' not in kwargs['dual_averaging_kwargs']:
+                kwargs['dual_averaging_kwargs']['target_acceptance_rate'] = 0.571
         super().__init__(event_shape, neg_log_prob_target, **kwargs)
 
     @property
@@ -68,12 +82,16 @@ class MALAKernel(LocalMHKernel):
         :param bool update: if True, update kernel parameters.
         :return: new state tensor with shape `(*batch_shape, *event_shape)`.
         """
+        if self._warmup_flag:
+            step_size = self._dual_averaging.value
+        else:
+            step_size = self.step_size
 
         # Propose new state
         x_prime, u_x, grad_u_x, nc, ng = propose_state(
             x,
             self.event_shape,
-            self.step_size,
+            step_size,
             self.neg_log_prob_target
         )
         self.increment_n_calls(nc)
@@ -106,14 +124,14 @@ class MALAKernel(LocalMHKernel):
                     self.event_shape,
                     x_prime[~divergence_mask],
                     grad_u_x_prime,
-                    self.step_size
+                    step_size
                 ),
                 log_prob_proposal_prime=-proposal_neg_log_prob(
                     x_prime[~divergence_mask],
                     self.event_shape,
                     x[~divergence_mask],
                     grad_u_x[~divergence_mask],
-                    self.step_size
+                    step_size
                 )
             )
             log_u = torch.rand_like(log_prob_accept.clamp(min=1e-10)).log()

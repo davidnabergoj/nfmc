@@ -14,7 +14,7 @@ class LocalMHKernel(MHKernel):
     def __init__(self,
                  event_shape: Union[Tuple[int, ...], torch.Size],
                  neg_log_prob_target: callable,
-                 step_size: float = 0.01,
+                 step_size: Union[float, torch.Tensor] = 0.01,
                  dual_averaging_kwargs: dict = None,
                  target_acceptance_rate: float = 0.651,
                  **kwargs):
@@ -24,7 +24,7 @@ class LocalMHKernel(MHKernel):
         :param Union[Tuple[int, ...], torch.Size] event_shape: shape of the event tensor.
         :param callable neg_log_prob_target: negative log probability density function. Takes as input a tensor with
          shape `(*batch_shape, *event_shape)` and returns a tensor with shape `batch_shape`.
-        :param float step_size: positive step size.
+        :param float step_size: positive step size float or tensor with shape `()`.
         :param torch.Tensor inv_mass_diag: inverse of the diagonal mass matrix. If None, the mass matrix is set to
          identity.
         :param dict dual_averaging_kwargs: keyword arguments passed to DualAveraging.
@@ -34,7 +34,10 @@ class LocalMHKernel(MHKernel):
         """
         super().__init__(event_shape, neg_log_prob_target, **kwargs)
 
+        self._warmup_flag = False
+
         # Store initial step size
+        step_size = torch.as_tensor(step_size)
         self._initial_step_size = step_size
         self._initial_dual_averaging_kwargs = dual_averaging_kwargs
 
@@ -58,9 +61,10 @@ class LocalMHKernel(MHKernel):
             self.step_size = self._dual_averaging.weighted_value()
 
     def pbar_repr(self, elapsed_time_seconds: float):
+        da_eps = torch.mean(torch.as_tensor(self._dual_averaging.error_sum))
         data = [
             self.name,
-            f'log step: {math.log(self.step_size):.3f} [eps: {self._dual_averaging.error_sum:.2f}]',
+            f'log step: {math.log(self.step_size):.3f} [eps: {da_eps:.2f}]',
             f'{self.calls_per_second(elapsed_time_seconds):.3f} c/s',
             f'{self.grads_per_second(elapsed_time_seconds):.3f} g/s',
             f'{self.acceptance_rate:.3f} acc',
@@ -91,7 +95,6 @@ class LocalMHKernel(MHKernel):
         :param bool tune_step_size: if True, update the step size whenever `update=True` in the `.step` method.
         :param bool tune_inv_mass_diag: if True, update the mass matrix whenever `update=True` in the `.step` method.
         """
-        acc_rate = m.float().mean()
-        error = self._target_acceptance_rate - acc_rate
-        self._dual_averaging.step(error)
-        self.step_size = self._dual_averaging.value
+        accepted_mask = m.float()
+        self._dual_averaging.step(accepted_mask)
+        self.step_size = torch.mean(self._dual_averaging.value)

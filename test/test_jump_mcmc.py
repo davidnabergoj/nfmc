@@ -53,6 +53,7 @@ def test_step(event_shape,
     z_current = torch.randn(size=(n_chains, *event_shape))
     z_new = kernel.step(z_current)
 
+    assert z_new is not z_current
     assert not z_new.requires_grad
     assert z_new.shape == z_current.shape
     assert torch.isfinite(z_new).all()
@@ -176,7 +177,7 @@ def test_warmup_and_sample(sampler_class, global_kernel):
     _, latent_warmup_draws = sampler.warmup(
         z0=z0,
         n_cycles=12,
-        cycle_length=50,
+        cycle_length=100,
         return_latent_samples=True,
         n_epochs=2
     )

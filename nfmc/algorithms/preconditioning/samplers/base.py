@@ -95,6 +95,8 @@ class PreconditionedMCMCSampler(MCMCSampler):
         :param kwargs: keyword arguments for `preconditioner.fit`.
         :return: Samples object with MCMC draws.
         """
+        self._warmup_flag = True
+
         target_samples = Samples(
             event_shape=self.kernel.event_shape,
             max_samples=max_samples,
@@ -125,14 +127,17 @@ class PreconditionedMCMCSampler(MCMCSampler):
         )
 
         def resample(states):
-            neg_log_prob_states = current_warmup_kernel.neg_log_prob_target(states)
+            neg_log_prob_states = current_warmup_kernel.neg_log_prob_target(
+                states)
             log_weights = -neg_log_prob_states
             log_weights[~torch.isfinite(log_weights)] = 1e-8
-            weights = torch.exp(log_weights - torch.max(log_weights))  # for stability
+            weights = torch.exp(
+                log_weights - torch.max(log_weights))  # for stability
             probabilities = weights / torch.sum(weights)
 
             # Sample indices with replacement
-            indices = torch.multinomial(probabilities, num_samples=len(states), replacement=True)
+            indices = torch.multinomial(
+                probabilities, num_samples=len(states), replacement=True)
             return states[indices]
 
         for cycle_index in range(n_cycles):
@@ -142,7 +147,8 @@ class PreconditionedMCMCSampler(MCMCSampler):
 
             if cycle_index > 0:
                 # Transform current latent state to target space
-                x = current_warmup_kernel._preconditioner.inverse_transform(z.clone())[0]
+                x, _ = current_warmup_kernel._preconditioner.inverse_transform(
+                    z.clone())
 
                 # Resample target states according to the target log probability density
                 # This gets rid of stuck chains
@@ -154,13 +160,16 @@ class PreconditionedMCMCSampler(MCMCSampler):
                 # Update the preconditioner first so drawn sample can contribute toward next preconditioner fit.
 
                 x_train = training_samples.as_tensor()  # Convert training data to torch.Tensor
-                x_train = x_train.view(-1, *current_warmup_kernel.event_shape)  # Flatten steps and chains
+                # Flatten steps and chains
+                x_train = x_train.view(-1, *current_warmup_kernel.event_shape)
                 if torch.numel(x_train) == 0:
                     raise ValueError("Got zero training data points")
-                current_warmup_kernel.fit_preconditioner(x_train.clone(), **kwargs)
+                current_warmup_kernel.fit_preconditioner(
+                    x_train.clone(), **kwargs)
 
                 # Reset state and kernel
-                z = current_warmup_kernel._preconditioner.forward_transform(x.clone())[0]
+                z, _ = current_warmup_kernel._preconditioner.forward_transform(
+                    x.clone())
                 current_warmup_kernel.reset_parameters()
                 training_samples = Samples(
                     event_shape=self.kernel.event_shape,
@@ -171,10 +180,6 @@ class PreconditionedMCMCSampler(MCMCSampler):
                 # Step. Update if in first half of cycle.
                 do_update = step_index < cycle_length // 2
                 if step_index == (cycle_length // 2):
-                    # We are now in the first iteration where the kernel parameters
-                    # will not be updated. Need to finalize kernel parameters.
-                    current_warmup_kernel.finalize_parameters()
-                    
                     # Resample states again
                     # x = current_warmup_kernel._preconditioner.inverse_transform(z.clone())[0]
                     # x = resample(x.clone())
@@ -201,9 +206,8 @@ class PreconditionedMCMCSampler(MCMCSampler):
                 if time_limit_seconds is not None and elapsed_time > time_limit_seconds:
                     break
 
-        # Finalize kernel parameters
-        current_warmup_kernel.finalize_parameters()
-
+        self._warmup_flag = False
+        
         if return_latent_samples:
             return target_samples, latent_samples
         return target_samples

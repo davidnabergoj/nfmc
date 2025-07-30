@@ -134,6 +134,8 @@ class BinaryMixedPreconditionedMCMCSampler(PreconditionedMCMCSampler):
             if time_limit_seconds is not None and elapsed_time > time_limit_seconds:
                 break
 
+        
+
         if return_latent_samples:
             return target_samples, latent_samples
         return target_samples

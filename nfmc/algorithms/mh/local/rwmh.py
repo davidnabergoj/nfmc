@@ -6,7 +6,7 @@ from nfmc.util import compute_divergence_mask, metropolis_acceptance_log_ratio
 
 
 def propose_state(x: torch.Tensor,
-                  step_size: float) -> Tuple[torch.Tensor, Union[torch.Tensor, float], torch.Tensor]:
+                  step_size: Union[torch.Tensor, float]):
     x_prime = x + step_size * torch.randn_like(x)
     return x_prime
 
@@ -29,12 +29,17 @@ class RWMHKernel(LocalMHKernel):
          `batch_shape`.
         :param float step_size: proposal step size.
         """
-        
-        if 'target_acceptance_rate' not in kwargs:
-            kwargs['target_acceptance_rate'] = 0.234
+        if 'dual_averaging_kwargs' not in kwargs:
+            kwargs['dual_averaging_kwargs'] = dict(
+                target_acceptance_rate=0.234
+            )
+        else:
+            if 'target_acceptance_rate' not in kwargs['dual_averaging_kwargs']:
+                kwargs['dual_averaging_kwargs']['target_acceptance_rate'] = 0.234
+
         if 'step_size' not in kwargs:
             event_size = int(torch.prod(torch.as_tensor(event_shape)))
-            kwargs['step_size'] = 2.38 ** 2 / event_size
+            kwargs['step_size'] = torch.tensor(2.38 ** 2 / event_size)
         super().__init__(event_shape, neg_log_prob_target, **kwargs)
 
     @property
@@ -51,9 +56,13 @@ class RWMHKernel(LocalMHKernel):
         :param bool update: if True, update kernel parameters.
         :return: new state tensor with shape `(*batch_shape, *event_shape)`.
         """
+        if self._warmup_flag:
+            step_size = self._dual_averaging.value
+        else:
+            step_size = self.step_size
 
         # Propose new state
-        x_prime = propose_state(x, self.step_size)
+        x_prime = propose_state(x, step_size)
 
         # Compute divergence mask
         divergence_mask = compute_divergence_mask(x_prime, self.event_shape)
