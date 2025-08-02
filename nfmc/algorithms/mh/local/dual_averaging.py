@@ -6,6 +6,9 @@ class DualAveraging:
     """
     Nesterov dual averaging class for Metropolis-Hastings step size tuning.
     Each chain's step size is tuned separately.
+
+    The class requires space in the order of O(n_chains * n_steps) if storing errors or step sizes; and O(n_chains) if 
+     not.
     """
 
     def __init__(self,
