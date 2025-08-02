@@ -5,7 +5,7 @@ import torch
 from tqdm import tqdm
 
 from nfmc.algorithms.kernel import MarkovKernel
-from nfmc.algorithms.sampling.base.sampler import MCMCSampler
+from nfmc.algorithms.base.sampler import MCMCSampler
 from nfmc.algorithms.util.samples import Samples
 
 

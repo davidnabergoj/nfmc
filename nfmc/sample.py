@@ -15,7 +15,7 @@ from nfmc.algorithms.preconditioning.samplers.base import PreconditionedMCMCSamp
 from nfmc.algorithms.mh.imh import IMHKernel
 from nfmc.algorithms.iterated_sir import IteratedSIRKernel
 from nfmc.algorithms.jump.kernels import NeuTraJumpHMCKernel, NeuTraJumpMALAKernel, NeuTraJumpRWMHKernel
-from nfmc.algorithms.sampling.base.sampler import MCMCSampler
+from nfmc.algorithms.base.sampler import MCMCSampler
 from nfmc.algorithms.util.samples import Samples
 from nfmc.util import create_flow_object
 
