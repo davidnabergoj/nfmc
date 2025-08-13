@@ -1,123 +1,19 @@
 # Markov Chain Monte Carlo with Normalizing Flows
 
-This package provides various sampling algorithms that utilize normalizing flows (NF):
+This package implements MCMC algorithms that utilize normalizing flows (NF).
+Currently, it supports Metropolis-Hastings kernels:
 
-* Independent Metropolis Hastings (IMH)
+* Independent Metropolis-Hastings (IMH)
+* Random walk Metropolis-Hastings (RWMH)
 * Metropolis adjusted Langevin algorithm (MALA)
-* Unadjusted Langevin algorithm (MALA)
-* NeuTra HMC
-* Transport elliptical slice sampling (TESS)
-* Deterministic Langevin Monte Carlo (DLMC)
+* Hamiltonian Monte Carlo (HMC)
 
-The following algorithms are yet to be added:
+NFs can be used as preconditioners, as in the NeuTra MCMC framework (Hoffman et al., 2017).
+They can also be used as independent proposal distributions, as in IMH and Ex2 MCMC (Samsonov et al., 2022).
+Alternative options are the diagonal linear and non-diagonal (dense) linear preconditioners or independent proposal distributions.
+The samplers are implemented in PyTorch.
 
-* Preconditioned Monte Carlo (PMC)
-* Flow annealed importance sampling bootstrap (FAB)
-* Nested sampling (NS)
-* Stochastic normalizing flows (SNF)
-* Annealed flow transport Monte Carlo (AFT)
-* Continual repeated annealed flow transport Monte Carlo (CRAFT)
-
-We term such NF-based MCMC algorithms as NFMC.
-
-## Usage instructions
-
-NFMC algorithms require a target potential and an NF object.
-The potential is a function that computes the negative unnormalized log probability density of the target distribution.
-Example potentials are provided in the accompanying [potentials package](https://github.com/davidnabergoj/potentials).
-This package depends on [torchflows](https://github.com/davidnabergoj/torchflows) for NF definitions.
-Please implement custom NF architectures in torchflows for compatibility with this package.
-
-An example using Real NVP and a standard Gaussian potential is shown below.
-
-```python
-import torch
-from nfmc import sample
-
-torch.manual_seed(0)  # Set the random seed for reproducible results
-
-n_iterations = 1000
-n_chains = 100
-n_dim = 25  # Each draw (event) is a vector with size 25.
-
-
-# Define the target potential
-def standard_gaussian_potential(x):
-    return torch.sum(x ** 2, dim=-1)
-
-
-# Draw samples with Jump MALA (also local-global MALA)
-mala_out = sample(
-    standard_gaussian_potential,
-    event_shape=(n_dim,),
-    strategy="jump_mala",
-    flow="realnvp",
-    n_chains=n_chains,
-    n_iterations=n_iterations
-)
-```
-
-To use different samplers, pass the following keyword arguments to the `sample` function:
-
-```python
-from nfmc import sample
-
-sample(..., strategy='jump_mh')         # Metropolis-Hastings with NF jumps
-sample(..., strategy='imh')             # Independent Metropolis-Hastings
-sample(..., strategy='adaptive_imh')    # Adaptive independent Metropolis-Hastings
-sample(..., strategy='jump_mala')       # Metropolis adjusted Langevin algorithm with NF jumps
-sample(..., strategy='jump_ula')        # Unadjusted Langevin algorithm with NF jumps
-sample(..., strategy='jump_hmc')        # Hamiltonian Monte Carlo with NF jumps
-sample(..., strategy='jump_uhmc')       # Unadjusted Hamiltonian Monte Carlo with NF jumps
-sample(..., strategy='jump_ess')        # Elliptical slice sampling with NF jumps
-sample(..., strategy='jump_ess')        # Elliptical slice sampling with NF jumps
-sample(..., strategy='tess')            # Transport elliptical slice sampling
-sample(..., strategy='dlmc')            # Deterministic Langevin Monte Carlo
-sample(..., strategy='neutra_hmc')      # NeuTra HMC
-sample(..., strategy='neutra_mh')       # NeuTra MH
-```
-
-The output of the `sample` method is an `MCMCOutput` object with useful properties for model analyses and sampler debugging:
-
-```python
-out = sample(...)
-
-out.samples         # tensor of samples
-out.mean            # mean tensor
-out.variance        # variance tensor
-out.second_moment   # second moment tensor
-out.statistics      # MCMCStatistics object with convergence monitoring logs and other MCMC-related quantities (e.g., acceptance rate, number of target calls, number of target gradient calls)  
-``` 
-
-Other samplers may be used by explicitly creating the sampler object and calling the `sample` method.
-We provide an example for Jump HMC and the standard Gaussian potential:
-
-```python
-import torch
-from nfmc.algorithms.sampling.nfmc.jump import JumpHMC
-
-torch.manual_seed(0)
-event_shape = (10,)
-
-
-def standard_gaussian_potential(x):
-    return torch.sum(x ** 2, dim=-1)
-
-
-sampler = JumpHMC(event_shape, standard_gaussian_potential)
-
-n_chains = 100
-x_initial = torch.randn(size=(n_chains, *event_shape)) / 10
-out = sampler.sample(x_initial)
-```
-
-You can check the list of supported NFs with:
-
-```python
-from nfmc.util import get_supported_normalizing_flows
-
-print(get_supported_normalizing_flows())
-```
+This package is intended for research purposes or sampling when the time cost of computing the target probability density is much greater than the time cost of NF operations.
 
 ## Installation
 
@@ -135,6 +31,172 @@ To alternatively configure the package for local development, clone the reposito
 git clone git@github.com:davidnabergoj/nfmc.git
 pip install torchflows
 ```
+
+## Sampling example and usage instructions
+
+Each distribution is defined with a function that computes its (unnormalized) negative log probability density. 
+The function accepts an event tensor with shape `(n_chains, *event_shape)` and outputs a negative log probability tensor with shape `(n_chains,)`. For HMC and MALA kernels, the function should be differentiable according to PyTorch autodiff.
+
+We support various NF architectures like Real NVP, RQ-NSF, continuous NFs, ResFlow.
+This package depends on [torchflows](https://github.com/davidnabergoj/torchflows) for NF definitions.
+Please implement custom NF architectures in torchflows for compatibility with this package.
+Example negative log probability density functions are provided in the accompanying [potentials package](https://github.com/davidnabergoj/potentials).
+
+An example using Real NVP and a standard Gaussian target is shown below.
+
+```python
+import torch
+from nfmc import sample
+
+torch.manual_seed(0)  # Set the random seed for reproducible results
+
+n_iterations = 1000
+n_chains = 100
+n_dim = 25  # Each event is a vector with size 25.
+
+
+# Define the target negative log probability density
+def neg_log_prob_target(x):
+    return torch.sum(x ** 2, dim=-1)
+
+
+# Draw samples with Ex2 HMC sampler
+draws = sample(
+    neg_log_prob_target=neg_log_prob_target,
+    event_shape=(n_dim,),
+    kernel="ex2_hmc",
+    flow="realnvp",
+    n_chains=n_chains,
+    n_sampling_steps=5000,
+    warmup=True
+)
+```
+
+The `draws` output is a `Samples` object, which stores observed chain states, as well as their first and second moments.
+
+### Specifying the MCMC kernel
+
+The default kernel is IMH.
+To use different kernels, pass the following keyword arguments to the `sample` function:
+
+```python
+# Independent Metropolis-Hastings
+sample(..., kernel='imh')
+
+# Local Metropolis-Hastings with occassional global NF proposals (jumps)
+sample(..., kernel='jump_rwmh')  # RWMH
+sample(..., kernel='jump_mala')  # MALA
+sample(..., kernel='jump_hmc')   # HMC
+
+# Local Metropolis-Hastings with occassional global NF proposals (jumps, multiple candidates)
+sample(..., kernel='ex2_rwmh')  # RWMH
+sample(..., kernel='ex2_mala')  # MALA
+sample(..., kernel='ex2_hmc')   # HMC
+
+# Preconditioned local Metropolis-Hastings
+sample(..., kernel='neutra_rwmh')  # RWMH
+sample(..., kernel='neutra_mala')  # MALA
+sample(..., kernel='neutra_hmc')   # HMC
+```
+
+### Specifying the normalizing flow
+
+The default NF is Real NVP. To use different kernels, pass the following keyword arguments to the `sample` function:
+```python
+# Fast architectures
+sample(..., flow='nice')       # Dinh et al. (2015)
+sample(..., flow='realnvp')    # Dinh et al. (2016)
+sample(..., flow='c-rqnsf')    # Durkan et al. (2019)
+sample(..., flow='c-lrsnsf')   # Dolatabadi et al. (2020)
+
+# Potentially slower architectures (linear time scaling with target dimensionality for certain kernels)
+sample(..., flow='iaf')        # Kingma et al. (2017)
+sample(..., flow='maf')        # Papamakarios et al. (2018)
+sample(..., flow='ma-rqnsf')   # Durkan et al. (2019)
+sample(..., flow='ia-rqnsf')   # Durkan et al. (2019)
+
+# Potentially slower architectures (ODE or numerical simulation)
+sample(..., flow='i-resnet')   # Behrmann et al. (2019)
+sample(..., flow='resflow')    # Chen et al. (2020)
+sample(..., flow='ffjord')     # Gratwohl et al. (2018)
+sample(..., flow='ot-flow')    # Onken et al. (2021)
+
+# Convolutional architectures for distributions where events are images
+sample(..., flow='glow-nice')
+sample(..., flow='glow-realnvp')
+sample(..., flow='glow-rqnsf')
+sample(..., flow='glow-lrsnsf')
+sample(..., flow='conv-i-resnet')
+sample(..., flow='conv-resflow')
+sample(..., flow='conv-ffjord')
+```
+
+To specify hyperparameters in NF objects, create them according to the torchflows package:
+```python
+from torchflows.flows import Flow
+from torchflows.architectures import RealNVP
+
+event_shape = (100,)  # Set according to target distribution
+
+# Use a custom number of layers
+bijection = RealNVP(event_shape, n_layers=5)
+flow = Flow(bijection)
+sample(..., flow=flow)
+```
+See [torchflows](github.com/davidnabergoj/torchflows) for more information on creating NF objects.
+
+### Creating sampler objects manually
+
+The previously described `sample` function allows straightforward sampling and warmup for different samplers.
+The user may also manually create a sampler object.
+
+Other samplers may be used by explicitly creating the sampler object and calling the `sample` method.
+We provide an example for NeuTra HMC and the standard Gaussian target distribution:
+
+```python
+import torch
+from torchflows.flows import Flow
+from torchflows.architectures import RealNVP
+from nfmc.algorithms.mh.preconditioning.samplers.neutra import NeuTraHMC
+
+torch.manual_seed(0)
+
+event_shape = (7,)
+n_chains = 80
+
+def neg_log_prob_target(x):
+    return torch.sum(x ** 2, dim=-1)
+
+# Generate initial latent states
+z_initial = torch.rand(size=(n_chains, *event_shape)) * 4 - 2
+
+# Create the flow object
+bijection = RealNVP(event_shape, n_layers=5)
+flow = Flow(bijection)
+
+# Create the sampler object
+sampler = NeuTraHMC(
+    flow=flow,
+    neg_log_prob_target=neg_log_prob_target
+)
+
+# Run warmup to tune kernel parameters and NF preconditioner
+_, latent_warmup_draws = sampler.warmup(
+    z0=z_initial,
+    n_cycles=5,
+    cycle_length=1000,
+    return_latent_samples=True
+)
+
+# Sample with fixed kernel
+target_draws = sampler.sample(
+    z0=latent_warmup_draws.last_sample,
+    n_steps=1000
+)
+
+print(target_draws.as_tensor().shape)  # (1000, 80, 7)
+```
+
 ## Contributing
 
 We warmly welcome any contributions or comments.
@@ -143,21 +205,3 @@ Some aspects of the package that can be improved:
 * Additional sampler tests.
 * Implementation of PMC, NS, SNF, AFT, CRAFT, FAB and other NFMC methods.
 * Configuring a continuous integration pipeline with Github actions.
-* Suggestions for improved default sampler hyperparameters.
-
-## Citation
-
-If you use this code in your work, we kindly ask that you cite the accompanying paper:
-> [Nabergoj and Štrumbelj: Empirical evaluation of normalizing flows in Markov Chain Monte Carlo, 2024. arxiv:2412.17136.](https://arxiv.org/abs/2412.17136)
-
-BibTex entry:
-```
-@misc{nabergoj_nf_mcmc_evaluation_2024,
-    author = {Nabergoj, David and \v{S}trumbelj, Erik},
-    title = {Empirical evaluation of normalizing flows in {Markov} {Chain} {Monte} {Carlo}},
-    publisher = {arXiv},
-    month = dec,
-    year = {2024},
-    note = {arxiv:2412.17136}
-}
-```
