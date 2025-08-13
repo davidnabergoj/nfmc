@@ -1,5 +1,5 @@
 import json
-from typing import Dict, List
+from typing import Dict, List, Tuple, Union
 import torch
 
 FLOW_REFERENCE_DATA = {
@@ -85,34 +85,34 @@ def get_flow_family(flow: str):
 COUPLING_FLOW_NAMES: Dict[str, List[str]] = {
     k: [k] + FLOW_REFERENCE_DATA[k]['alt'] for k in FLOW_REFERENCE_DATA.keys()
     if FLOW_REFERENCE_DATA[k]['family'][0] == 'autoregressive'
-       and FLOW_REFERENCE_DATA[k]['family'][1] in ['coupling']
+    and FLOW_REFERENCE_DATA[k]['family'][1] in ['coupling']
 }
 
 AFFINE_AUTOREGRESSIVE_FLOW_NAMES: Dict[str, List[str]] = {
     k: [k] + FLOW_REFERENCE_DATA[k]['alt'] for k in FLOW_REFERENCE_DATA.keys()
     if FLOW_REFERENCE_DATA[k]['family'][0] == 'autoregressive'
-       and FLOW_REFERENCE_DATA[k]['family'][2] == 'affine'
-       and FLOW_REFERENCE_DATA[k]['family'][1] in ['coupling', 'masked']
+    and FLOW_REFERENCE_DATA[k]['family'][2] == 'affine'
+    and FLOW_REFERENCE_DATA[k]['family'][1] in ['coupling', 'masked']
 }
 
 SPLINE_AUTOREGRESSIVE_FLOW_NAMES: Dict[str, List[str]] = {
     k: [k] + FLOW_REFERENCE_DATA[k]['alt'] for k in FLOW_REFERENCE_DATA.keys()
     if FLOW_REFERENCE_DATA[k]['family'][0] == 'autoregressive'
-       and FLOW_REFERENCE_DATA[k]['family'][2] == 'spline'
-       and FLOW_REFERENCE_DATA[k]['family'][1] in ['coupling', 'masked']
+    and FLOW_REFERENCE_DATA[k]['family'][2] == 'spline'
+    and FLOW_REFERENCE_DATA[k]['family'][1] in ['coupling', 'masked']
 }
 
 NEURAL_AUTOREGRESSIVE_FLOW_NAMES: Dict[str, List[str]] = {
     k: [k] + FLOW_REFERENCE_DATA[k]['alt'] for k in FLOW_REFERENCE_DATA.keys()
     if FLOW_REFERENCE_DATA[k]['family'][0] == 'autoregressive'
-       and FLOW_REFERENCE_DATA[k]['family'][2] == 'nn'
-       and FLOW_REFERENCE_DATA[k]['family'][1] in ['coupling', 'masked']
+    and FLOW_REFERENCE_DATA[k]['family'][2] == 'nn'
+    and FLOW_REFERENCE_DATA[k]['family'][1] in ['coupling', 'masked']
 }
 
 MULTISCALE_FLOW_NAMES: Dict[str, List[str]] = {
     k: [k] + FLOW_REFERENCE_DATA[k]['alt'] for k in FLOW_REFERENCE_DATA.keys()
     if FLOW_REFERENCE_DATA[k]['family'][0] == 'autoregressive'
-       and FLOW_REFERENCE_DATA[k]['family'][1] == 'multiscale'
+    and FLOW_REFERENCE_DATA[k]['family'][1] == 'multiscale'
 }
 
 AUTOREGRESSIVE_FLOW_NAMES: Dict[str, List[str]] = {
@@ -222,7 +222,8 @@ def create_flow_object(flow_string: str, event_shape, **kwargs):
     kwargs.update(flow_data['kwargs'])
 
     if isinstance(flow_name, str):
-        assert is_flow_supported(flow_name), f"Unsupported flow name '{flow_name}'"
+        assert is_flow_supported(
+            flow_name), f"Unsupported flow name '{flow_name}'"
     else:
         raise ValueError
 
@@ -373,7 +374,8 @@ def create_flow_object(flow_string: str, event_shape, **kwargs):
     elif flow_name in FLOW_NAMES['conv-rnode']:
         bijection = ConvolutionalRNODE(event_shape, **kwargs)
     elif flow_name in FLOW_NAMES['conv-ddb']:
-        bijection = ConvolutionalDeepDiffeomorphicBijection(event_shape, **kwargs)
+        bijection = ConvolutionalDeepDiffeomorphicBijection(
+            event_shape, **kwargs)
     else:
         raise ValueError
 
@@ -391,10 +393,10 @@ def metropolis_acceptance_log_ratio(
     # g(x_curr|x_prime) = log_proposal_curr
     # g(x_prime|x_curr) = log_proposal_prime
     return (
-            log_prob_target_prime
-            - log_prob_target_curr
-            + log_prob_proposal_curr
-            - log_prob_proposal_prime
+        log_prob_target_prime
+        - log_prob_target_curr
+        + log_prob_proposal_curr
+        - log_prob_proposal_prime
     )
 
 
@@ -418,7 +420,8 @@ def multivariate_normal_sample(batch_shape, event_shape, cov):
     else:
         event_size = int(torch.prod(torch.as_tensor(event_shape)))
         assert cov.shape == (event_size, event_size)
-        samples_dist = torch.distributions.MultivariateNormal(loc=torch.zeros(event_size), covariance_matrix=cov)
+        samples_dist = torch.distributions.MultivariateNormal(
+            loc=torch.zeros(event_size), covariance_matrix=cov)
         samples_flat = samples_dist.sample(batch_shape)
         samples = samples_flat.view(*batch_shape, *event_shape)
     return samples
@@ -449,5 +452,125 @@ def get_supported_nfmc_samplers() -> List[str]:
 def get_supported_samplers() -> List[str]:
     return get_supported_mcmc_samplers() + get_supported_nfmc_samplers()
 
+
 def sum_except_batch(x, event_shape):
     return torch.sum(x, dim=list(range(len(x.shape)))[-len(event_shape):])
+
+
+def grad_f(x: torch.Tensor,
+           f: callable,
+           event_shape: Union[Tuple[int, ...], torch.Size]):
+    """
+    Compute gradient of function f with respect to input tensor x.
+    Converts infinite values to `torch.nan`.
+
+    :param torch.Tensor x: input tensor with shape `(*batch_shape, *event_shape)`.
+    :param callable f: function to be differentiated. Maps a tensor with shape `event_shape` to a scalar.
+    :param Union[Tuple[int, ...], torch.Size] event_shape: event shape of the input tensor.
+    :return: evaluated function tensor with shape `(*batch_shape)`, gradient tensor with shape 
+    `(*batch_shape, *event_shape)`, and the total numbers of function calls and gradient evaluations.
+    """
+    batch_shape = x.shape[:-len(event_shape)]
+    function_value = torch.full(size=batch_shape, fill_value=torch.nan).to(x)
+    grad_value = torch.full(size=x.shape, fill_value=torch.nan).to(x)
+
+    finite_mask = sum_except_batch(
+        (~torch.isfinite(x)).long(), event_shape
+    ) == 0
+    n_finite = int(torch.sum(finite_mask.long()))
+
+    n_calls = 0
+    n_grads = 0
+
+    skip_and_return_nan_grads = False
+    if n_finite > 0:
+        with torch.enable_grad():
+            x_finite = x[finite_mask]
+            x_finite.requires_grad_(True)
+
+            try:
+                f_val_finite = f(x_finite).to(x)
+                f_val_finite[~torch.isfinite(f_val_finite)] = torch.nan
+                function_value[finite_mask] = f_val_finite
+            except ValueError as _:
+                skip_and_return_nan_grads = True
+            n_calls += n_finite
+
+            if not skip_and_return_nan_grads:
+                grad_value[finite_mask] = torch.autograd.grad(
+                    f_val_finite.sum(),
+                    x_finite,
+                    create_graph=False
+                )[0].to(x)
+                grad_value[~torch.isfinite(grad_value)] = torch.nan
+                n_grads += n_finite
+
+            x_finite = x_finite.detach()
+            x_finite.requires_grad_(False)
+
+            grad_value = grad_value.detach()
+            grad_value.requires_grad_(False)
+
+    return function_value, grad_value, n_calls, n_grads
+
+
+def diag_mult_flat(x: torch.Tensor,
+                   diag: torch.Tensor,
+                   event_shape: Union[Tuple[int, ...], torch.Size]):
+    """
+    Multiplies flat diagonal matrix M by vector x.
+
+    :param torch.Tensor x: input tensor with shape `(*batch_shape, *event_shape)`.
+    :param torch.Tensor diag: diagonal of matrix M with shape `(event_size,)`, i.e., the number of event elements.
+    :param Union[Tuple[int, ...], torch.Size] event_shape: event shape of tensor x.
+    :return: the product tensor of M * x with shape `(*batch_shape, *event_shape)`.
+    """
+    batch_shape = x.shape[:-len(event_shape)]
+    event_size = diag.shape[0]
+    x_reshaped = x.view(*batch_shape, event_size)
+    x_reshaped_multiplied = torch.einsum(
+        '...i,i->...i', x_reshaped, diag.to(x_reshaped)
+    )
+    return x_reshaped_multiplied.view_as(x)
+
+
+def diag_mult(x: torch.Tensor,
+              diag: torch.Tensor,
+              event_shape: Union[Tuple[int, ...], torch.Size]):
+    """
+    Multiplies diagonal matrix M by vector x.
+    The shape of M aligns with the shape of x.
+
+    :param torch.Tensor x: input tensor with shape `(*batch_shape, *event_shape)`.
+    :param torch.Tensor diag: diagonal of matrix M with shape `event_shape`.
+    :param Union[Tuple[int, ...], torch.Size] event_shape: event shape of tensor x.
+    :return: the product tensor of M * x with shape `(*batch_shape, *event_shape)`.
+    """
+    return diag_mult_flat(x, diag.flatten(), event_shape)
+
+
+def compute_divergence_mask(x: torch.Tensor, event_shape):
+    infinite_x_mask = ~torch.isfinite(x)
+    return sum_except_batch(infinite_x_mask.long(), event_shape) > 0
+
+def flatten_event(x: torch.Tensor, 
+                  event_shape: Union[Tuple[int, ...], torch.Size]):
+    """
+    Converts tensor with shape `(*batch_shape, *event_shape)` into a tensor with shape `(batch_size, event_size)`.
+    """
+    event_size = int(torch.as_tensor(event_shape).prod()) if event_shape else 1
+    x = x.view(-1, event_size)
+    return x
+
+def stuck_chain_mask(x: torch.Tensor, fraction: float = 0.85):
+    _dim = 0
+    _m = [False] * x.shape[1]
+    for _c_id in range(x.shape[1]):
+        _, counts = torch.unique(
+            x[:, _c_id, _dim].flatten(),
+            return_counts=True,
+            sorted=False
+        )
+        if int(torch.max(counts)) > (x.shape[0] * fraction):
+            _m[_c_id] = True
+    return torch.tensor(_m)
