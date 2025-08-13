@@ -225,7 +225,7 @@ def sample(neg_log_prob_target: Union[callable, Any],
            return_warmup_samples: bool = False,
            **kwargs) -> Union[Samples, Tuple[Samples, Samples]]:
     """
-    Sample from a target distributions.
+    Sample from a target distributions with a Metropolis-Hastings sampler.
 
     :param Union[callable, Potential] neg_log_prob_target: target distribution, specified by a negative log probability 
      density. This function takes as input a batch of tensors with shape `(batch_size, *event_shape)` and outputs a batch with
@@ -269,9 +269,15 @@ def sample(neg_log_prob_target: Union[callable, Any],
 
     # Create initial state
     if x0 is None:
-        x0 = torch.rand(size=(n_chains, *event_shape)) * 2 - 1
+        x0 = torch.rand(size=(n_chains, *event_shape)) * 4 - 2
 
     if kernel in PRECONDITIONED_SAMPLERS:
+        sampler: PreconditionedMCMCSampler
+        if 'n_cycles' not in warmup_kwargs:
+            warmup_kwargs['n_cycles'] = 5
+        if 'cycle_length' not in warmup_kwargs:
+            warmup_kwargs['cycle_length'] = 2000
+
         # x0 is treated as a latent state
         if warmup:
             warmup_output, _latent_output = sampler.warmup(
@@ -292,6 +298,11 @@ def sample(neg_log_prob_target: Union[callable, Any],
             **sample_kwargs
         )
     else:
+        sampler: MHSampler
+
+        if 'n_steps' not in warmup_kwargs:
+            warmup_kwargs['n_steps'] = n_sampling_steps
+        
         # x0 is treated as the target state
         if warmup:
             warmup_output = sampler.warmup(
