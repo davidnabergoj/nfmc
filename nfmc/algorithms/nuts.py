@@ -105,9 +105,10 @@ class ParallelTreeState:
 def _acceptance_prob(log_prob_new,
                      momentum_new,
                      log_prob_old,
-                     momentum_old):
-    h_new = -log_prob_new + _kinetic_energy(momentum_new)
-    h_old = -log_prob_old + _kinetic_energy(momentum_old)
+                     momentum_old,
+                     event_shape):
+    h_new = -log_prob_new + _kinetic_energy(momentum_new, event_shape)
+    h_old = -log_prob_old + _kinetic_energy(momentum_old, event_shape)
     return torch.clamp(torch.exp(h_old-h_new), max=1.0)
 
 
@@ -155,124 +156,200 @@ def _build_tree(x: torch.Tensor,
         event_shape=event_shape
     )
 
-    base_case_mask = (j == 0)
-    general_case_mask = (j > 0)
+    m_b = (j == 0)  # Base case mask
+    m_g = (j > 0)   # General case mask
 
     # Base case
-    if base_case_mask.any():
+    if m_b.any():
         # Perform a single leapfrog step
-        x1, p1, neg_log_prob1, g1 = leapfrog_step(
-            x=x[base_case_mask],
-            momentum=p[base_case_mask],
+        x1, p1, _, _, neg_log_prob1, g1 = leapfrog_step(
+            x=x[m_b],
+            momentum=p[m_b],
             event_shape=event_shape,
-            step_size=v[base_case_mask] * step_size[base_case_mask],
+            step_size=v[m_b] * step_size[m_b],
             neg_log_prob_target=neg_log_prob_target,
             return_neg_log_prob_and_grad=True
         )
         log_prob1 = -neg_log_prob1
 
-        joint = log_prob1 - _kinetic_energy(p1)
-        diverged = ((joint - log_prob_x[base_case_mask])
+        joint = log_prob1 - _kinetic_energy(p1, event_shape)
+        diverged = ((joint - log_prob_x[m_b])
                     < -max_delta) | (~torch.isfinite(log_prob1))
-        valid = (torch.log(u_slice) <= joint) & (
+        valid_b = (torch.log(u_slice[m_b]) <= joint) & (
             ~diverged) & torch.isfinite(log_prob1)
 
-        state.x_minus[base_case_mask], state.p_minus[base_case_mask] = x1, p1
-        state.x_plus[base_case_mask], state.p_plus[base_case_mask] = x1, p1
-        state.x_prime[base_case_mask], state.log_prob_prime[base_case_mask] = x1, log_prob1
+        state.x_minus[m_b], state.p_minus[m_b] = x1, p1
+        state.x_plus[m_b], state.p_plus[m_b] = x1, p1
+        state.x_prime[m_b], state.log_prob_prime[m_b] = x1, log_prob1
 
-        state.n_valid[base_case_mask][valid] = 1
+        state.n_valid[m_b][valid_b] = 1
         # Redundant, but kept for safety
-        state.n_valid[base_case_mask][~valid] = 0
-        state.sum_accept_prob[base_case_mask] = _acceptance_prob(
+        state.n_valid[m_b][~valid_b] = 0
+        state.sum_accept_prob[m_b] = _acceptance_prob(
             log_prob1,
             p1,
-            log_prob_x[base_case_mask],
-            p[base_case_mask]
+            log_prob_x[m_b],
+            p[m_b],
+            event_shape
         )
-        state.n_leapfrogs[base_case_mask] = 1
-        state.stop[base_case_mask] = diverged
-        state.diverged[base_case_mask] = diverged
+        state.n_leapfrogs[m_b] = 1
+        state.stop[m_b] = diverged
+        state.diverged[m_b] = diverged
+
+        return state
 
     # General case
-    if general_case_mask.any():
-        # Build the left subtree
+    if m_g.any():
+        # Build the left subtree (`n_g` chains)
         left = _build_tree(
-            x=x[general_case_mask],
-            p=p[general_case_mask],
+            x=x[m_g],
+            p=p[m_g],
             event_shape=event_shape,
-            u_slice=u_slice[general_case_mask],
-            v=v[general_case_mask],
-            j=j[general_case_mask] - 1,
-            step_size=step_size[general_case_mask],
+            u_slice=u_slice[m_g],
+            v=v[m_g],
+            j=j[m_g] - 1,
+            step_size=step_size[m_g],
             neg_log_prob_target=neg_log_prob_target,
-            log_prob_x=log_prob_x[general_case_mask],
+            log_prob_x=log_prob_x[m_g],
             max_delta=max_delta
         )
 
-        # Early stop if left diverged or told to stop
-        state_left_stop = left.masked_copy(left.stop)
-        stop_copy_mask = general_case_mask.clone()
-        stop_copy_mask[general_case_mask] = left.stop
-        state.overwrite_with(state_left_stop, stop_copy_mask)
+        # Split the left subtree according to early stopping:
+        # - left_early (`n_g_e` chains) is the tree with early stopping. For
+        #       chains where _  build_tree diverged or was told to stop, do not change
+        #       their subtree anymore. In the single-chain version, this would mean
+        #       returning the left subtree as is.
+        # - left_continue (`n_g_c` chains)
+        left_early = left.masked_copy(left.stop)
+        m_g_early = m_g.clone()  # Mask for early-stopped chains
+        m_g_early[m_g] = left.stop
+        # Overwrite the early-stopped chains in the main state
+        state.overwrite_with(left_early, m_g_early)
+        m_g_non_early = ~m_g_early  # Mask for non-early-stopped chains
+        left_continue = left.masked_copy(m_g_non_early)
 
-        state_left_continue = left.masked_copy(~left.stop)
+        # (`n_g_c` chains)
+        m_g_non_early_negative = (v[m_g_non_early] == -1)
+        m_g_non_early_positive = ~m_g_non_early_negative
 
-        negative_mask = (v == -1)
-        positive_mask = ~negative_mask
-
-        x_start, p_start = x.clone(), p.clone()
-        x_start[negative_mask], p_start[negative_mask] = state_left_continue.x_minus, state_left_continue.p_minus
-        x_start[positive_mask], p_start[positive_mask] = state_left_continue.x_plus, state_left_continue.p_plus
+        x_start, p_start = x.clone(), p.clone()  # (`n` chains)
+        (
+            x_start[m_g_non_early][m_g_non_early_negative],
+            p_start[m_g_non_early][m_g_non_early_negative]
+        ) = (
+            left_continue.x_minus[m_g_non_early_negative],
+            left_continue.p_minus[m_g_non_early_negative]
+        )
+        (
+            x_start[m_g_non_early][m_g_non_early_positive],
+            p_start[m_g_non_early][m_g_non_early_positive]
+        ) = (
+            left_continue.x_plus[m_g_non_early_positive],
+            left_continue.p_plus[m_g_non_early_positive]
+        )
 
         right = _build_tree(
-            x=x_start,
-            p=p_start,
+            x=x_start[m_g_non_early],
+            p=p_start[m_g_non_early],
             event_shape=event_shape,
-            u_slice=u_slice[~left.stop],
-            v=v[~left.stop],
-            j=j[~left.stop] - 1,
-            step_size=step_size[~left.stop],
+            u_slice=u_slice[m_g_non_early],
+            v=v[m_g_non_early],
+            j=j[m_g_non_early] - 1,
+            step_size=step_size[m_g_non_early],
             neg_log_prob_target=neg_log_prob_target,
-            log_prob_x=log_prob_x[~left.stop],
+            log_prob_x=log_prob_x[m_g_non_early],
             max_delta=max_delta
         )
 
         # Combine
-        ...
+        (
+            state.x_minus[m_g_non_early][m_g_non_early_negative],
+            state.x_minus[m_g_non_early][m_g_non_early_positive]
+        ) = (
+            left_continue.x_minus[m_g_non_early_negative],
+            right.x_minus[m_g_non_early_positive]
+        )
+
+        (
+            state.p_minus[m_g_non_early][m_g_non_early_negative],
+            state.p_minus[m_g_non_early][m_g_non_early_positive]
+        ) = (
+            left_continue.p_minus[m_g_non_early_negative],
+            right.p_minus[m_g_non_early_positive]
+        )
+
+        (
+            state.x_plus[m_g_non_early][m_g_non_early_negative],
+            state.x_plus[m_g_non_early][m_g_non_early_positive]
+        ) = (
+            left_continue.x_plus[m_g_non_early_negative],
+            right.x_plus[m_g_non_early_positive]
+        )
+
+        (
+            state.p_plus[m_g_non_early][m_g_non_early_negative],
+            state.p_plus[m_g_non_early][m_g_non_early_positive]
+        ) = (
+            left_continue.p_plus[m_g_non_early_negative],
+            right.p_plus[m_g_non_early_positive]
+        )
 
         # Choose a proposal uniformly from valid points
-        state.n_valid = left.n_valid + right.n_valid
-        valid_mask = state.n_valid > 0
+        state.n_valid[m_g_non_early] = left_continue.n_valid + right.n_valid
+        valid_g_non_early = state.n_valid[m_g_non_early] > 0  # (< n_g_c)
 
         # If1
         rand_mask = torch.less(
-            torch.rand((state.n_chains,)),
-            right.n_valid / state.n_valid
+            torch.rand(int(m_g_non_early.long().sum()),),
+            right.n_valid / state.n_valid[m_g_non_early]
         )
 
         # If2
-        state.x_prime[rand_mask], state.log_prob_prime[rand_mask] = right.x_prime[rand_mask], right.log_prob_prime[rand_mask]
+        (
+            state.x_prime[m_g_non_early][rand_mask],
+            state.log_prob_prime[m_g_non_early][rand_mask]
+        ) = (
+            right.x_prime[rand_mask],
+            right.log_prob_prime[rand_mask]
+        )
         # Else2
-        state[~rand_mask], state.log_prob_prime[~rand_mask] = left.x_prime[~rand_mask], left.log_prob_prime[~rand_mask]
+        (
+            state.x_prime[m_g_non_early][~rand_mask],
+            state.log_prob_prime[m_g_non_early][~rand_mask]
+        ) = (
+            left_continue.x_prime[~rand_mask],
+            left_continue.log_prob_prime[~rand_mask]
+        )
         # Endif2
 
         # Else1
-        state.x_prime[~valid_mask], state.log_prob_prime[~valid_mask] = left.x_prime[~valid_mask], left.log_prob_prime[~valid_mask]
+        (
+            state.x_prime[m_g_non_early][~valid_g_non_early],
+            state.log_prob_prime[m_g_non_early][~valid_g_non_early]
+        ) = (
+            left_continue.x_prime[left_continue.n_valid == 0],
+            left_continue.log_prob_prime[left_continue.n_valid == 0]
+        )
         # EndIf1
 
-    state.sum_accept_prob = left.sum_accept_prob + right.sum_accept_prob
-    state.n_leapfrogs = left.n_leapfrogs + right.n_leapfrogs
-    state.diverged = left.diverged | right.diverged
+        state.sum_accept_prob[m_g_non_early] = (
+            left_continue.sum_accept_prob
+            + right.sum_accept_prob
+        )
+        state.n_leapfrogs[m_g_non_early] = (
+            left_continue.n_leapfrogs
+            + right.n_leapfrogs
+        )
+        state.diverged[m_g_non_early] = left_continue.diverged | right.diverged
 
-    state.stop = right.stop | is_uturn(
-        left.x_minus,
-        right.x_plus,
-        left.p_minus,
-        right.p_plus
-    )
+        state.stop[m_g_non_early] = right.stop | is_uturn(
+            left_continue.x_minus,
+            right.x_plus,
+            left_continue.p_minus,
+            right.p_plus
+        )
 
-    return state
+        return state
 
 
 class NUTSKernel(MarkovKernel):
@@ -324,7 +401,7 @@ class NUTSKernel(MarkovKernel):
 
         # Sample momentum and slice variable
         p0 = torch.randn_like(x)
-        joint0 = float(log_prob - _kinetic_energy(p0))
+        joint0 = float(log_prob - _kinetic_energy(p0, self.event_shape))
         u_slice = torch.rand(()) * math.exp(joint0)
 
         # Initialize balanced binary tree
@@ -342,11 +419,11 @@ class NUTSKernel(MarkovKernel):
 
             if v == -1:
                 # Build tree into negative time direction
-                state: TreeState = _build_tree()
+                state: ParallelTreeState = _build_tree()
                 x_minus, p_minus = state.x_minus, state.p_minus
             else:
                 # Build tree into positive time direction
-                state: TreeState = _build_tree()
+                state: ParallelTreeState = _build_tree()
                 x_plus, p_plus = state.x_plus, state.p_plus
 
             # Select state among valid states
