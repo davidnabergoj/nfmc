@@ -10,7 +10,8 @@ def hmc_step_b(x: torch.Tensor,
                momentum: torch.Tensor,
                step_size: torch.Tensor,
                neg_log_prob_target: callable,
-               event_shape: Union[Tuple[int, ...], torch.Size]):
+               event_shape: Union[Tuple[int, ...], torch.Size],
+               return_neg_log_prob_and_grad: bool = False):
     """
     HMC momentum update.
 
@@ -21,10 +22,16 @@ def hmc_step_b(x: torch.Tensor,
     :return: transformed momentum, number of target density calls, number of target density gradient calls.
     """
     if len(step_size.shape) == 1:
-        step_size = step_size.view(step_size.shape[0], *[1] * (len(x.shape) - 1))
+        step_size = step_size.view(
+            step_size.shape[0], *[1] * (len(x.shape) - 1))
 
-    _, g, nc, ng = grad_f(x, neg_log_prob_target, event_shape)
-    return momentum - step_size / 2 * g, nc, ng
+    fval, g, nc, ng = grad_f(x, neg_log_prob_target, event_shape)
+    new_momentum = momentum - step_size / 2 * g
+    
+    if return_neg_log_prob_and_grad:
+        return new_momentum, nc, ng, fval, g
+    else:
+        return new_momentum, nc, ng
 
 
 def hmc_step_a(x: torch.Tensor,
@@ -40,8 +47,53 @@ def hmc_step_a(x: torch.Tensor,
     :return: transformed position.
     """
     if len(step_size.shape) == 1:
-        step_size = step_size.view(step_size.shape[0], *[1] * (len(x.shape) - 1))
+        step_size = step_size.view(
+            step_size.shape[0], *[1] * (len(x.shape) - 1))
     return x + step_size * momentum
+
+
+def leapfrog_step(x: torch.Tensor,
+                  momentum: torch.Tensor,
+                  event_shape: Union[Tuple[int, ...], torch.Size],
+                  step_size: torch.Tensor,
+                  neg_log_prob_target: callable,
+                  return_neg_log_prob_and_grad: bool = False):
+    """
+    Perform one leapfrog step.
+
+    :param bool return_neg_log_prob_and_grad: if True, return the negative log probability
+     and its gradient from the second B step.
+    """
+    n_calls = 0
+    n_grads = 0
+
+    momentum, nc, ng = hmc_step_b(
+        x,
+        momentum,
+        step_size,
+        neg_log_prob_target,
+        event_shape
+    )
+    n_calls += nc
+    n_grads += ng
+
+    x = hmc_step_a(x, momentum, step_size)
+
+    momentum, nc, ng, fval, g = hmc_step_b(
+        x,
+        momentum,
+        step_size,
+        neg_log_prob_target,
+        event_shape,
+        return_neg_log_prob_and_grad=True
+    )
+    n_calls += nc
+    n_grads += ng
+
+    if return_neg_log_prob_and_grad:
+        return x, momentum, n_calls, n_grads, fval, g
+    else:
+        return x, momentum, n_calls, n_grads
 
 
 def hmc_trajectory(x: torch.Tensor,
@@ -70,27 +122,15 @@ def hmc_trajectory(x: torch.Tensor,
     n_grads = 0
 
     for _ in range(n_leapfrog_steps):
-        momentum, nc, ng = hmc_step_b(
-            x,
-            momentum,
-            step_size,
-            neg_log_prob_target,
-            event_shape
+        x, momentum, n_new_calls, n_new_grads = leapfrog_step(
+            x=x,
+            momentum=momentum,
+            event_shape=event_shape,
+            step_size=step_size,
+            neg_log_prob_target=neg_log_prob_target
         )
-        n_calls += nc
-        n_grads += ng
-
-        x = hmc_step_a(x, momentum, step_size)
-
-        momentum, nc, ng = hmc_step_b(
-            x,
-            momentum,
-            step_size,
-            neg_log_prob_target,
-            event_shape
-        )
-        n_calls += nc
-        n_grads += ng
+        n_calls += n_new_calls
+        n_grads += n_new_grads
 
         if full_output:
             full_trajectory.append(x)
@@ -113,7 +153,9 @@ class HMCKernel(LocalMHKernel):
         HMCKernel constructor.
 
         :param Union[Tuple[int, ...], torch.Size] event_shape: shape of the event tensor.
-        :param callable neg_log_prob_target: negative log probability density function. Takes as input a tensor with 
+        :param callable neg_log_prob_target: negative log probability density function. 
+         Takes as input an event tensor with shape `(n_chains, *event_shape)` and outputs 
+         a negative log probability tensor with shape `(n_chains,)`.
         :param int n_leapfrog_steps: number of leapfrog steps in each trajectory.
         :param kwargs: keyword arguments for the LocalMHKernel constructor.
         """
