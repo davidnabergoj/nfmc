@@ -27,7 +27,7 @@ def hmc_step_b(x: torch.Tensor,
 
     fval, g, nc, ng = grad_f(x, neg_log_prob_target, event_shape)
     new_momentum = momentum - step_size / 2 * g
-    
+
     if return_neg_log_prob_and_grad:
         return new_momentum, nc, ng, fval, g
     else:
@@ -148,6 +148,7 @@ class HMCKernel(LocalMHKernel):
                  event_shape: Union[Tuple[int, ...], torch.Size],
                  neg_log_prob_target: callable,
                  n_leapfrog_steps: int = 20,
+                 target_acceptance_rate: float = 0.651,
                  **kwargs):
         """
         HMCKernel constructor.
@@ -159,15 +160,12 @@ class HMCKernel(LocalMHKernel):
         :param int n_leapfrog_steps: number of leapfrog steps in each trajectory.
         :param kwargs: keyword arguments for the LocalMHKernel constructor.
         """
-        if 'dual_averaging_kwargs' not in kwargs:
-            kwargs['dual_averaging_kwargs'] = dict(
-                target_acceptance_rate=0.651
-            )
-        else:
-            if 'target_acceptance_rate' not in kwargs['dual_averaging_kwargs']:
-                kwargs['dual_averaging_kwargs']['target_acceptance_rate'] = 0.651
-
-        super().__init__(event_shape, neg_log_prob_target, **kwargs)
+        super().__init__(
+            event_shape,
+            neg_log_prob_target,
+            target_acceptance_rate=target_acceptance_rate,
+            **kwargs
+        )
         self.n_leapfrog_steps = n_leapfrog_steps
 
     @property

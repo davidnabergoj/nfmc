@@ -1,13 +1,16 @@
 import torch
-from nfmc.algorithms.nuts import _build_tree, _kinetic_energy, ParallelTreeState
+from nfmc.algorithms.nuts import NUTSKernel, _build_tree, _kinetic_energy, ParallelTreeState
 from nfmc.util import sum_except_batch
 import pytest
+
+from test.util import StandardGaussian
+
 
 @pytest.mark.parametrize('n_chains', [1, 4, 20])
 @pytest.mark.parametrize('tree_depth', [0, 1, 4, 10])
 def test_build_tree(n_chains, tree_depth):
     torch.manual_seed(0)
-    
+
     event_shape = (4,)
 
     # n_chains = 20
@@ -15,7 +18,7 @@ def test_build_tree(n_chains, tree_depth):
 
     def neg_log_prob_target(_tensor):
         return sum_except_batch(_tensor ** 2, event_shape)
-    
+
     x0 = torch.randn(size=(n_chains, *event_shape))
     p0 = torch.randn(size=(n_chains, *event_shape))
     log_prob_x0 = -neg_log_prob_target(x0)
@@ -27,7 +30,7 @@ def test_build_tree(n_chains, tree_depth):
     step_size = torch.rand(size=(n_chains,)) / 100
     j = torch.full(size=(n_chains,), fill_value=tree_depth)
 
-    state: ParallelTreeState = _build_tree(
+    state, _, _ = _build_tree(
         x=x0,
         p=p0,
         event_shape=event_shape,
@@ -39,7 +42,9 @@ def test_build_tree(n_chains, tree_depth):
         log_prob_x=log_prob_x0,
         max_delta=1000.0
     )
+    state: ParallelTreeState
 
+    assert isinstance(state, ParallelTreeState)
     assert state.n_chains == n_chains
     assert state.event_shape == event_shape
     assert state.x_minus.shape == (n_chains, *event_shape)
@@ -67,3 +72,23 @@ def test_build_tree(n_chains, tree_depth):
     assert torch.isfinite(state.n_leapfrogs).all()
 
     assert torch.all(state.x_prime != x0)
+
+
+@pytest.mark.parametrize('event_shape', [(1,), (4,), (2, 3)])
+@pytest.mark.parametrize('n_chains', [1, 4])
+@pytest.mark.parametrize('dtype', [torch.float32, torch.float64])
+def test_step(event_shape, n_chains, dtype):
+    torch.manual_seed(0)
+
+    x_current = torch.randn(size=(n_chains, *event_shape), dtype=dtype)
+    kernel = NUTSKernel(
+        event_shape=event_shape,
+        neg_log_prob_target=StandardGaussian(event_shape).neg_log_prob
+    )
+    x_new = kernel.step(x_current)
+
+    assert x_new is not x_current
+    assert not x_new.requires_grad
+    assert x_new.shape == x_current.shape
+    assert torch.isfinite(x_new).all()
+    assert x_current.dtype == x_new.dtype

@@ -1,9 +1,8 @@
-import math
 from typing import Tuple, Union
 from dataclasses import dataclass
 
 import torch
-from nfmc.algorithms.kernel import MarkovKernel
+from nfmc.algorithms.mh.local.base import LocalMHKernel
 from nfmc.util import sum_except_batch
 from nfmc.algorithms.mh.local.hmc import leapfrog_step
 
@@ -52,7 +51,7 @@ class ParallelTreeState:
         self.sum_accept_prob = torch.zeros(size=(self.n_chains,))
         self.stop = torch.zeros(size=(self.n_chains,), dtype=torch.bool)
         self.diverged = torch.zeros(size=(self.n_chains,), dtype=torch.bool)
-        self.n_leapfrogs = torch.zeros(size=(self.n_chains,))
+        self.n_leapfrogs = torch.zeros(size=(self.n_chains,), dtype=torch.long)
 
     def masked_copy(self, mask: torch.Tensor):
         """
@@ -131,7 +130,7 @@ def _build_tree(x: torch.Tensor,
                 step_size: torch.Tensor,
                 neg_log_prob_target: callable,
                 log_prob_x: torch.Tensor,
-                max_delta: float) -> ParallelTreeState:
+                max_delta: float) -> Tuple[ParallelTreeState, int, int]:
     """
     Build a balanced binary tree.
     A separate tree is built individually for each chain state via vectorization.
@@ -162,7 +161,7 @@ def _build_tree(x: torch.Tensor,
     # Base case
     if m_b.any():
         # Perform a single leapfrog step
-        x1, p1, _, _, neg_log_prob1, g1 = leapfrog_step(
+        x1, p1, nc, ng, neg_log_prob1, g1 = leapfrog_step(
             x=x[m_b],
             momentum=p[m_b],
             event_shape=event_shape,
@@ -196,12 +195,12 @@ def _build_tree(x: torch.Tensor,
         state.stop[m_b] = diverged
         state.diverged[m_b] = diverged
 
-        return state
+        return state, nc, ng
 
     # General case
     if m_g.any():
         # Build the left subtree (`n_g` chains)
-        left = _build_tree(
+        left, nc_left, ng_left = _build_tree(
             x=x[m_g],
             p=p[m_g],
             event_shape=event_shape,
@@ -248,7 +247,7 @@ def _build_tree(x: torch.Tensor,
             left_continue.p_plus[m_g_non_early_positive]
         )
 
-        right = _build_tree(
+        right, nc_right, ng_right = _build_tree(
             x=x_start[m_g_non_early],
             p=p_start[m_g_non_early],
             event_shape=event_shape,
@@ -349,10 +348,10 @@ def _build_tree(x: torch.Tensor,
             right.p_plus
         )
 
-        return state
+        return state, nc_left + nc_right, ng_left + ng_right
 
 
-class NUTSKernel(MarkovKernel):
+class NUTSKernel(LocalMHKernel):
     """
     Implementation of the no-U-turn sampler (NUTS) transition kernel.
     """
@@ -392,99 +391,129 @@ class NUTSKernel(MarkovKernel):
         :param bool update: if True, update kernel parameters.
         :return: new state tensor with shape `(*batch_shape, *event_shape)`.
         """
+        n_chains = x.shape[0]
+
         if self.warmup_active:
             step_size = self._dual_averaging.value
         else:
             step_size = self.step_size
+            if step_size.shape != (n_chains,):
+                if step_size.shape != ():
+                    raise ValueError(
+                        f"Step size should have `{n_chains = }` elements or a single one, but got {step_size.shape = }")
+                step_size = torch.full(
+                    size=(n_chains,), fill_value=step_size.item())
 
-        log_prob = -self.neg_log_prob_target(x)
+        log_prob_x = -self.neg_log_prob_target(x)
 
         # Sample momentum and slice variable
         p0 = torch.randn_like(x)
-        joint0 = float(log_prob - _kinetic_energy(p0, self.event_shape))
-        u_slice = torch.rand(()) * math.exp(joint0)
+        joint0 = log_prob_x - _kinetic_energy(p0, self.event_shape)
+        u_slice = torch.rand_like(step_size) * torch.exp(joint0)
 
         # Initialize balanced binary tree
         x_minus, x_plus = x.clone(), x.clone()
         p_minus, p_plus = p0.clone(), p0.clone()
         x_prime = x.clone()
-        log_prob_prime = log_prob.clone()
+        log_prob_x_prime = log_prob_x.clone()
+
+        # Initialize other variables
+        n_valid = torch.zeros(size=(n_chains,), dtype=torch.long)
+        sum_accept = torch.zeros(size=(n_chains,))
+        n_lf_total = torch.zeros(size=(n_chains,), dtype=torch.long)
+        stop = torch.zeros(size=(n_chains,), dtype=torch.bool)
+        diverged = torch.zeros(size=(n_chains,), dtype=torch.bool)
 
         for j in range(self.max_tree_depth + 1):
             # Choose direction
-            if torch.randint(0, 2, ()).item() == 1:
-                v = 1
-            else:
-                v = -1
+            v = torch.randint_like(step_size, low=0, high=2) * 2 - 1
 
-            if v == -1:
-                # Build tree into negative time direction
-                state: ParallelTreeState = _build_tree()
-                x_minus, p_minus = state.x_minus, state.p_minus
-            else:
-                # Build tree into positive time direction
-                state: ParallelTreeState = _build_tree()
-                x_plus, p_plus = state.x_plus, state.p_plus
+            # Build tree into negative/positive time directions
+            # (determined according to v within _build_tree)
+            m_neg = (v == -1)
 
-            # Select state among valid states
+            _x_build_tree = x_plus.clone()
+            _x_build_tree[m_neg] = x_minus[m_neg]
+            _p_build_tree = p_plus.clone()
+            _p_build_tree[m_neg] = p_minus[m_neg]
 
-            pass
+            state, nc, ng = _build_tree(
+                x=_x_build_tree,
+                p=_p_build_tree,
+                event_shape=self.event_shape,
+                u_slice=u_slice,
+                v=v,
+                j=torch.full(size=(n_chains,), fill_value=j),
+                step_size=step_size,
+                neg_log_prob_target=self.neg_log_prob_target,
+                log_prob_x=log_prob_x,
+                max_delta=self.max_delta
+            )
+            state: ParallelTreeState
+
+            (
+                x_minus[m_neg],
+                p_minus[m_neg]
+            ) = (
+                state.x_minus[m_neg],
+                state.p_minus[m_neg]
+            )
+
+            (
+                x_plus[~m_neg],
+                p_plus[~m_neg]
+            ) = (
+                state.x_plus[~m_neg],
+                state.p_plus[~m_neg]
+            )
+            stop[state.stop] = True
+            diverged[state.diverged] = True
+
+            # Update state (select state among valid states)
+            m_update = (
+                state.n_valid > 0
+                & (torch.rand(size=(n_chains,)) < (state.n_valid / (n_valid + state.n_valid)))
+            )
+            x_prime[m_update] = state.x_prime[m_update].clone()
+            log_prob_x_prime[m_update] = state.log_prob_prime[m_update].clone()
+
+            n_valid += state.n_valid
+            sum_accept += state.sum_accept_prob
+            n_lf_total += state.n_leapfrogs
+
+            if stop.all():
+                break
+            if is_uturn(
+                x_minus=x_minus,
+                x_plus=x_plus,
+                p_minus=p_minus,
+                p_plus=p_plus,
+            ).all():
+                break
 
         # Accept proposal
+        x = x_prime
+        log_prob_x = log_prob_x_prime
 
-        # Sample momentum and simulate trajectory
-        x_prime, p_prime, nc, ng = hmc_trajectory(
-            x=x.clone(),
-            momentum=p,
-            event_shape=self.event_shape,
-            step_size=step_size,
-            n_leapfrog_steps=self.n_leapfrog_steps,
-            neg_log_prob_target=self.neg_log_prob_target
-        )
+        # Dual averaging statistic
+        if update:
+            h_da = sum_accept / torch.clip(n_lf_total, max=torch.tensor(1.0))
+            self._update(h_da)
+
         self.increment_n_calls(nc)
         self.increment_n_grads(ng)
-
-        # Compute divergence mask
-        divergence_mask_x = compute_divergence_mask(x_prime, self.event_shape)
-        divergence_mask_p = compute_divergence_mask(p_prime, self.event_shape)
-        divergence_mask = divergence_mask_x | divergence_mask_p
-
-        n_valid_proposals = int((~divergence_mask).long().sum())
-        self.increment_n_divergences(int(divergence_mask.long().sum()))
-
-        # Compute acceptance mask
-        acceptance_mask = torch.zeros_like(divergence_mask)
-        if n_valid_proposals > 0:
-            hamiltonian_start: torch.Tensor = (
-                self.neg_log_prob_target(x[~divergence_mask])
-                + 0.5 * sum_except_batch(
-                    p[~divergence_mask] ** 2,
-                    self.event_shape
-                )
-            )
-            self.increment_n_calls(n_valid_proposals)
-
-            hamiltonian_end: torch.Tensor = (
-                self.neg_log_prob_target(x_prime[~divergence_mask])
-                + 0.5 * sum_except_batch(
-                    p_prime[~divergence_mask] ** 2,
-                    self.event_shape
-                )
-            )
-            self.increment_n_calls(n_valid_proposals)
-
-            log_prob_accept = -hamiltonian_end - (-hamiltonian_start)
-            log_u = torch.rand_like(log_prob_accept).log()
-            acceptance_mask[~divergence_mask] = (log_u < log_prob_accept)
-        x[acceptance_mask] = x_prime[acceptance_mask].clone()
-        x = x.detach().clone()
-
-        if update:
-            self._update(acceptance_mask)
-
+        self.increment_n_divergences(int(state.diverged.long().sum()))
         self.increment_n_steps()
-        self.increment_n_attempted_transitions(n_chains=x.shape[0])
-        self.increment_n_accepted_transitions(
-            int(acceptance_mask.long().sum()))
+        self.increment_n_attempted_transitions(n_chains=n_chains)
+        self.increment_n_accepted_transitions(n_chains)
 
         return x
+
+    def _update(self, h: torch.Tensor):
+        """
+        Update kernel parameters.
+
+        :param torch.Tensor h: statistic tensor after kernel transition.
+        """
+        self._dual_averaging.step(h)
+        self.step_size = torch.mean(self._dual_averaging.value)

@@ -11,12 +11,13 @@ def propose_state(x: torch.Tensor,
                   step_size: torch.Tensor,
                   neg_log_prob_target: callable):
     """
-    
+
     :param torch.Tensor x: event tensor with shape `(n_chains, *event_shape)`.
     :param torch.Tensor step_size: step size tensor with shape `(n_chains,)` or `()`.
     """
     if len(step_size.shape) == 1:
-        step_size = step_size.view(step_size.shape[0], *[1] * (len(x.shape) - 1))
+        step_size = step_size.view(
+            step_size.shape[0], *[1] * (len(x.shape) - 1))
 
     x = x.detach()
     noise = torch.randn_like(x).to(x)
@@ -37,14 +38,14 @@ def proposal_neg_log_prob(x_prime: torch.Tensor,
                           tau: torch.Tensor):
     """
     Compute the negative log probability density of the MALA proposal q(x_prime | x).
-    
+
     :param torch.Tensor x: event tensor with shape `(n_chains, *event_shape)`.
     :param torch.Tensor x_prime: proposed event tensor with shape `(n_chains, *event_shape)`.
     :param torch.Tensor tau: step size tensor with shape `(n_chains,)` or `()`.
     """
     if len(tau.shape) == 1:
         tau = tau.view(tau.shape[0], *[1] * (len(x.shape) - 1))
-    
+
     term = x_prime - (x - tau * grad_u_x)
     return sum_except_batch(term ** 2 / (4 * tau), event_shape)
 
@@ -57,6 +58,7 @@ class MALAKernel(LocalMHKernel):
     def __init__(self,
                  event_shape: Union[Tuple[int, ...], torch.Size],
                  neg_log_prob_target: callable,
+                 target_acceptance_rate: float = 0.571,
                  **kwargs):
         """
         HMCKernel constructor.
@@ -65,14 +67,12 @@ class MALAKernel(LocalMHKernel):
         :param callable neg_log_prob_target: negative log probability density function. Takes as input a tensor with 
         :param kwargs: keyword arguments for the LocalMHKernel constructor.
         """
-        if 'dual_averaging_kwargs' not in kwargs:
-            kwargs['dual_averaging_kwargs'] = dict(
-                target_acceptance_rate=0.571
-            )
-        else:
-            if 'target_acceptance_rate' not in kwargs['dual_averaging_kwargs']:
-                kwargs['dual_averaging_kwargs']['target_acceptance_rate'] = 0.571
-        super().__init__(event_shape, neg_log_prob_target, **kwargs)
+        super().__init__(
+            event_shape,
+            neg_log_prob_target,
+            target_acceptance_rate=target_acceptance_rate,
+            **kwargs
+        )
 
     @property
     def name(self):

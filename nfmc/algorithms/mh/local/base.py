@@ -91,11 +91,10 @@ class LocalMHKernel(MHKernel):
         """
         Update kernel parameters.
 
-        :param torch.Tensor x: state tensor after kernel transition.
         :param torch.Tensor m: acceptance mask tensor after kernel transition with dtype `torch.bool`.
-        :param bool tune_step_size: if True, update the step size whenever `update=True` in the `.step` method.
-        :param bool tune_inv_mass_diag: if True, update the mass matrix whenever `update=True` in the `.step` method.
         """
         accepted_mask = m.float()
-        self._dual_averaging.step(accepted_mask)
+        self._dual_averaging.step(
+            self.target_acceptance_rate - accepted_mask
+        )
         self.step_size = torch.mean(self._dual_averaging.value)
