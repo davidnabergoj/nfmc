@@ -236,7 +236,7 @@ class HMCKernel(LocalMHKernel):
             log_prob_accept = -hamiltonian_end - (-hamiltonian_start)
             log_u = torch.rand_like(log_prob_accept).log()
             acceptance_mask[~divergence_mask] = (log_u < log_prob_accept)
-        x[acceptance_mask] = x_prime[acceptance_mask].clone()
+        x[acceptance_mask] = x_prime[acceptance_mask]
         x = x.detach().clone()
 
         if update:

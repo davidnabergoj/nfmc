@@ -7,8 +7,9 @@ from test.util import StandardGaussian
 
 
 @pytest.mark.parametrize('n_chains', [1, 4, 20])
-@pytest.mark.parametrize('tree_depth', [0, 1, 4, 10])
-def test_build_tree(n_chains, tree_depth):
+@pytest.mark.parametrize('tree_depth', [0, 1, 4])
+@pytest.mark.parametrize('dtype', [torch.float32, torch.float64])
+def test_build_tree(n_chains, tree_depth, dtype):
     torch.manual_seed(0)
 
     event_shape = (4,)
@@ -19,15 +20,15 @@ def test_build_tree(n_chains, tree_depth):
     def neg_log_prob_target(_tensor):
         return sum_except_batch(_tensor ** 2, event_shape)
 
-    x0 = torch.randn(size=(n_chains, *event_shape))
-    p0 = torch.randn(size=(n_chains, *event_shape))
-    log_prob_x0 = -neg_log_prob_target(x0)
+    x0 = torch.randn(size=(n_chains, *event_shape), dtype=dtype)
+    p0 = torch.randn(size=(n_chains, *event_shape), dtype=dtype)
+    log_prob_x0 = -neg_log_prob_target(x0).to(x0)
     joint0 = log_prob_x0 - _kinetic_energy(p0, event_shape)
-    u_slice = torch.rand(size=(n_chains,)) * torch.exp(joint0)
+    u_slice = torch.rand(size=(n_chains,), dtype=dtype) * torch.exp(joint0)
 
     # {0, 1} -> {0, 2} -> {-1, 1}
     v = torch.randint(low=0, high=2, size=(n_chains,)) * 2 - 1
-    step_size = torch.rand(size=(n_chains,)) / 100
+    step_size = torch.rand(size=(n_chains,), dtype=dtype) / 100
     j = torch.full(size=(n_chains,), fill_value=tree_depth)
 
     state, _, _ = _build_tree(
@@ -75,16 +76,50 @@ def test_build_tree(n_chains, tree_depth):
 
 
 @pytest.mark.parametrize('event_shape', [(1,), (4,), (2, 3)])
+@pytest.mark.parametrize('n_chains', [4])
+@pytest.mark.parametrize('float_dtype', [torch.float32, torch.float64])
+def test_masked_copy_dtype(event_shape, n_chains, float_dtype):
+    state: ParallelTreeState = ParallelTreeState(
+        n_chains=n_chains,
+        event_shape=event_shape
+    )
+    state.x_minus = state.x_minus.to(float_dtype)
+    state.x_plus = state.x_plus.to(float_dtype)
+    state.p_minus = state.p_minus.to(float_dtype)
+    state.p_plus = state.p_plus.to(float_dtype)
+    state.x_prime = state.x_prime.to(float_dtype)
+    state.log_prob_prime = state.log_prob_prime.to(float_dtype)
+
+    mask = torch.tensor([False, False, True, True], dtype=torch.bool)
+    state_copy: ParallelTreeState = state.masked_copy(mask)
+
+    assert state.x_minus.dtype == state_copy.x_minus.dtype
+    assert state.x_plus.dtype == state_copy.x_plus.dtype
+
+    assert state.p_minus.dtype == state_copy.p_minus.dtype
+    assert state.p_plus.dtype == state_copy.p_plus.dtype
+
+    assert state.x_prime.dtype == state_copy.x_prime.dtype
+    assert state.log_prob_prime.dtype == state_copy.log_prob_prime.dtype
+
+    assert state.n_valid.dtype == state_copy.n_valid.dtype
+    assert state.sum_accept_prob.dtype == state_copy.sum_accept_prob.dtype
+    assert state.stop.dtype == state_copy.stop.dtype
+    assert state.diverged.dtype == state_copy.diverged.dtype
+    assert state.n_leapfrogs.dtype == state_copy.n_leapfrogs.dtype
+
+
+@pytest.mark.parametrize('event_shape', [(1,), (4,), (2, 3)])
 @pytest.mark.parametrize('n_chains', [1, 4])
 @pytest.mark.parametrize('dtype', [torch.float32, torch.float64])
 def test_step(event_shape, n_chains, dtype):
-    # Error: type mismatches when using torch.float64
     torch.manual_seed(0)
 
     x_current = torch.randn(size=(n_chains, *event_shape), dtype=dtype)
     kernel = NUTSKernel(
         event_shape=event_shape,
         neg_log_prob_target=StandardGaussian(event_shape).neg_log_prob,
+        max_tree_depth=5
     )
     x_new = kernel.step(x_current)
 

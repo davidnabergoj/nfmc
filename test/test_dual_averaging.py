@@ -4,6 +4,7 @@ import pytest
 import torch
 
 from nfmc.algorithms.mh.local.dual_averaging import DualAveraging
+from nfmc.algorithms.mh.local.hmc import HMCKernel
 from nfmc.algorithms.mh.local.mala import MALAKernel
 from nfmc.algorithms.mh.local.rwmh import RWMHKernel
 from nfmc.algorithms.mh.base import MHSampler
@@ -25,6 +26,7 @@ def test_step(n_chains):
     assert torch.isfinite(da.value).all()
     assert (da.value > 0).all()
     assert (da.value != initial_step_size).all()
+    assert da.value.shape == (n_chains,)
 
 
 @pytest.mark.parametrize('n_chains', [1, 2, 10])
@@ -57,7 +59,7 @@ def test_history(n_chains):
             assert len(torch.unique(da.step_size_history[i])) > 1
 
 
-@pytest.mark.parametrize('kernel_class', [MALAKernel, RWMHKernel])
+@pytest.mark.parametrize('kernel_class', [MALAKernel, RWMHKernel, HMCKernel])
 def test_reach_target_acceptance_rate(kernel_class):
     torch.manual_seed(0)
 

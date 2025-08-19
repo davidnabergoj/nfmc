@@ -38,32 +38,40 @@ class ParallelTreeState:
     n_leapfrogs: torch.Tensor = None
 
     def __post_init__(self):
-        self.x_minus = torch.zeros(size=(self.n_chains, *self.event_shape))
-        self.x_plus = torch.zeros(size=(self.n_chains, *self.event_shape))
+        if self.x_minus is None:
+            self.x_minus = torch.zeros(size=(self.n_chains, *self.event_shape))
 
-        self.p_minus = torch.zeros(size=(self.n_chains, *self.event_shape))
-        self.p_plus = torch.zeros(size=(self.n_chains, *self.event_shape))
+        if self.x_plus is None:
+            self.x_plus = torch.zeros(size=(self.n_chains, *self.event_shape))
 
-        self.x_prime = torch.zeros(size=(self.n_chains, *self.event_shape))
-        self.log_prob_prime = torch.zeros(size=(self.n_chains,))
+        if self.p_minus is None:
+            self.p_minus = torch.zeros(size=(self.n_chains, *self.event_shape))
 
-        self.n_valid = torch.zeros(size=(self.n_chains,), dtype=torch.long)
-        self.sum_accept_prob = torch.zeros(size=(self.n_chains,))
-        self.stop = torch.zeros(size=(self.n_chains,), dtype=torch.bool)
-        self.diverged = torch.zeros(size=(self.n_chains,), dtype=torch.bool)
-        self.n_leapfrogs = torch.zeros(size=(self.n_chains,), dtype=torch.long)
-    
-    def to(self, tensor: torch.Tensor):
-        self.x_minus = self.x_minus.to(tensor)
-        self.x_plus = self.x_plus.to(tensor)
-        
-        self.p_minus = self.p_minus.to(tensor)
-        self.p_plus = self.p_plus.to(tensor)
+        if self.p_plus is None:
+            self.p_plus = torch.zeros(size=(self.n_chains, *self.event_shape))
 
-        self.x_prime = self.x_prime.to(tensor)
-        self.log_prob_prime = self.log_prob_prime.to(tensor)
+        if self.x_prime is None:
+            self.x_prime = torch.zeros(size=(self.n_chains, *self.event_shape))
 
-        return self
+        if self.log_prob_prime is None:
+            self.log_prob_prime = torch.zeros(size=(self.n_chains,))
+
+        if self.n_valid is None:
+            self.n_valid = torch.zeros(size=(self.n_chains,), dtype=torch.long)
+
+        if self.sum_accept_prob is None:
+            self.sum_accept_prob = torch.zeros(size=(self.n_chains,))
+
+        if self.stop is None:
+            self.stop = torch.zeros(size=(self.n_chains,), dtype=torch.bool)
+
+        if self.diverged is None:
+            self.diverged = torch.zeros(
+                size=(self.n_chains,), dtype=torch.bool)
+
+        if self.n_leapfrogs is None:
+            self.n_leapfrogs = torch.zeros(
+                size=(self.n_chains,), dtype=torch.long)
 
     def masked_copy(self, mask: torch.Tensor):
         """
@@ -72,20 +80,20 @@ class ParallelTreeState:
         return ParallelTreeState(
             n_chains=int(mask.sum()),
             event_shape=self.event_shape,
-            x_minus=self.x_minus[mask].clone().to(self.x_minus),
-            x_plus=self.x_plus[mask].clone().to(self.x_plus),
+            x_minus=self.x_minus[mask],
+            x_plus=self.x_plus[mask],
 
-            p_minus=self.p_minus[mask].clone().to(self.p_minus),
-            p_plus=self.p_plus[mask].clone().to(self.p_plus),
+            p_minus=self.p_minus[mask],
+            p_plus=self.p_plus[mask],
 
-            x_prime=self.x_prime[mask].clone().to(self.x_prime),
-            log_prob_prime=self.log_prob_prime[mask].clone().to(self.log_prob_prime),
+            x_prime=self.x_prime[mask],
+            log_prob_prime=self.log_prob_prime[mask],
 
-            n_valid=self.n_valid[mask].clone(),
-            sum_accept_prob=self.sum_accept_prob[mask].clone(),
-            stop=self.stop[mask].clone(),
-            diverged=self.diverged[mask].clone(),
-            n_leapfrogs=self.n_leapfrogs[mask].clone(),
+            n_valid=self.n_valid[mask],
+            sum_accept_prob=self.sum_accept_prob[mask],
+            stop=self.stop[mask],
+            diverged=self.diverged[mask],
+            n_leapfrogs=self.n_leapfrogs[mask],
         )
 
     def overwrite_with(self, other_state, mask: torch.Tensor):
@@ -98,14 +106,14 @@ class ParallelTreeState:
             raise ValueError(
                 f"Shape of overwrite mask should be equal to {(self.n_chains,)}, but got {mask.shape}"
             )
-        self.x_minus[mask] = other_state.x_minus.to(self.x_minus)
-        self.x_plus[mask] = other_state.x_plus.to(self.x_plus)
+        self.x_minus[mask] = other_state.x_minus
+        self.x_plus[mask] = other_state.x_plus
 
-        self.p_minus[mask] = other_state.p_minus.to(self.p_minus)
-        self.p_plus[mask] = other_state.p_plus.to(self.p_plus)
+        self.p_minus[mask] = other_state.p_minus
+        self.p_plus[mask] = other_state.p_plus
 
-        self.x_prime[mask] = other_state.x_prime.to(self.x_prime)
-        self.log_prob_prime[mask] = other_state.log_prob_prime.to(self.log_prob_prime)
+        self.x_prime[mask] = other_state.x_prime
+        self.log_prob_prime[mask] = other_state.log_prob_prime
         self.n_valid[mask] = other_state.n_valid
         self.sum_accept_prob[mask] = other_state.sum_accept_prob
         self.stop[mask] = other_state.stop
@@ -120,7 +128,7 @@ def _acceptance_prob(log_prob_new,
                      event_shape):
     h_new = -log_prob_new + _kinetic_energy(momentum_new, event_shape)
     h_old = -log_prob_old + _kinetic_energy(momentum_old, event_shape)
-    return torch.clamp(torch.exp(h_old-h_new), max=1.0)
+    return torch.clamp(torch.exp(h_old - h_new), max=1.0)
 
 
 def is_uturn(x_minus,
@@ -161,12 +169,24 @@ def _build_tree(x: torch.Tensor,
     :param torch.Tensor log_prob_x: log probability density of incoming position tensor x with shape `(n_chains,)`.
     :param float max_delta: energy error divergence threshold.
     """
+    nc = 0
+    ng = 0
+    n_chains = x.shape[0]
 
-    # Clone position and momentum tensors
+    # Create a new state
     state = ParallelTreeState(
-        n_chains=x.shape[0],
+        n_chains=n_chains,
         event_shape=event_shape
-    ).to(x)
+    )
+    state.x_minus = state.x_minus.to(x.dtype)
+    state.x_plus = state.x_plus.to(x.dtype)
+    state.p_minus = state.p_minus.to(x.dtype)
+    state.p_plus = state.p_plus.to(x.dtype)
+    state.x_prime = state.x_prime.to(x.dtype)
+    state.log_prob_prime = state.log_prob_prime.to(x.dtype)
+
+    if v.shape != (n_chains,):
+        raise ValueError(f"Expected v.shape = ({n_chains},), but got {v.shape = }")
 
     m_b = (j == 0)  # Base case mask
     m_g = (j > 0)   # General case mask
@@ -179,7 +199,7 @@ def _build_tree(x: torch.Tensor,
     # Base case
     if m_b.any():
         # Perform a single leapfrog step
-        x1, p1, nc, ng, neg_log_prob1, g1 = leapfrog_step(
+        x1, p1, nc_b, ng_b, neg_log_prob1, g1 = leapfrog_step(
             x=x[m_b],
             momentum=p[m_b],
             event_shape=event_shape,
@@ -208,15 +228,16 @@ def _build_tree(x: torch.Tensor,
             log_prob_x[m_b],
             p[m_b],
             event_shape
-        )
+        ).to(state.sum_accept_prob.dtype)
         state.n_leapfrogs[m_b] = 1
         state.stop[m_b] = diverged
         state.diverged[m_b] = diverged
 
-        return state, nc, ng
+        nc += nc_b
+        ng += ng_b
 
     # General case
-    elif m_g.any():
+    if m_g.any():
         # Build the left subtree (`n_g` chains)
         left, nc_left, ng_left = _build_tree(
             x=x[m_g],
@@ -230,6 +251,8 @@ def _build_tree(x: torch.Tensor,
             log_prob_x=log_prob_x[m_g],
             max_delta=max_delta
         )
+        nc += nc_left
+        ng += ng_left
 
         # Split the left subtree according to early stopping:
         # - left_early (`n_g_e` chains) is the tree with early stopping. For
@@ -244,116 +267,116 @@ def _build_tree(x: torch.Tensor,
         state.overwrite_with(left_early, m_g_early)
         m_g_non_early = ~m_g_early  # Mask for non-early-stopped chains
 
-        if not m_g_non_early.any():
-            return left, nc_left, ng_left
+        if m_g_non_early.any():
+            left_continue = left.masked_copy(m_g_non_early)
 
-        left_continue = left.masked_copy(m_g_non_early)
+            # (`n_g_c` chains)
+            m_g_non_early_negative = (v[m_g_non_early] == -1)
+            m_g_non_early_positive = ~m_g_non_early_negative
 
-        # (`n_g_c` chains)
-        m_g_non_early_negative = (v[m_g_non_early] == -1)
-        m_g_non_early_positive = ~m_g_non_early_negative
+            x_start, p_start = x.clone(), p.clone()  # (`n` chains)
+            (
+                x_start[m_g_non_early][m_g_non_early_negative],
+                p_start[m_g_non_early][m_g_non_early_negative]
+            ) = (
+                left_continue.x_minus[m_g_non_early_negative],
+                left_continue.p_minus[m_g_non_early_negative]
+            )
+            (
+                x_start[m_g_non_early][m_g_non_early_positive],
+                p_start[m_g_non_early][m_g_non_early_positive]
+            ) = (
+                left_continue.x_plus[m_g_non_early_positive],
+                left_continue.p_plus[m_g_non_early_positive]
+            )
 
-        x_start, p_start = x.clone(), p.clone()  # (`n` chains)
-        (
-            x_start[m_g_non_early][m_g_non_early_negative],
-            p_start[m_g_non_early][m_g_non_early_negative]
-        ) = (
-            left_continue.x_minus[m_g_non_early_negative],
-            left_continue.p_minus[m_g_non_early_negative]
-        )
-        (
-            x_start[m_g_non_early][m_g_non_early_positive],
-            p_start[m_g_non_early][m_g_non_early_positive]
-        ) = (
-            left_continue.x_plus[m_g_non_early_positive],
-            left_continue.p_plus[m_g_non_early_positive]
-        )
+            right, nc_right, ng_right = _build_tree(
+                x=x_start[m_g_non_early],
+                p=p_start[m_g_non_early],
+                event_shape=event_shape,
+                u_slice=u_slice[m_g_non_early],
+                v=v[m_g_non_early],
+                j=j[m_g_non_early] - 1,
+                step_size=step_size[m_g_non_early],
+                neg_log_prob_target=neg_log_prob_target,
+                log_prob_x=log_prob_x[m_g_non_early],
+                max_delta=max_delta
+            )
 
-        right, nc_right, ng_right = _build_tree(
-            x=x_start[m_g_non_early],
-            p=p_start[m_g_non_early],
-            event_shape=event_shape,
-            u_slice=u_slice[m_g_non_early],
-            v=v[m_g_non_early],
-            j=j[m_g_non_early] - 1,
-            step_size=step_size[m_g_non_early],
-            neg_log_prob_target=neg_log_prob_target,
-            log_prob_x=log_prob_x[m_g_non_early],
-            max_delta=max_delta
-        )
+            # Combine
+            # > Left (non early stopped)
+            state.x_minus[m_g_non_early][m_g_non_early_negative] = left_continue.x_minus[m_g_non_early_negative]
+            state.p_minus[m_g_non_early][m_g_non_early_negative] = left_continue.p_minus[m_g_non_early_negative]
+            state.x_plus[m_g_non_early][m_g_non_early_negative] = left_continue.x_plus[m_g_non_early_negative]
+            state.p_plus[m_g_non_early][m_g_non_early_negative] = left_continue.p_plus[m_g_non_early_negative]
 
-        # Combine
-        # > Left (non early stopped)
-        state.x_minus[m_g_non_early][m_g_non_early_negative] = left_continue.x_minus[m_g_non_early_negative]
-        state.p_minus[m_g_non_early][m_g_non_early_negative] = left_continue.p_minus[m_g_non_early_negative]
-        state.x_plus[m_g_non_early][m_g_non_early_negative] = left_continue.x_plus[m_g_non_early_negative]
-        state.p_plus[m_g_non_early][m_g_non_early_negative] = left_continue.p_plus[m_g_non_early_negative]
+            # Right
+            state.x_minus[m_g_non_early][m_g_non_early_positive] = right.x_minus[m_g_non_early_positive]
+            state.p_minus[m_g_non_early][m_g_non_early_positive] = right.p_minus[m_g_non_early_positive]
+            state.x_plus[m_g_non_early][m_g_non_early_positive] = right.x_plus[m_g_non_early_positive]
+            state.p_plus[m_g_non_early][m_g_non_early_positive] = right.p_plus[m_g_non_early_positive]
 
-        # Right
-        state.x_minus[m_g_non_early][m_g_non_early_positive] = right.x_minus[m_g_non_early_positive]
-        state.p_minus[m_g_non_early][m_g_non_early_positive] = right.p_minus[m_g_non_early_positive]
-        state.x_plus[m_g_non_early][m_g_non_early_positive] = right.x_plus[m_g_non_early_positive]
-        state.p_plus[m_g_non_early][m_g_non_early_positive] = right.p_plus[m_g_non_early_positive]
+            # Choose a proposal uniformly from valid points
+            state.n_valid[m_g_non_early] = left_continue.n_valid + right.n_valid
+            valid_g_non_early = state.n_valid[m_g_non_early] > 0  # (< n_g_c)
 
-        # Choose a proposal uniformly from valid points
-        state.n_valid[m_g_non_early] = left_continue.n_valid + right.n_valid
-        valid_g_non_early = state.n_valid[m_g_non_early] > 0  # (< n_g_c)
+            # If1
+            _rand = torch.rand((int(m_g_non_early.long().sum()),), dtype=x.dtype)
+            _thresh = right.n_valid / state.n_valid[m_g_non_early]
+            rand_mask = _rand < _thresh
 
-        # If1
-        rand_mask = torch.less(
-            torch.rand(int(m_g_non_early.long().sum()),),
-            right.n_valid / state.n_valid[m_g_non_early]
-        )
+            # If2
+            (
+                state.x_prime[m_g_non_early][rand_mask],
+                state.log_prob_prime[m_g_non_early][rand_mask]
+            ) = (
+                right.x_prime[rand_mask],
+                right.log_prob_prime[rand_mask]
+            )
+            # Else2
+            (
+                state.x_prime[m_g_non_early][~rand_mask],
+                state.log_prob_prime[m_g_non_early][~rand_mask]
+            ) = (
+                left_continue.x_prime[~rand_mask],
+                left_continue.log_prob_prime[~rand_mask]
+            )
+            # Endif2
 
-        # If2
-        (
-            state.x_prime[m_g_non_early][rand_mask],
-            state.log_prob_prime[m_g_non_early][rand_mask]
-        ) = (
-            right.x_prime[rand_mask],
-            right.log_prob_prime[rand_mask]
-        )
-        # Else2
-        (
-            state.x_prime[m_g_non_early][~rand_mask],
-            state.log_prob_prime[m_g_non_early][~rand_mask]
-        ) = (
-            left_continue.x_prime[~rand_mask],
-            left_continue.log_prob_prime[~rand_mask]
-        )
-        # Endif2
+            # Else1
+            (
+                state.x_prime[m_g_non_early][~valid_g_non_early],
+                state.log_prob_prime[m_g_non_early][~valid_g_non_early]
+            ) = (
+                left_continue.x_prime[left_continue.n_valid == 0],
+                left_continue.log_prob_prime[left_continue.n_valid == 0]
+            )
+            # EndIf1
 
-        # Else1
-        (
-            state.x_prime[m_g_non_early][~valid_g_non_early],
-            state.log_prob_prime[m_g_non_early][~valid_g_non_early]
-        ) = (
-            left_continue.x_prime[left_continue.n_valid == 0],
-            left_continue.log_prob_prime[left_continue.n_valid == 0]
-        )
-        # EndIf1
+            state.sum_accept_prob[m_g_non_early] = (
+                left_continue.sum_accept_prob
+                + right.sum_accept_prob
+            )
+            state.n_leapfrogs[m_g_non_early] = (
+                left_continue.n_leapfrogs
+                + right.n_leapfrogs
+            )
+            state.diverged[m_g_non_early] = left_continue.diverged | right.diverged
 
-        state.sum_accept_prob[m_g_non_early] = (
-            left_continue.sum_accept_prob
-            + right.sum_accept_prob
-        )
-        state.n_leapfrogs[m_g_non_early] = (
-            left_continue.n_leapfrogs
-            + right.n_leapfrogs
-        )
-        state.diverged[m_g_non_early] = left_continue.diverged | right.diverged
+            state.stop[m_g_non_early] = right.stop | is_uturn(
+                left_continue.x_minus,
+                right.x_plus,
+                left_continue.p_minus,
+                right.p_plus,
+                event_shape=event_shape
+            )
 
-        state.stop[m_g_non_early] = right.stop | is_uturn(
-            left_continue.x_minus,
-            right.x_plus,
-            left_continue.p_minus,
-            right.p_plus,
-            event_shape=event_shape
-        )
+            nc += nc_right
+            ng += ng_right
 
-        return state, nc_left + nc_right, ng_left + ng_right
-    else:
-        raise ValueError("Recursion did not use base or general case in any chain")
+    return state, nc, ng
+    
+
 
 class NUTSKernel(LocalMHKernel):
     """
@@ -363,7 +386,7 @@ class NUTSKernel(LocalMHKernel):
     def __init__(self,
                  event_shape: Union[Tuple[int, ...], torch.Size],
                  neg_log_prob_target: callable,
-                 max_tree_depth: int = 10,
+                 max_tree_depth: int = 5,
                  max_delta: float = 1000.0,
                  **kwargs):
         """
@@ -397,23 +420,30 @@ class NUTSKernel(LocalMHKernel):
         """
         n_chains = x.shape[0]
 
+        # Choose step size according to warmup flag
         if self.warmup_active:
             step_size = self._dual_averaging.value
         else:
             step_size = self.step_size
-            if step_size.shape != (n_chains,):
-                if step_size.shape != ():
-                    raise ValueError(
-                        f"Step size should have `{n_chains = }` elements or a single one, but got {step_size.shape = }")
-                step_size = torch.full(
-                    size=(n_chains,), fill_value=step_size.item())
 
-        log_prob_x = -self.neg_log_prob_target(x).to(x)
+        # Ensure step size has appropriate shape
+        if step_size.shape != (n_chains,):
+            if step_size.shape != ():
+                raise ValueError(
+                    f"Step size should have `{n_chains=}` elements or a single one, but got {step_size.shape = }"
+                )
+            step_size = torch.full(
+                size=(n_chains,), 
+                fill_value=step_size.item()
+            )
+        step_size = step_size.to(x.dtype)
+
+        log_prob_x = -self.neg_log_prob_target(x).to(x.dtype)
 
         # Sample momentum and slice variable
         p0 = torch.randn_like(x)
         joint0 = log_prob_x - _kinetic_energy(p0, self.event_shape)
-        u_slice = torch.rand_like(step_size).to(x) * torch.exp(joint0).to(x)
+        u_slice = torch.rand_like(step_size) * torch.exp(joint0)
 
         # Initialize balanced binary tree
         x_minus, x_plus = x.clone(), x.clone()
@@ -430,7 +460,8 @@ class NUTSKernel(LocalMHKernel):
 
         for j in range(self.max_tree_depth + 1):
             # Choose direction
-            v = torch.randint_like(step_size, low=0, high=2) * 2 - 1
+            _r = torch.randint(size=(n_chains,), low=0, high=2).to(step_size.dtype)
+            v = _r * 2 - 1
 
             # Build tree into negative/positive time directions
             # (determined according to v within _build_tree)
@@ -474,11 +505,11 @@ class NUTSKernel(LocalMHKernel):
             diverged[state.diverged] = True
 
             # Update state (select state among valid states)
-            _rand = torch.rand(size=(n_chains,)).to(x)
+            _rand = torch.rand_like(step_size)
             _thresh = state.n_valid / (n_valid + state.n_valid)
             m_update = (state.n_valid > 0) & (_rand < _thresh)
-            x_prime[m_update] = state.x_prime[m_update].clone()
-            log_prob_x_prime[m_update] = state.log_prob_prime[m_update].clone()
+            x_prime[m_update] = state.x_prime[m_update]
+            log_prob_x_prime[m_update] = state.log_prob_prime[m_update]
 
             n_valid += state.n_valid
             sum_accept += state.sum_accept_prob
