@@ -78,12 +78,13 @@ def test_build_tree(n_chains, tree_depth):
 @pytest.mark.parametrize('n_chains', [1, 4])
 @pytest.mark.parametrize('dtype', [torch.float32, torch.float64])
 def test_step(event_shape, n_chains, dtype):
+    # Error: type mismatches when using torch.float64
     torch.manual_seed(0)
 
     x_current = torch.randn(size=(n_chains, *event_shape), dtype=dtype)
     kernel = NUTSKernel(
         event_shape=event_shape,
-        neg_log_prob_target=StandardGaussian(event_shape).neg_log_prob
+        neg_log_prob_target=StandardGaussian(event_shape).neg_log_prob,
     )
     x_new = kernel.step(x_current)
 

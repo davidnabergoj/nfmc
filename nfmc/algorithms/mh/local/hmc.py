@@ -27,6 +27,8 @@ def hmc_step_b(x: torch.Tensor,
 
     fval, g, nc, ng = grad_f(x, neg_log_prob_target, event_shape)
     new_momentum = momentum - step_size / 2 * g
+    new_momentum = new_momentum.to(x)
+    g = g.to(x)
 
     if return_neg_log_prob_and_grad:
         return new_momentum, nc, ng, fval, g
@@ -49,7 +51,9 @@ def hmc_step_a(x: torch.Tensor,
     if len(step_size.shape) == 1:
         step_size = step_size.view(
             step_size.shape[0], *[1] * (len(x.shape) - 1))
-    return x + step_size * momentum
+    new_position = x + step_size * momentum
+    new_position = new_position.to(x)
+    return new_position
 
 
 def leapfrog_step(x: torch.Tensor,
