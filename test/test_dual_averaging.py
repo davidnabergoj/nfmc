@@ -13,13 +13,14 @@ from test.util import DiagonalGaussian
 @pytest.mark.parametrize('n_chains', [1, 2, 10])
 def test_step(n_chains):
     torch.manual_seed(0)
+    target_acceptance_rate = 0.5
 
     initial_step_size = 1.0
     da = DualAveraging(
         initial_step_size=initial_step_size,
-        target_acceptance_rate=0.5
     )
-    da.step(torch.rand(size=(n_chains,)) < 0.2)
+    h = target_acceptance_rate - torch.rand(size=(n_chains,))
+    da.step(h)
 
     assert torch.isfinite(da.value).all()
     assert (da.value > 0).all()
@@ -35,7 +36,6 @@ def test_history(n_chains):
 
     da = DualAveraging(
         initial_step_size=initial_step_size,
-        target_acceptance_rate=target_acc_rate,
         store_step_sizes=True,
         store_errors=True,
     )
@@ -43,7 +43,8 @@ def test_history(n_chains):
     n_steps = 50
 
     for _ in range(n_steps):
-        da.step(torch.rand(size=(n_chains,)) < target_acc_rate)
+        h = target_acc_rate - torch.rand(size=(n_chains,))
+        da.step(h)
 
     assert len(da.step_size_history) == n_steps
     assert len(da.error_history) == n_steps
@@ -65,11 +66,9 @@ def test_reach_target_acceptance_rate(kernel_class):
 
     target = DiagonalGaussian(event_shape)
     kernel = kernel_class(
-        event_shape, target.
-        neg_log_prob,
-        dual_averaging_kwargs=dict(
-            target_acceptance_rate=target_acc_rate
-        )
+        event_shape,
+        target.neg_log_prob,
+        target_acceptance_rate=target_acc_rate
     )
     sampler = MHSampler(kernel)
 
@@ -83,7 +82,7 @@ def test_reach_target_acceptance_rate(kernel_class):
         target_acc_rate,
         rel_tol=0.05
     )
-    
+
     assert isinstance(
         sampler.kernel.step_size,
         torch.Tensor
@@ -93,7 +92,7 @@ def test_reach_target_acceptance_rate(kernel_class):
 @pytest.mark.parametrize('kernel_class', [MALAKernel, RWMHKernel])
 def test_persist_step_size(kernel_class):
     torch.manual_seed(0)
-    
+
     target_acc_rate = 0.764321
     event_shape = (4,)
 
@@ -101,9 +100,7 @@ def test_persist_step_size(kernel_class):
     kernel = kernel_class(
         event_shape,
         target.neg_log_prob,
-        dual_averaging_kwargs=dict(
-            target_acceptance_rate=target_acc_rate
-        )
+        target_acceptance_rate=target_acc_rate
     )
     sampler = MHSampler(kernel)
 

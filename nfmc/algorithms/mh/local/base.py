@@ -95,6 +95,6 @@ class LocalMHKernel(MHKernel):
         """
         accepted_mask = m.float()
         self._dual_averaging.step(
-            self.target_acceptance_rate - accepted_mask
+            self._target_acceptance_rate - accepted_mask
         )
         self.step_size = torch.mean(self._dual_averaging.value)
