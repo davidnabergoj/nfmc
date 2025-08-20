@@ -59,6 +59,7 @@ def test_history(n_chains):
             assert len(torch.unique(da.step_size_history[i])) > 1
 
 
+@pytest.mark.local_only
 @pytest.mark.parametrize('kernel_class', [MALAKernel, RWMHKernel, HMCKernel])
 def test_reach_target_acceptance_rate(kernel_class):
     torch.manual_seed(0)
@@ -90,7 +91,7 @@ def test_reach_target_acceptance_rate(kernel_class):
         torch.Tensor
     )
 
-
+@pytest.mark.local_only
 @pytest.mark.parametrize('kernel_class', [MALAKernel, RWMHKernel])
 def test_persist_step_size(kernel_class):
     torch.manual_seed(0)
