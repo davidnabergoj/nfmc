@@ -34,9 +34,9 @@ class ParallelTreeState:
     s_prime: torch.Tensor = None
     n_prime: torch.Tensor = None
 
-    sum_accept_prob: torch.Tensor = None
+    alpha_prime: torch.Tensor = None
     diverged: torch.Tensor = None
-    n_leapfrogs: torch.Tensor = None
+    n_alpha_prime: torch.Tensor = None
 
     def __post_init__(self):
         # Position
@@ -85,8 +85,8 @@ class ParallelTreeState:
         if self.n_prime is None:
             self.n_prime = torch.zeros(size=(self.n_chains,), dtype=torch.long)
 
-        if self.sum_accept_prob is None:
-            self.sum_accept_prob = torch.zeros(size=(self.n_chains,))
+        if self.alpha_prime is None:
+            self.alpha_prime = torch.zeros(size=(self.n_chains,))
 
         if self.diverged is None:
             self.diverged = torch.zeros(
@@ -94,8 +94,8 @@ class ParallelTreeState:
                 dtype=torch.bool
             )
 
-        if self.n_leapfrogs is None:
-            self.n_leapfrogs = torch.zeros(
+        if self.n_alpha_prime is None:
+            self.n_alpha_prime = torch.zeros(
                 size=(self.n_chains,), 
                 dtype=torch.long
             )
@@ -119,9 +119,9 @@ class ParallelTreeState:
             s_prime=self.s_prime[mask],
             n_prime=self.n_prime[mask],
 
-            sum_accept_prob=self.sum_accept_prob[mask],
+            alpha_prime=self.alpha_prime[mask],
             diverged=self.diverged[mask],
-            n_leapfrogs=self.n_leapfrogs[mask],
+            n_alpha_prime=self.n_alpha_prime[mask],
         )
 
     def overwrite_with(self, other_state, mask: torch.Tensor):
@@ -134,6 +134,8 @@ class ParallelTreeState:
             raise ValueError(
                 f"Shape of overwrite mask should be equal to {(self.n_chains,)}, but got {mask.shape}"
             )
+        other_state: ParallelTreeState
+
         self.x_minus[mask] = other_state.x_minus
         self.x_plus[mask] = other_state.x_plus
 
@@ -146,9 +148,9 @@ class ParallelTreeState:
         self.s_prime[mask] = other_state.s_prime  # True: trajecory should continue
         self.n_prime[mask] = other_state.n_prime
 
-        self.sum_accept_prob[mask] = other_state.sum_accept_prob
+        self.alpha_prime[mask] = other_state.alpha_prime
         self.diverged[mask] = other_state.diverged
-        self.n_leapfrogs[mask] = other_state.n_leapfrogs
+        self.n_alpha_prime[mask] = other_state.n_alpha_prime
 
 
 def _acceptance_prob(log_prob_new,
@@ -253,14 +255,14 @@ def _build_tree(x: torch.Tensor,
         state.diverged[m_b] = ~torch.isfinite(joint)
 
         # Set other
-        state.sum_accept_prob[m_b] = _acceptance_prob(
+        state.alpha_prime[m_b] = _acceptance_prob(
             log_prob1,
             p1,
             log_prob_x[m_b],
             p[m_b],
             event_shape
-        ).to(state.sum_accept_prob.dtype)
-        state.n_leapfrogs[m_b] = 1
+        ).to(state.alpha_prime.dtype)
+        state.n_alpha_prime[m_b] = 1
 
         nc += nc_b
         ng += ng_b
@@ -382,20 +384,19 @@ def _build_tree(x: torch.Tensor,
             )
             state.n_prime[m_g_non_early] = left_continue.n_prime + right.n_prime
 
-            state.sum_accept_prob[m_g_non_early] = (
-                left_continue.sum_accept_prob
-                + right.sum_accept_prob
+            state.alpha_prime[m_g_non_early] = (
+                left_continue.alpha_prime
+                + right.alpha_prime
             )
-            state.n_leapfrogs[m_g_non_early] = (
-                left_continue.n_leapfrogs
-                + right.n_leapfrogs
+            state.n_alpha_prime[m_g_non_early] = (
+                left_continue.n_alpha_prime
+                + right.n_alpha_prime
             )
             state.diverged[m_g_non_early] = left_continue.diverged | right.diverged
 
             nc += nc_right
             ng += ng_right
 
-    assert torch.all(torch.isfinite(state.x_minus))
     return state, nc, ng
     
 
@@ -478,8 +479,8 @@ class NUTSKernel(LocalMHKernel):
         stop = torch.zeros(size=(n_chains,), dtype=torch.bool)  # ~s_prime
         n = torch.ones(size=(n_chains,), dtype=torch.long)
 
-        sum_accept = torch.zeros(size=(n_chains,))
-        n_lf_total = torch.zeros(size=(n_chains,), dtype=torch.long)
+        alpha = torch.zeros(size=(n_chains,))
+        n_alpha = torch.zeros(size=(n_chains,), dtype=torch.long)
 
         for j in range(self.max_tree_depth + 1):
             _active_mask = ~stop
@@ -538,15 +539,15 @@ class NUTSKernel(LocalMHKernel):
             log_prob_x_prime[_active_mask & m_update] = half_tree.log_prob_prime[m_update].clone()
 
             n[_active_mask] += half_tree.n_prime
-            sum_accept[_active_mask] += half_tree.sum_accept_prob
-            n_lf_total[_active_mask] += half_tree.n_leapfrogs
+            alpha[_active_mask] += half_tree.alpha_prime
+            n_alpha[_active_mask] += half_tree.n_alpha_prime
 
             if stop.all():
                 break
 
         # Dual averaging statistic
         if update:
-            h_da = sum_accept / torch.clip(n_lf_total, max=torch.tensor(1.0))
+            h_da = self._target_acceptance_rate - alpha / n_alpha.to(alpha.dtype)
             self._update(h_da)
 
         self.increment_n_calls(nc)

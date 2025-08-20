@@ -53,9 +53,9 @@ def test_build_tree(n_chains, tree_depth, dtype):
     assert state.p_minus.shape == (n_chains, *event_shape)
     assert state.p_plus.shape == (n_chains, *event_shape)
 
-    assert state.sum_accept_prob.shape == (n_chains,)
+    assert state.alpha_prime.shape == (n_chains,)
     assert state.diverged.shape == (n_chains,)
-    assert state.n_leapfrogs.shape == (n_chains,)
+    assert state.n_alpha_prime.shape == (n_chains,)
 
     assert torch.isfinite(state.x_minus).all()
     assert torch.isfinite(state.x_plus).all()
@@ -64,9 +64,9 @@ def test_build_tree(n_chains, tree_depth, dtype):
     assert torch.isfinite(state.x_prime).all()
     assert torch.isfinite(state.log_prob_prime).all()
 
-    assert torch.isfinite(state.sum_accept_prob).all()
+    assert torch.isfinite(state.alpha_prime).all()
     assert torch.isfinite(state.diverged).all()
-    assert torch.isfinite(state.n_leapfrogs).all()
+    assert torch.isfinite(state.n_alpha_prime).all()
 
     assert torch.all(state.x_prime != x0)
 
@@ -116,9 +116,9 @@ def test_masked_copy_dtype(event_shape, n_chains, float_dtype):
     assert state.x_prime.dtype == state_copy.x_prime.dtype
     assert state.log_prob_prime.dtype == state_copy.log_prob_prime.dtype
 
-    assert state.sum_accept_prob.dtype == state_copy.sum_accept_prob.dtype
+    assert state.alpha_prime.dtype == state_copy.alpha_prime.dtype
     assert state.diverged.dtype == state_copy.diverged.dtype
-    assert state.n_leapfrogs.dtype == state_copy.n_leapfrogs.dtype
+    assert state.n_alpha_prime.dtype == state_copy.n_alpha_prime.dtype
 
 
 @pytest.mark.parametrize('event_shape', [(1,), (4,), (2, 3)])
