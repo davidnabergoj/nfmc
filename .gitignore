@@ -1,5 +1,6 @@
 .idea
 **/*.pyc
+**/*.ipynb
 .vscode
 .env
 **/__pycache__
