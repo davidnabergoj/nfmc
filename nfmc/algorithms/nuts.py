@@ -302,23 +302,23 @@ def _build_tree(x: torch.Tensor,
             left_continue = left.masked_copy(m_g_non_early)
 
             # (`n_g_c` chains)
-            m_g_non_early_negative = (v[m_g_non_early] == -1)
-            m_g_non_early_positive = ~m_g_non_early_negative
+            m_g_negative = (v[m_g] == -1)
+            m_g_positive = ~m_g_negative
 
             x_start, p_start = x.clone(), p.clone()  # (`n` chains)
             (
-                x_start[m_g_non_early & m_g_non_early_negative],
-                p_start[m_g_non_early & m_g_non_early_negative]
+                x_start[m_g_non_early & m_g_negative],
+                p_start[m_g_non_early & m_g_negative]
             ) = (
-                left_continue.x_minus[m_g_non_early_negative],
-                left_continue.p_minus[m_g_non_early_negative]
+                left_continue.x_minus[m_g_negative[m_g_non_early]],
+                left_continue.p_minus[m_g_negative[m_g_non_early]]
             )
             (
-                x_start[m_g_non_early & m_g_non_early_positive],
-                p_start[m_g_non_early & m_g_non_early_positive]
+                x_start[m_g_non_early & m_g_positive],
+                p_start[m_g_non_early & m_g_positive]
             ) = (
-                left_continue.x_plus[m_g_non_early_positive],
-                left_continue.p_plus[m_g_non_early_positive]
+                left_continue.x_plus[m_g_positive[m_g_non_early]],
+                left_continue.p_plus[m_g_positive[m_g_non_early]]
             )
 
             right, nc_right, ng_right = _build_tree(
@@ -336,39 +336,47 @@ def _build_tree(x: torch.Tensor,
 
             # Combine
             # > Left (non early stopped)
-            state.x_minus[m_g_non_early & m_g_non_early_negative] = left_continue.x_minus[m_g_non_early_negative]
-            state.p_minus[m_g_non_early & m_g_non_early_negative] = left_continue.p_minus[m_g_non_early_negative]
-            state.x_plus[m_g_non_early & m_g_non_early_negative] = left_continue.x_plus[m_g_non_early_negative]
-            state.p_plus[m_g_non_early & m_g_non_early_negative] = left_continue.p_plus[m_g_non_early_negative]
+            state.x_minus[m_g_non_early & m_g_negative] = left_continue.x_minus[m_g_negative[m_g_non_early]]
+            state.p_minus[m_g_non_early & m_g_negative] = left_continue.p_minus[m_g_negative[m_g_non_early]]
+            state.x_plus[m_g_non_early & m_g_negative] = left_continue.x_plus[m_g_negative[m_g_non_early]]
+            state.p_plus[m_g_non_early & m_g_negative] = left_continue.p_plus[m_g_negative[m_g_non_early]]
 
             # Right
-            state.x_minus[m_g_non_early & m_g_non_early_positive] = right.x_minus[m_g_non_early_positive]
-            state.p_minus[m_g_non_early & m_g_non_early_positive] = right.p_minus[m_g_non_early_positive]
-            state.x_plus[m_g_non_early & m_g_non_early_positive] = right.x_plus[m_g_non_early_positive]
-            state.p_plus[m_g_non_early & m_g_non_early_positive] = right.p_plus[m_g_non_early_positive]
+            state.x_minus[m_g_non_early & m_g_positive] = right.x_minus[m_g_positive[m_g_non_early]]
+            state.p_minus[m_g_non_early & m_g_positive] = right.p_minus[m_g_positive[m_g_non_early]]
+            state.x_plus[m_g_non_early & m_g_positive] = right.x_plus[m_g_positive[m_g_non_early]]
+            state.p_plus[m_g_non_early & m_g_positive] = right.p_plus[m_g_positive[m_g_non_early]]
 
             # Set proposed position
             # If1
-            n_remaining_chains = int(m_g_non_early.long().sum())
-            _thresh = (right.n_prime.float()) / (left.n_prime.float() + right.n_prime.float())
-            _rand = torch.rand((n_remaining_chains,), dtype=x.dtype)
+            n_non_early_chains = int(m_g_non_early.long().sum())
+            _thresh = (right.n_prime.float()) / (left_continue.n_prime.float() + right.n_prime.float())
+            _rand = torch.rand((n_non_early_chains,), dtype=x.dtype)
             rand_mask = _rand < _thresh
+            
+            set_idx_dst_pos = torch.arange(n_chains)
+            set_idx_dst_pos = set_idx_dst_pos[m_g_non_early]
+            set_idx_dst_pos = set_idx_dst_pos[rand_mask]
+
+            set_idx_dst_neg = torch.arange(n_chains)
+            set_idx_dst_neg = set_idx_dst_neg[m_g_non_early]
+            set_idx_dst_neg = set_idx_dst_neg[~rand_mask]
 
             # If2
             (
-                state.x_prime[m_g_non_early & rand_mask],
-                state.log_prob_prime[m_g_non_early & rand_mask]
+                state.x_prime[set_idx_dst_pos],
+                state.log_prob_prime[set_idx_dst_pos]
             ) = (
                 right.x_prime[rand_mask],
                 right.log_prob_prime[rand_mask]
             )
             # Else2
             (
-                state.x_prime[m_g_non_early & (~rand_mask)],
-                state.log_prob_prime[m_g_non_early & (~rand_mask)]
+                state.x_prime[set_idx_dst_neg],
+                state.log_prob_prime[set_idx_dst_neg]
             ) = (
-                left_continue.x_prime[~rand_mask],
-                left_continue.log_prob_prime[~rand_mask]
+                left_continue.x_prime[(~rand_mask)],
+                left_continue.log_prob_prime[(~rand_mask)]
             )
             # Endif2
 
@@ -495,9 +503,9 @@ class NUTSKernel(LocalMHKernel):
             m_neg = (v == -1)
 
             _x_build_tree = x_plus[_active_mask]
-            _x_build_tree[m_neg] = x_minus[_active_mask & m_neg]
+            _x_build_tree[m_neg] = x_minus[_active_mask][m_neg]
             _p_build_tree = p_plus[_active_mask]
-            _p_build_tree[m_neg] = p_minus[_active_mask & m_neg]
+            _p_build_tree[m_neg] = p_minus[_active_mask][m_neg]
 
             half_tree, nc, ng = _build_tree(
                 x=_x_build_tree,
@@ -514,17 +522,25 @@ class NUTSKernel(LocalMHKernel):
             half_tree: ParallelTreeState
             self.increment_n_divergences(int(half_tree.diverged.long().sum()))
 
+            set_idx_dst_pos = torch.arange(n_chains)
+            set_idx_dst_pos = set_idx_dst_pos[_active_mask]
+            set_idx_dst_pos = set_idx_dst_pos[~m_neg]
+
+            set_idx_dst_neg = torch.arange(n_chains)
+            set_idx_dst_neg = set_idx_dst_neg[_active_mask]
+            set_idx_dst_neg = set_idx_dst_neg[m_neg]
+
             (
-                x_minus[_active_mask & m_neg],
-                p_minus[_active_mask & m_neg]
+                x_minus[set_idx_dst_neg],
+                p_minus[set_idx_dst_neg]
             ) = (
                 half_tree.x_minus[m_neg],
                 half_tree.p_minus[m_neg]
             )
 
             (
-                x_plus[_active_mask & (~m_neg)],
-                p_plus[_active_mask & (~m_neg)]
+                x_plus[set_idx_dst_pos],
+                p_plus[set_idx_dst_pos]
             ) = (
                 half_tree.x_plus[~m_neg],
                 half_tree.p_plus[~m_neg]
@@ -535,8 +551,13 @@ class NUTSKernel(LocalMHKernel):
             _rand = torch.rand_like(step_size[_active_mask])
             _thresh = half_tree.n_prime.to(_rand.dtype) / n[_active_mask].to(_rand.dtype)
             m_update = (_rand < _thresh)
-            x_prime[_active_mask & m_update] = half_tree.x_prime[m_update].clone()
-            log_prob_x_prime[_active_mask & m_update] = half_tree.log_prob_prime[m_update].clone()
+
+            set_idx_dst_update = torch.arange(n_chains)
+            set_idx_dst_update = set_idx_dst_update[_active_mask]
+            set_idx_dst_update = set_idx_dst_update[m_update]
+
+            x_prime[set_idx_dst_update] = half_tree.x_prime[m_update].clone()
+            log_prob_x_prime[set_idx_dst_update] = half_tree.log_prob_prime[m_update].clone()
 
             n[_active_mask] += half_tree.n_prime
             alpha[_active_mask] += half_tree.alpha_prime
