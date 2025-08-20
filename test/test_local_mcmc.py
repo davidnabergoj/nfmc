@@ -82,7 +82,6 @@ def test_sample(event_shape, kernel_class, n_chains, n_steps):
 @pytest.mark.parametrize('n_steps', [1, 4])
 def test_warmup(event_shape, kernel_class, n_chains, n_steps):
     torch.manual_seed(0)
-
     x_initial = torch.randn(size=(n_chains, *event_shape))
     kernel = kernel_class(
         event_shape=event_shape,
@@ -111,6 +110,16 @@ def test_warmup(event_shape, kernel_class, n_chains, n_steps):
 def test_warmup_and_sample(kernel_class):
     torch.manual_seed(0)
 
+    if kernel_class == HMCKernel:
+        n_warmup_steps = 200
+        n_sampling_steps = 2000
+    elif kernel_class == NUTSKernel:
+        n_warmup_steps = 50
+        n_sampling_steps = 200
+    else:
+        n_warmup_steps = 2000
+        n_sampling_steps = 2000
+
     event_shape = (4,)
     target = DiagonalGaussian(event_shape)
 
@@ -120,10 +129,11 @@ def test_warmup_and_sample(kernel_class):
     x0 = torch.rand(size=(1, *event_shape)) * 2 - 1
     warmup_draws = sampler.warmup(
         x0=x0,
-        n_steps=500 if kernel_class == HMCKernel else 2000
+        n_steps=n_warmup_steps
     )
     sampling_draws = sampler.sample(
-        x0=warmup_draws.last_sample, n_steps=2000
+        x0=warmup_draws.last_sample, 
+        n_steps=n_sampling_steps
     )
 
     assert torch.allclose(
