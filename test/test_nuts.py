@@ -53,9 +53,7 @@ def test_build_tree(n_chains, tree_depth, dtype):
     assert state.p_minus.shape == (n_chains, *event_shape)
     assert state.p_plus.shape == (n_chains, *event_shape)
 
-    assert state.n_valid.shape == (n_chains,)
     assert state.sum_accept_prob.shape == (n_chains,)
-    assert state.stop.shape == (n_chains,)
     assert state.diverged.shape == (n_chains,)
     assert state.n_leapfrogs.shape == (n_chains,)
 
@@ -66,13 +64,29 @@ def test_build_tree(n_chains, tree_depth, dtype):
     assert torch.isfinite(state.x_prime).all()
     assert torch.isfinite(state.log_prob_prime).all()
 
-    assert torch.isfinite(state.n_valid).all()
     assert torch.isfinite(state.sum_accept_prob).all()
-    assert torch.isfinite(state.stop).all()
     assert torch.isfinite(state.diverged).all()
     assert torch.isfinite(state.n_leapfrogs).all()
 
     assert torch.all(state.x_prime != x0)
+
+
+@pytest.mark.parametrize('event_shape', [(1,), (4,), (2, 3)])
+@pytest.mark.parametrize('n_chains', [1, 4])
+def test_overwrite_with(event_shape, n_chains):
+    torch.manual_seed(0)
+    state = ParallelTreeState(
+        n_chains=n_chains,
+        event_shape=event_shape
+    )
+    left = ParallelTreeState(
+        n_chains=1,
+        event_shape=event_shape,
+        x_minus=torch.randn(size=(1, *event_shape))
+    )
+    mask = torch.tensor([True] + [False] * (n_chains - 1))
+    state.overwrite_with(left, mask)
+    assert torch.all(state.x_minus[0] == left.x_minus[0])
 
 
 @pytest.mark.parametrize('event_shape', [(1,), (4,), (2, 3)])
@@ -102,9 +116,7 @@ def test_masked_copy_dtype(event_shape, n_chains, float_dtype):
     assert state.x_prime.dtype == state_copy.x_prime.dtype
     assert state.log_prob_prime.dtype == state_copy.log_prob_prime.dtype
 
-    assert state.n_valid.dtype == state_copy.n_valid.dtype
     assert state.sum_accept_prob.dtype == state_copy.sum_accept_prob.dtype
-    assert state.stop.dtype == state_copy.stop.dtype
     assert state.diverged.dtype == state_copy.diverged.dtype
     assert state.n_leapfrogs.dtype == state_copy.n_leapfrogs.dtype
 
@@ -128,3 +140,4 @@ def test_step(event_shape, n_chains, dtype):
     assert x_new.shape == x_current.shape
     assert torch.isfinite(x_new).all()
     assert x_current.dtype == x_new.dtype
+    assert torch.all(x_current != x_new)
