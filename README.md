@@ -7,6 +7,7 @@ Currently, it supports Metropolis-Hastings kernels:
 * Random walk Metropolis-Hastings (RWMH)
 * Metropolis adjusted Langevin algorithm (MALA)
 * Hamiltonian Monte Carlo (HMC)
+* No-U-turn sampler (NUTS)
 
 NFs can be used as preconditioners, as in the NeuTra MCMC framework (Hoffman et al., 2017).
 They can also be used as independent proposal distributions, as in IMH and Ex2 MCMC (Samsonov et al., 2022).
@@ -97,6 +98,11 @@ sample(..., kernel='ex2_hmc')   # HMC
 sample(..., kernel='neutra_rwmh')  # RWMH
 sample(..., kernel='neutra_mala')  # MALA
 sample(..., kernel='neutra_hmc')   # HMC
+
+# NUTS analogs
+sample(..., kernel='jump_nuts')
+sample(..., kernel='ex2_nuts')
+sample(..., kernel='neutra_nuts')
 ```
 
 ### Specifying the normalizing flow
