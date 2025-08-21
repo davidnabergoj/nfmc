@@ -62,7 +62,8 @@ def test_output_shape_warmup(event_shape,
 
     assert isinstance(samples, Samples)
     assert torch.isfinite(samples.as_tensor()).all()
-    assert samples.as_tensor().shape == (cycle_length * n_cycles, n_chains, *event_shape)
+    assert samples.as_tensor().shape == (
+        cycle_length * n_cycles, n_chains, *event_shape)
     assert samples.as_tensor().dtype == z_initial.dtype
 
 
