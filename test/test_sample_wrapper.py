@@ -3,7 +3,7 @@ from nfmc.sample import sample
 import torch
 
 
-@pytest.mark.parametrize('kernel', ['rwmh', 'mala', 'hmc'])
+@pytest.mark.parametrize('kernel', ['rwmh', 'mala', 'hmc', 'nuts'])
 @pytest.mark.parametrize('n_chains', [1, 4])
 def test_mcmc(kernel, n_chains):
     event_shape = (2,)
@@ -29,12 +29,15 @@ def test_mcmc(kernel, n_chains):
     'jump_hmc',
     'jump_rwmh',
     'jump_mala',
+    'jump_nuts',
     'neutra_hmc',
     'neutra_rwmh',
     'neutra_mala',
+    'neutra_nuts',
     'ex2_hmc',
     'ex2_rwmh',
     'ex2_mala',
+    'ex2_nuts',
 ])
 @pytest.mark.parametrize('n_chains', [1, 4])
 def test_preconditioned_mcmc(kernel, n_chains):

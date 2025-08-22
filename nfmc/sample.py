@@ -9,12 +9,13 @@ from nfmc.algorithms.mh.local.hmc import HMCKernel
 from nfmc.algorithms.mh.local.mala import MALAKernel
 from nfmc.algorithms.mh.local.rwmh import RWMHKernel
 
+from nfmc.algorithms.nuts import NUTSKernel
 from nfmc.algorithms.preconditioning.preconditioners import NormalizingFlowPreconditioner
 from nfmc.algorithms.preconditioning.samplers.base import PreconditionedMCMCSampler
 
 from nfmc.algorithms.mh.imh import IMHKernel
 from nfmc.algorithms.iterated_sir import IteratedSIRKernel
-from nfmc.algorithms.jump.kernels import NeuTraJumpHMCKernel, NeuTraJumpMALAKernel, NeuTraJumpRWMHKernel
+from nfmc.algorithms.jump.kernels import NeuTraJumpHMCKernel, NeuTraJumpMALAKernel, NeuTraJumpNUTSKernel, NeuTraJumpRWMHKernel
 from nfmc.algorithms.base.sampler import MCMCSampler
 from nfmc.algorithms.util.samples import Samples
 from nfmc.util import create_flow_object
@@ -25,12 +26,15 @@ PRECONDITIONED_SAMPLERS = [
     "jump_hmc",
     "jump_mala",
     "jump_rwmh",
+    "jump_nuts",
     "neutra_hmc",
     "neutra_mala",
     "neutra_rwmh",
+    "neutra_nuts",
     "ex2_hmc",
     "ex2_mala",
     "ex2_rwmh",
+    "ex2_nuts",
 ]
 
 
@@ -77,10 +81,16 @@ def create_sampler(neg_log_prob_target: callable,
     elif hasattr(neg_log_prob_target, "event_shape"):
         event_shape = neg_log_prob_target.event_shape
 
-    if kernel in ['hmc', 'mala', 'rwmh']:
+    if kernel in ['hmc', 'mala', 'rwmh', 'nuts']:
         # MCMC
         if kernel == "hmc":
             kernel_object = HMCKernel(
+                event_shape=event_shape,
+                neg_log_prob_target=neg_log_prob_target,
+                **kernel_kwargs
+            )
+        elif kernel == "nuts":
+            kernel_object = NUTSKernel(
                 event_shape=event_shape,
                 neg_log_prob_target=neg_log_prob_target,
                 **kernel_kwargs
@@ -138,6 +148,13 @@ def create_sampler(neg_log_prob_target: callable,
                 global_kernel='imh',
                 **kernel_kwargs
             )
+        elif kernel == 'jump_nuts':
+            kernel_object = NeuTraJumpNUTSKernel(
+                flow=flow_object,
+                neg_log_prob_target=neg_log_prob_target,
+                global_kernel='imh',
+                **kernel_kwargs
+            )
         elif kernel == 'jump_mala':
             kernel_object = NeuTraJumpMALAKernel(
                 flow=flow_object,
@@ -159,6 +176,13 @@ def create_sampler(neg_log_prob_target: callable,
                 global_kernel='i-sir',
                 **kernel_kwargs
             )
+        elif kernel == 'ex2_nuts':
+            kernel_object = NeuTraJumpNUTSKernel(
+                flow=flow_object,
+                neg_log_prob_target=neg_log_prob_target,
+                global_kernel='i-sir',
+                **kernel_kwargs
+            )
         elif kernel == 'ex2_mala':
             kernel_object = NeuTraJumpMALAKernel(
                 flow=flow_object,
@@ -175,6 +199,15 @@ def create_sampler(neg_log_prob_target: callable,
             )
         elif kernel == 'neutra_hmc':
             kernel_object = HMCKernel(
+                event_shape=event_shape,
+                neg_log_prob_target=neg_log_prob_target,
+                preconditioner=NormalizingFlowPreconditioner(
+                    flow=flow_object
+                ),
+                **kernel_kwargs
+            )
+        elif kernel == 'neutra_nuts':
+            kernel_object = NUTSKernel(
                 event_shape=event_shape,
                 neg_log_prob_target=neg_log_prob_target,
                 preconditioner=NormalizingFlowPreconditioner(

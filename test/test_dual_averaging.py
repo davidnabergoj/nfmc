@@ -4,6 +4,7 @@ import pytest
 import torch
 
 from nfmc.algorithms.mh.local.dual_averaging import DualAveraging
+from nfmc.algorithms.mh.local.hmc import HMCKernel
 from nfmc.algorithms.mh.local.mala import MALAKernel
 from nfmc.algorithms.mh.local.rwmh import RWMHKernel
 from nfmc.algorithms.mh.base import MHSampler
@@ -13,17 +14,19 @@ from test.util import DiagonalGaussian
 @pytest.mark.parametrize('n_chains', [1, 2, 10])
 def test_step(n_chains):
     torch.manual_seed(0)
+    target_acceptance_rate = 0.5
 
     initial_step_size = 1.0
     da = DualAveraging(
         initial_step_size=initial_step_size,
-        target_acceptance_rate=0.5
     )
-    da.step(torch.rand(size=(n_chains,)) < 0.2)
+    h = target_acceptance_rate - torch.rand(size=(n_chains,))
+    da.step(h)
 
     assert torch.isfinite(da.value).all()
     assert (da.value > 0).all()
     assert (da.value != initial_step_size).all()
+    assert da.value.shape == (n_chains,)
 
 
 @pytest.mark.parametrize('n_chains', [1, 2, 10])
@@ -35,7 +38,6 @@ def test_history(n_chains):
 
     da = DualAveraging(
         initial_step_size=initial_step_size,
-        target_acceptance_rate=target_acc_rate,
         store_step_sizes=True,
         store_errors=True,
     )
@@ -43,7 +45,8 @@ def test_history(n_chains):
     n_steps = 50
 
     for _ in range(n_steps):
-        da.step(torch.rand(size=(n_chains,)) < target_acc_rate)
+        h = target_acc_rate - torch.rand(size=(n_chains,))
+        da.step(h)
 
     assert len(da.step_size_history) == n_steps
     assert len(da.error_history) == n_steps
@@ -56,7 +59,8 @@ def test_history(n_chains):
             assert len(torch.unique(da.step_size_history[i])) > 1
 
 
-@pytest.mark.parametrize('kernel_class', [MALAKernel, RWMHKernel])
+@pytest.mark.local_only
+@pytest.mark.parametrize('kernel_class', [MALAKernel, RWMHKernel, HMCKernel])
 def test_reach_target_acceptance_rate(kernel_class):
     torch.manual_seed(0)
 
@@ -65,11 +69,9 @@ def test_reach_target_acceptance_rate(kernel_class):
 
     target = DiagonalGaussian(event_shape)
     kernel = kernel_class(
-        event_shape, target.
-        neg_log_prob,
-        dual_averaging_kwargs=dict(
-            target_acceptance_rate=target_acc_rate
-        )
+        event_shape,
+        target.neg_log_prob,
+        target_acceptance_rate=target_acc_rate
     )
     sampler = MHSampler(kernel)
 
@@ -83,17 +85,17 @@ def test_reach_target_acceptance_rate(kernel_class):
         target_acc_rate,
         rel_tol=0.05
     )
-    
+
     assert isinstance(
         sampler.kernel.step_size,
         torch.Tensor
     )
 
-
+@pytest.mark.local_only
 @pytest.mark.parametrize('kernel_class', [MALAKernel, RWMHKernel])
 def test_persist_step_size(kernel_class):
     torch.manual_seed(0)
-    
+
     target_acc_rate = 0.764321
     event_shape = (4,)
 
@@ -101,9 +103,7 @@ def test_persist_step_size(kernel_class):
     kernel = kernel_class(
         event_shape,
         target.neg_log_prob,
-        dual_averaging_kwargs=dict(
-            target_acceptance_rate=target_acc_rate
-        )
+        target_acceptance_rate=target_acc_rate
     )
     sampler = MHSampler(kernel)
 

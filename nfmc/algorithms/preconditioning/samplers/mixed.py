@@ -48,6 +48,7 @@ class BinaryMixedPreconditionedMCMCSampler(PreconditionedMCMCSampler):
                max_samples: int = None,
                max_training_samples: int = None,
                data_transform: callable = None,
+               return_latent_samples: bool = False,
                **kwargs) -> Samples:
         """
         Optimize kernel parameters.
@@ -75,6 +76,10 @@ class BinaryMixedPreconditionedMCMCSampler(PreconditionedMCMCSampler):
             event_shape=self.kernel.event_shape,
             max_samples=max_samples,
             data_transform=data_transform
+        )        
+        latent_samples = Samples(
+            event_shape=self.kernel.event_shape,
+            max_samples=max_samples,
         )
 
         _adj_max = max_training_samples
@@ -118,6 +123,8 @@ class BinaryMixedPreconditionedMCMCSampler(PreconditionedMCMCSampler):
                 # final stage: always update
                 or step >= (n_steps - preconditioner_update_interval)
             )
+
+            z = self.kernel._preconditioner.forward_transform(x)[0]
             _, x = self.kernel.step_with_preconditioner_inverse(
                 z,
                 update=do_update

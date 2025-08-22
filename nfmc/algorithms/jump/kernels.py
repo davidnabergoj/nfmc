@@ -7,6 +7,7 @@ from nfmc.algorithms.mh.imh import IMHKernel
 from nfmc.algorithms.mh.local.hmc import HMCKernel
 from nfmc.algorithms.mh.local.mala import MALAKernel
 from nfmc.algorithms.mh.local.rwmh import RWMHKernel
+from nfmc.algorithms.nuts import NUTSKernel
 from nfmc.algorithms.preconditioning.preconditioners import DenseLinearPreconditioner, DiagonalLinearPreconditioner, NormalizingFlowPreconditioner
 from torchflows import Flow
 
@@ -45,6 +46,8 @@ def _create_local_kernel(name: str,
         return MALAKernel(event_shape, neg_log_prob_target, preconditioner=preconditioner, **kwargs)
     elif name == 'hmc':
         return HMCKernel(event_shape, neg_log_prob_target, preconditioner=preconditioner, **kwargs)
+    elif name == 'nuts':
+        return NUTSKernel(event_shape, neg_log_prob_target, preconditioner=preconditioner, **kwargs)
     else:
         raise ValueError(
             f"Unrecognized local kernel specifier string: {name}"
@@ -167,6 +170,38 @@ class NeuTraJumpHMCKernel(JumpMarkovKernel):
                 global_kernel=global_kernel,
                 flow=flow,
                 local_kernel='hmc',
+                local_preconditioner='nf',
+                global_kwargs=kwargs,
+                local_kwargs=kwargs
+            ),
+            **kwargs
+        )
+
+
+class NeuTraJumpNUTSKernel(JumpMarkovKernel):
+    """
+    Normalizing flow-preconditioned composition of a local NUTS kernel with a global jump kernel.
+    """
+
+    def __init__(self,
+                 flow: Flow,
+                 neg_log_prob_target: callable,
+                 global_kernel: str = 'imh',
+                 **kwargs):
+        """
+        JumpHMCKernel constructor.
+
+        :param Flow flow: normalizing flow for local and global preconditioning.
+        :param neg_log_prob_target: negative log probability density callable.
+        :param str global_kernel: type of global kernel. One of ['imh', 'i-sir'].
+        :param kwargs: keyword arguments for both the local and global kernels.
+        """
+        super().__init__(
+            *_create_kernels(
+                neg_log_prob_target=neg_log_prob_target,
+                global_kernel=global_kernel,
+                flow=flow,
+                local_kernel='nuts',
                 local_preconditioner='nf',
                 global_kwargs=kwargs,
                 local_kwargs=kwargs

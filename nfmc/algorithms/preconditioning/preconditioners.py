@@ -157,11 +157,15 @@ class NormalizingFlowPreconditioner(Preconditioner):
         self.flow: Flow = flow
 
     def inverse_transform(self, z: torch.Tensor):
+        self.flow.train()
         x, log_det = self.flow.bijection.inverse(z)
+        self.flow.eval()
         return x, log_det
 
     def forward_transform(self, x: torch.Tensor):
+        self.flow.train()
         z, log_det = self.flow.bijection.forward(x)
+        self.flow.eval()
         return z, log_det
 
     def fit(self, x: torch.Tensor, **kwargs):

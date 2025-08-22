@@ -13,7 +13,6 @@ class DualAveraging:
 
     def __init__(self,
                  initial_step_size: float,
-                 target_acceptance_rate: float,
                  kappa: float = 0.75,
                  gamma: float = 0.05,
                  t0: int = 10,
@@ -30,8 +29,6 @@ class DualAveraging:
         :param bool store_step_sizes: if True, store step size after each step in a list.
         :param bool store_errors: if True, store acceptance rate errors after each step in a list.
         """
-        self.target_acceptance_rate = target_acceptance_rate
-
         initial_step_size = initial_step_size
 
         self.t = t0
@@ -67,26 +64,23 @@ class DualAveraging:
             return self._error_history
         return torch.stack(self._error_history)
 
-    def step(self, acceptance_mask: torch.Tensor):
+    def step(self, statistic: torch.Tensor):
         """
-        Update step size based on an incoming acceptance mask.
+        Update step size based on an incoming statistic.
 
-        :param torch.Tensor acceptance_mask: boolean tensor with shape `(n_chains,)` where the i-th element is true if
-         the kernel transition corresponding to chain i was accepted.
+        :param torch.Tensor statistic: float tensor with shape `(n_chains,)`.
         """
-        if not isinstance(acceptance_mask, torch.Tensor):
+        if not isinstance(statistic, torch.Tensor):
             raise ValueError(
-                f"Acceptance mask must be a tensor but got {type(acceptance_mask)}"
+                f"Acceptance mask must be a tensor but got {type(statistic)}"
             )
-        if len(acceptance_mask.shape) != 1:
+        if len(statistic.shape) != 1:
             raise ValueError(
-                f"Incorrect acceptance mask shape: {acceptance_mask.shape}"
+                f"Incorrect acceptance mask shape: {statistic.shape}"
             )
-
-        acceptance_rate_error = self.target_acceptance_rate - acceptance_mask.float()
 
         # This will eventually converge to 0 if all is well
-        self.error_sum += acceptance_rate_error
+        self.error_sum += statistic
 
         # Update raw step
         self.log_step = (
@@ -104,7 +98,7 @@ class DualAveraging:
         if self._store_step_sizes:
             self._step_size_history.append(self.value)
         if self._store_errors:
-            self._error_history.append(acceptance_rate_error)
+            self._error_history.append(statistic)
 
     @property
     def value(self):

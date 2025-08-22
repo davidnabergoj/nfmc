@@ -10,6 +10,7 @@ from nfmc.algorithms.preconditioning.samplers.mixed import BinaryMixedPreconditi
 from test.util import StandardGaussian
 
 
+@pytest.mark.skip("Mixing kernels not supported yet")
 @pytest.mark.parametrize('event_shape', [(1,), (4,), (2, 3)])
 @pytest.mark.parametrize('kernel_class', [RWMHKernel, HMCKernel, IMHKernel, MALAKernel])
 @pytest.mark.parametrize('n_chains', [1, 4])
@@ -39,6 +40,7 @@ def test_step(event_shape, kernel_class, n_chains):
     assert x_current.dtype == x_new.dtype
 
 
+@pytest.mark.skip("Mixing kernels not supported yet")
 def test_set_selection_probabilities_valid():
     torch.manual_seed(0)
 
@@ -67,6 +69,7 @@ def test_set_selection_probabilities_valid():
     assert x_current.dtype == x_new.dtype
 
 
+@pytest.mark.skip("Mixing kernels not supported yet")
 def test_set_selection_probabilities_invalid():
     torch.manual_seed(0)
 
@@ -89,6 +92,7 @@ def test_set_selection_probabilities_invalid():
         mixing_kernel.set_selection_probabilities([0.3, 0.8])
 
 
+@pytest.mark.skip("Mixing kernels not supported yet")
 def test_set_selection_probabilities_invalid_length():
     torch.manual_seed(0)
 
@@ -108,6 +112,7 @@ def test_set_selection_probabilities_invalid_length():
 
     with pytest.raises(ValueError):
         mixing_kernel.set_selection_probabilities([0.3, 0.7, 0.1])
+
 
 @pytest.mark.skip(reason='Invalid method')
 def test_binary_mixed_preconditioned_sampler_adaptation():

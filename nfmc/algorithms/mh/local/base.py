@@ -64,11 +64,12 @@ class LocalMHKernel(MHKernel):
         eps_min = torch.min(torch.as_tensor(self._dual_averaging.error_sum))
         data = [
             self.name,
-            f'log step: {math.log(self.step_size):.3f}',
-            f'DA[e: {eps_mean:.2f} ^{eps_max:.2f} v{eps_min:.2f}]',
+            f'log step: {torch.log(self.step_size):.3f}',
+            f'DA[{eps_mean:.2f} ^{eps_max:.2f} v{eps_min:.2f}]',
             f'{self.calls_per_second(elapsed_time_seconds):.3f} c/s',
             f'{self.grads_per_second(elapsed_time_seconds):.3f} g/s',
             f'{self.acceptance_rate:.3f} acc',
+            f'{self._n_divergences} divs',
         ]
         return ', '.join(data)
 
@@ -91,11 +92,10 @@ class LocalMHKernel(MHKernel):
         """
         Update kernel parameters.
 
-        :param torch.Tensor x: state tensor after kernel transition.
         :param torch.Tensor m: acceptance mask tensor after kernel transition with dtype `torch.bool`.
-        :param bool tune_step_size: if True, update the step size whenever `update=True` in the `.step` method.
-        :param bool tune_inv_mass_diag: if True, update the mass matrix whenever `update=True` in the `.step` method.
         """
         accepted_mask = m.float()
-        self._dual_averaging.step(accepted_mask)
+        self._dual_averaging.step(
+            self._target_acceptance_rate - accepted_mask
+        )
         self.step_size = torch.mean(self._dual_averaging.value)
