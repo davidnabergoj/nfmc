@@ -81,7 +81,7 @@ class ParallelTreeState:
         # Other
         if self.s_prime is None:
             self.s_prime = torch.zeros(size=(self.n_chains,), dtype=torch.bool)
-        
+
         if self.n_prime is None:
             self.n_prime = torch.zeros(size=(self.n_chains,), dtype=torch.long)
 
@@ -90,13 +90,13 @@ class ParallelTreeState:
 
         if self.diverged is None:
             self.diverged = torch.zeros(
-                size=(self.n_chains,), 
+                size=(self.n_chains,),
                 dtype=torch.bool
             )
 
         if self.n_alpha_prime is None:
             self.n_alpha_prime = torch.zeros(
-                size=(self.n_chains,), 
+                size=(self.n_chains,),
                 dtype=torch.long
             )
 
@@ -145,7 +145,8 @@ class ParallelTreeState:
         self.x_prime[mask] = other_state.x_prime
         self.log_prob_prime[mask] = other_state.log_prob_prime
 
-        self.s_prime[mask] = other_state.s_prime  # True: trajecory should continue
+        # True: trajecory should continue
+        self.s_prime[mask] = other_state.s_prime
         self.n_prime[mask] = other_state.n_prime
 
         self.alpha_prime[mask] = other_state.alpha_prime
@@ -177,7 +178,7 @@ def is_uturn(x_minus,
 def _build_tree(x: torch.Tensor,
                 p: torch.Tensor,
                 event_shape: Union[torch.Size, Tuple[int, ...]],
-                u_slice: torch.Tensor,
+                log_u_slice: torch.Tensor,
                 v: torch.Tensor,
                 j: torch.Tensor,
                 step_size: torch.Tensor,
@@ -191,7 +192,7 @@ def _build_tree(x: torch.Tensor,
     :param torch.Tensor x: position tensor with shape `(n_chains, *event_shape)`.
     :param torch.Tensor p: momentum tensor with shape `(n_chains, *event_shape)`.
     :param Union[torch.Size, Tuple[int, ...]] event_shape: shape of the position and momentum tensors.
-    :param torch.Tensor u_slice: slice variable tensor with shape `(n_chains,)`.
+    :param torch.Tensor log_u_slice: log slice variable tensor with shape `(n_chains,)`.
     :param torch.Tensor v: direction tensor with shape `(n_chains,)`.
     :param torch.Tensor j: tree depth tensor with shape `(n_chains,)`.
     :param torch.Tensor step_size: step size tensor with shape `(n_chains,)`.
@@ -218,7 +219,8 @@ def _build_tree(x: torch.Tensor,
     state.log_prob_prime = state.log_prob_prime.to(x.dtype)
 
     if v.shape != (n_chains,):
-        raise ValueError(f"Expected v.shape = ({n_chains},), but got {v.shape = }")
+        raise ValueError(
+            f"Expected v.shape = ({n_chains},), but got {v.shape=}")
 
     m_b = (j == 0)  # Base case mask
     m_g = (j > 0)   # General case mask
@@ -250,8 +252,8 @@ def _build_tree(x: torch.Tensor,
         state.x_prime[m_b], state.log_prob_prime[m_b] = x1, log_prob1
 
         # Set divergence variables
-        state.n_prime[m_b] = (torch.log(u_slice[m_b]) <= joint).long()
-        state.s_prime[m_b] = (torch.log(u_slice[m_b]) - max_delta < joint)
+        state.n_prime[m_b] = (log_u_slice[m_b] <= joint).long()
+        state.s_prime[m_b] = (log_u_slice[m_b] - max_delta < joint)
         state.diverged[m_b] = ~torch.isfinite(joint)
 
         # Set other
@@ -274,7 +276,7 @@ def _build_tree(x: torch.Tensor,
             x=x[m_g],
             p=p[m_g],
             event_shape=event_shape,
-            u_slice=u_slice[m_g],
+            log_u_slice=log_u_slice[m_g],
             v=v[m_g],
             j=j[m_g] - 1,
             step_size=step_size[m_g],
@@ -325,7 +327,7 @@ def _build_tree(x: torch.Tensor,
                 x=x_start[m_g_non_early],
                 p=p_start[m_g_non_early],
                 event_shape=event_shape,
-                u_slice=u_slice[m_g_non_early],
+                log_u_slice=log_u_slice[m_g_non_early],
                 v=v[m_g_non_early],
                 j=j[m_g_non_early] - 1,
                 step_size=step_size[m_g_non_early],
@@ -336,24 +338,33 @@ def _build_tree(x: torch.Tensor,
 
             # Combine
             # > Left (non early stopped)
-            state.x_minus[m_g_non_early & m_g_negative] = left_continue.x_minus[m_g_negative[m_g_non_early]]
-            state.p_minus[m_g_non_early & m_g_negative] = left_continue.p_minus[m_g_negative[m_g_non_early]]
-            state.x_plus[m_g_non_early & m_g_negative] = left_continue.x_plus[m_g_negative[m_g_non_early]]
-            state.p_plus[m_g_non_early & m_g_negative] = left_continue.p_plus[m_g_negative[m_g_non_early]]
+            state.x_minus[m_g_non_early &
+                          m_g_negative] = left_continue.x_minus[m_g_negative[m_g_non_early]]
+            state.p_minus[m_g_non_early &
+                          m_g_negative] = left_continue.p_minus[m_g_negative[m_g_non_early]]
+            state.x_plus[m_g_non_early &
+                         m_g_negative] = left_continue.x_plus[m_g_negative[m_g_non_early]]
+            state.p_plus[m_g_non_early &
+                         m_g_negative] = left_continue.p_plus[m_g_negative[m_g_non_early]]
 
             # Right
-            state.x_minus[m_g_non_early & m_g_positive] = right.x_minus[m_g_positive[m_g_non_early]]
-            state.p_minus[m_g_non_early & m_g_positive] = right.p_minus[m_g_positive[m_g_non_early]]
-            state.x_plus[m_g_non_early & m_g_positive] = right.x_plus[m_g_positive[m_g_non_early]]
-            state.p_plus[m_g_non_early & m_g_positive] = right.p_plus[m_g_positive[m_g_non_early]]
+            state.x_minus[m_g_non_early &
+                          m_g_positive] = right.x_minus[m_g_positive[m_g_non_early]]
+            state.p_minus[m_g_non_early &
+                          m_g_positive] = right.p_minus[m_g_positive[m_g_non_early]]
+            state.x_plus[m_g_non_early &
+                         m_g_positive] = right.x_plus[m_g_positive[m_g_non_early]]
+            state.p_plus[m_g_non_early &
+                         m_g_positive] = right.p_plus[m_g_positive[m_g_non_early]]
 
             # Set proposed position
             # If1
             n_non_early_chains = int(m_g_non_early.long().sum())
-            _thresh = (right.n_prime.float()) / (left_continue.n_prime.float() + right.n_prime.float())
+            _thresh = (right.n_prime.float()) / \
+                (left_continue.n_prime.float() + right.n_prime.float())
             _rand = torch.rand((n_non_early_chains,), dtype=x.dtype)
             rand_mask = _rand < _thresh
-            
+
             set_idx_dst_pos = torch.arange(n_chains)
             set_idx_dst_pos = set_idx_dst_pos[m_g_non_early]
             set_idx_dst_pos = set_idx_dst_pos[rand_mask]
@@ -390,7 +401,8 @@ def _build_tree(x: torch.Tensor,
                     event_shape=event_shape
                 ))
             )
-            state.n_prime[m_g_non_early] = left_continue.n_prime + right.n_prime
+            state.n_prime[m_g_non_early] = left_continue.n_prime + \
+                right.n_prime
 
             state.alpha_prime[m_g_non_early] = (
                 left_continue.alpha_prime
@@ -406,7 +418,6 @@ def _build_tree(x: torch.Tensor,
             ng += ng_right
 
     return state, nc, ng
-    
 
 
 class NUTSKernel(LocalMHKernel):
@@ -462,10 +473,10 @@ class NUTSKernel(LocalMHKernel):
         if step_size.shape != (n_chains,):
             if step_size.shape != ():
                 raise ValueError(
-                    f"Step size should have `{n_chains=}` elements or a single one, but got {step_size.shape = }"
+                    f"Step size should have `{n_chains=}` elements or a single one, but got {step_size.shape=}"
                 )
             step_size = torch.full(
-                size=(n_chains,), 
+                size=(n_chains,),
                 fill_value=step_size.item()
             )
         step_size = step_size.to(x.dtype)
@@ -475,7 +486,7 @@ class NUTSKernel(LocalMHKernel):
         # Sample momentum and slice variable
         p0 = torch.randn_like(x)
         joint0 = log_prob_x - _kinetic_energy(p0, self.event_shape)
-        u_slice = torch.rand_like(step_size) * torch.exp(joint0)
+        log_u_slice = torch.log(torch.rand_like(step_size)) + joint0
 
         # Initialize balanced binary tree
         x_minus, x_plus = x.clone(), x.clone()
@@ -495,7 +506,8 @@ class NUTSKernel(LocalMHKernel):
             _n_active = int(torch.sum(_active_mask.long()))
 
             # Choose direction
-            _r = torch.randint(size=(_n_active,), low=0, high=2).to(step_size.dtype)
+            _r = torch.randint(size=(_n_active,), low=0,
+                               high=2).to(step_size.dtype)
             v = _r * 2 - 1
 
             # Build tree into negative/positive time directions
@@ -511,9 +523,10 @@ class NUTSKernel(LocalMHKernel):
                 x=_x_build_tree,
                 p=_p_build_tree,
                 event_shape=self.event_shape,
-                u_slice=u_slice[_active_mask],
+                log_u_slice=log_u_slice[_active_mask],
                 v=v,
-                j=torch.full(size=(_n_active,), fill_value=j, dtype=torch.long),
+                j=torch.full(size=(_n_active,),
+                             fill_value=j, dtype=torch.long),
                 step_size=step_size[_active_mask],
                 neg_log_prob_target=self.neg_log_prob_target,
                 log_prob_x=log_prob_x[_active_mask],
@@ -549,7 +562,8 @@ class NUTSKernel(LocalMHKernel):
 
             # Update state (select state among valid states)
             _rand = torch.rand_like(step_size[_active_mask])
-            _thresh = half_tree.n_prime.to(_rand.dtype) / n[_active_mask].to(_rand.dtype)
+            _thresh = half_tree.n_prime.to(
+                _rand.dtype) / n[_active_mask].to(_rand.dtype)
             m_update = (_rand < _thresh)
 
             set_idx_dst_update = torch.arange(n_chains)
@@ -557,7 +571,8 @@ class NUTSKernel(LocalMHKernel):
             set_idx_dst_update = set_idx_dst_update[m_update]
 
             x_prime[set_idx_dst_update] = half_tree.x_prime[m_update].clone()
-            log_prob_x_prime[set_idx_dst_update] = half_tree.log_prob_prime[m_update].clone()
+            log_prob_x_prime[set_idx_dst_update] = half_tree.log_prob_prime[m_update].clone(
+            )
 
             n[_active_mask] += half_tree.n_prime
             alpha[_active_mask] += half_tree.alpha_prime
@@ -568,7 +583,15 @@ class NUTSKernel(LocalMHKernel):
 
         # Dual averaging statistic
         if update:
-            h_da = self._target_acceptance_rate - alpha / n_alpha.to(alpha.dtype)
+            nonzero_n_alpha_mask = (n_alpha > 0)
+            h_da = torch.zeros_like(alpha)
+            h_da[nonzero_n_alpha_mask] = (
+                self._target_acceptance_rate
+                - (
+                    alpha[nonzero_n_alpha_mask]
+                    / n_alpha[nonzero_n_alpha_mask].to(alpha.dtype)
+                )
+            )
             self._update(h_da)
 
         self.increment_n_calls(nc)
@@ -586,7 +609,12 @@ class NUTSKernel(LocalMHKernel):
         :param torch.Tensor h: statistic tensor after kernel transition.
         """
         self._dual_averaging.step(h)
-        self.step_size = torch.mean(self._dual_averaging.value)
+        # Clip step size to avoid divergences during warmup
+        self.step_size = torch.clip(
+            torch.mean(self._dual_averaging.value),
+            min=1e-6,
+            max=1e+1
+        )
 
     def pbar_repr(self, elapsed_time_seconds: float):
         eps_mean = torch.mean(torch.as_tensor(self._dual_averaging.error_sum))

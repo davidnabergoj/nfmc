@@ -24,7 +24,7 @@ def test_build_tree(n_chains, tree_depth, dtype):
     p0 = torch.randn(size=(n_chains, *event_shape), dtype=dtype)
     log_prob_x0 = -neg_log_prob_target(x0).to(x0)
     joint0 = log_prob_x0 - _kinetic_energy(p0, event_shape)
-    u_slice = torch.rand(size=(n_chains,), dtype=dtype) * torch.exp(joint0)
+    log_u_slice = torch.log(torch.rand(size=(n_chains,), dtype=dtype)) + joint0
 
     # {0, 1} -> {0, 2} -> {-1, 1}
     v = torch.randint(low=0, high=2, size=(n_chains,)) * 2 - 1
@@ -35,7 +35,7 @@ def test_build_tree(n_chains, tree_depth, dtype):
         x=x0,
         p=p0,
         event_shape=event_shape,
-        u_slice=u_slice,
+        log_u_slice=log_u_slice,
         v=v,
         j=j,
         step_size=step_size,
