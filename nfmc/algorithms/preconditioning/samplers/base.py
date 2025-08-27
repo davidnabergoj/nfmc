@@ -95,7 +95,7 @@ class PreconditionedMCMCSampler(MCMCSampler):
         :param kwargs: keyword arguments for `preconditioner.fit`.
         :return: Samples object with MCMC draws.
         """
-        self.kernel.start_warmup()
+        self.kernel.start_warmup(n_chains=len(z0))
 
         target_samples = Samples(
             event_shape=self.kernel.event_shape,

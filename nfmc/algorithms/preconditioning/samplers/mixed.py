@@ -72,6 +72,8 @@ class BinaryMixedPreconditionedMCMCSampler(PreconditionedMCMCSampler):
         :param kwargs: keyword arguments for `preconditioner.fit`.
         :return: Samples object with MCMC draws.
         """
+        self.kernel.start_warmup(n_chains=len(x0))
+
         target_samples = Samples(
             event_shape=self.kernel.event_shape,
             max_samples=max_samples,

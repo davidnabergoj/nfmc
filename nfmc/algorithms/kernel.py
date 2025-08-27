@@ -41,13 +41,15 @@ class MarkovKernel:
 
         # Used to determine warmup behavior in kernel implementations
         self._warmup_flag = False
+        self._n_warmup_chains: int = None
 
     @property
     def warmup_active(self):
         return self._warmup_flag
 
-    def start_warmup(self):
+    def start_warmup(self, n_chains: int):
         self._warmup_flag = True
+        self._n_warmup_chains = n_chains
 
     def end_warmup(self):
         self._warmup_flag = False

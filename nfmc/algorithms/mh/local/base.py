@@ -40,10 +40,19 @@ class LocalMHKernel(MHKernel):
         self._initial_dual_averaging_kwargs = dual_averaging_kwargs
 
         self.step_size = self._initial_step_size
-        self._dual_averaging: DualAveraging = DualAveraging(
-            self.step_size, **(dual_averaging_kwargs or {})
-        )
+        self._dual_averaging: DualAveraging = None
         self._target_acceptance_rate: float = target_acceptance_rate
+
+    def _create_dual_averaging_object(self, n_chains: int):
+        self._dual_averaging: DualAveraging = DualAveraging(
+            self.step_size,
+            n_chains=n_chains,
+            **(self._initial_dual_averaging_kwargs or {})
+        )
+
+    def start_warmup(self, n_chains: int):
+        super().start_warmup(n_chains=n_chains)
+        self._create_dual_averaging_object(self._n_warmup_chains)
 
     def reset_parameters(self):
         self.step_size = self._initial_step_size
