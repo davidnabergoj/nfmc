@@ -96,6 +96,8 @@ class PreconditionedMCMCSampler(MCMCSampler):
         :return: Samples object with MCMC draws.
         """
         self.kernel.start_warmup(n_chains=len(z0))
+        for i in range(len(self.extra_warmup_kernels)):
+            self.extra_warmup_kernels[i][0].start_warmup(n_chains=len(z0))
 
         target_samples = Samples(
             event_shape=self.kernel.event_shape,
@@ -166,7 +168,6 @@ class PreconditionedMCMCSampler(MCMCSampler):
             z = z.detach().clone()
 
             current_warmup_kernel = self.active_warmup_kernel
-            current_warmup_kernel.start_warmup(n_chains=len(z0))
 
             if cycle_index > 0:
                 # Transform current latent state to target space
@@ -180,7 +181,6 @@ class PreconditionedMCMCSampler(MCMCSampler):
 
                 self.advance_warmup_kernel()
                 current_warmup_kernel = self.active_warmup_kernel
-                current_warmup_kernel.start_warmup(n_chains=len(z0))
 
                 # Update the preconditioner first so drawn sample can contribute toward next preconditioner fit.
 
