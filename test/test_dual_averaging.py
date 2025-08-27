@@ -3,12 +3,55 @@ import pytest
 
 import torch
 
+from nfmc.algorithms.jump.kernels import DiagonalJumpRWMHKernel
 from nfmc.algorithms.mh.local.dual_averaging import DualAveraging
 from nfmc.algorithms.mh.local.hmc import HMCKernel
 from nfmc.algorithms.mh.local.mala import MALAKernel
 from nfmc.algorithms.mh.local.rwmh import RWMHKernel
 from nfmc.algorithms.mh.base import MHSampler
+from nfmc.algorithms.preconditioning.samplers.base import PreconditionedMCMCSampler
 from test.util import DiagonalGaussian
+
+from torchflows.bijections.finite.autoregressive.layers import ElementwiseAffine
+from torchflows.flows import Flow
+
+
+@pytest.mark.parametrize('kernel_class', [
+    RWMHKernel,
+    DiagonalJumpRWMHKernel
+])
+def test_constructed_during_warmup(kernel_class):
+    torch.manual_seed(0)
+    event_shape = (4,)
+    n_chains = 3
+
+    if kernel_class == RWMHKernel:
+        kernel = kernel_class(
+            event_shape=event_shape,
+            neg_log_prob_target=lambda v: torch.sum(v ** 2, dim=-1)
+        )
+    else:
+        flow = Flow(ElementwiseAffine(event_shape=event_shape))
+        kernel = kernel_class(
+            flow=flow,
+            neg_log_prob_target=lambda v: torch.sum(v ** 2, dim=-1)
+        )
+    
+    sampler = PreconditionedMCMCSampler(kernel=kernel)
+    sampler.warmup(
+        z0=torch.rand(size=(n_chains, *event_shape)) * 2 - 1,
+        n_cycles=1,
+        cycle_length=1
+    )
+
+    if kernel_class == RWMHKernel:
+        assert kernel._dual_averaging is not None
+        assert isinstance(kernel._dual_averaging, DualAveraging)
+    else:
+        assert kernel.kernels[0]._dual_averaging is not None
+        assert isinstance(kernel.kernels[0]._dual_averaging, DualAveraging)
+        
+        assert not hasattr(kernel.kernels[1], '_dual_averaging')
 
 
 @pytest.mark.parametrize('n_chains', [1, 2, 10])
