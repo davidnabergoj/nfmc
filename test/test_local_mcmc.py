@@ -115,7 +115,7 @@ def test_warmup_and_sample(kernel_class):
         n_sampling_steps = 2000
     elif kernel_class == NUTSKernel:
         n_warmup_steps = 50
-        n_sampling_steps = 200
+        n_sampling_steps = 400
     else:
         n_warmup_steps = 2000
         n_sampling_steps = 2000
