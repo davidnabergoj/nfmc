@@ -127,18 +127,37 @@ class PreconditionedMCMCSampler(MCMCSampler):
         )
 
         def resample(states):
-            neg_log_prob_states = current_warmup_kernel.neg_log_prob_target(
-                states)
+            neg_log_prob_states = []
+            for chain_id in range(len(states)):
+                try:
+                    neg_log_prob_states.append(
+                        current_warmup_kernel.neg_log_prob_target(
+                            states[chain_id].unsqueeze(0)
+                        )
+                    )
+                except ValueError:
+                    neg_log_prob_states.append(
+                        torch.tensor([torch.inf], device=states.device)
+                    )
+            neg_log_prob_states = torch.cat(neg_log_prob_states, dim=0)
             log_weights = -neg_log_prob_states
-            log_weights[~torch.isfinite(log_weights)] = 1e-8
-            weights = torch.exp(
-                log_weights - torch.max(log_weights))  # for stability
-            probabilities = weights / torch.sum(weights)
 
-            # Sample indices with replacement
+            # Replace invalid values with -inf (so they get zero probability)
+            log_weights = torch.where(
+                torch.isfinite(log_weights),
+                log_weights,
+                -torch.inf
+            )
+            probabilities = torch.softmax(log_weights, dim=0)
+            # If all probabilities are NaN/zero, fall back to uniform
+            if not torch.isfinite(probabilities).any():
+                probabilities = torch.ones_like(
+                    probabilities
+                ) / len(probabilities)
+
             indices = torch.multinomial(
-                probabilities,
-                num_samples=len(states),
+                probabilities, 
+                num_samples=len(states), 
                 replacement=True
             )
             return states[indices]
