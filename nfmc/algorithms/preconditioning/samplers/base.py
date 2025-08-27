@@ -166,11 +166,13 @@ class PreconditionedMCMCSampler(MCMCSampler):
             z = z.detach().clone()
 
             current_warmup_kernel = self.active_warmup_kernel
+            current_warmup_kernel.start_warmup(n_chains=len(z0))
 
             if cycle_index > 0:
                 # Transform current latent state to target space
                 x, _ = current_warmup_kernel._preconditioner.inverse_transform(
-                    z.clone())
+                    z.clone()
+                )
 
                 # Resample target states according to the target log probability density
                 # This gets rid of stuck chains
@@ -178,6 +180,7 @@ class PreconditionedMCMCSampler(MCMCSampler):
 
                 self.advance_warmup_kernel()
                 current_warmup_kernel = self.active_warmup_kernel
+                current_warmup_kernel.start_warmup(n_chains=len(z0))
 
                 # Update the preconditioner first so drawn sample can contribute toward next preconditioner fit.
 
@@ -197,7 +200,7 @@ class PreconditionedMCMCSampler(MCMCSampler):
                     event_shape=self.kernel.event_shape,
                     max_samples=_adj_max,
                 )
-
+            
             for step_index in range(cycle_length):
                 # Step. Update if in first half of cycle.
                 do_update = step_index < cycle_length // 2
