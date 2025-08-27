@@ -264,6 +264,7 @@ def _build_tree(x: torch.Tensor,
             p[m_b],
             event_shape
         ).to(state.alpha_prime.dtype)
+        _log_accept[~torch.isfinite(_log_accept)] = -torch.inf
         state.alpha_prime[m_b] = torch.exp(torch.clamp(_log_accept, max=0.0))
         state.n_alpha_prime[m_b] = 1
 
