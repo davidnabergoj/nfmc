@@ -154,14 +154,14 @@ class ParallelTreeState:
         self.n_alpha_prime[mask] = other_state.n_alpha_prime
 
 
-def _acceptance_prob(log_prob_new,
-                     momentum_new,
-                     log_prob_old,
-                     momentum_old,
-                     event_shape):
+def _log_acceptance_prob(log_prob_new,
+                         momentum_new,
+                         log_prob_old,
+                         momentum_old,
+                         event_shape):
     h_new = -log_prob_new + _kinetic_energy(momentum_new, event_shape)
     h_old = -log_prob_old + _kinetic_energy(momentum_old, event_shape)
-    return torch.clamp(torch.exp(h_old - h_new), max=1.0)
+    return h_old - h_new
 
 
 def is_uturn(x_minus,
@@ -257,13 +257,14 @@ def _build_tree(x: torch.Tensor,
         state.diverged[m_b] = ~torch.isfinite(joint)
 
         # Set other
-        state.alpha_prime[m_b] = _acceptance_prob(
+        _log_accept = _log_acceptance_prob(
             log_prob1,
             p1,
             log_prob_x[m_b],
             p[m_b],
             event_shape
         ).to(state.alpha_prime.dtype)
+        state.alpha_prime[m_b] = torch.exp(torch.clamp(_log_accept, max=0.0))
         state.n_alpha_prime[m_b] = 1
 
         nc += nc_b
@@ -444,8 +445,8 @@ class NUTSKernel(LocalMHKernel):
          If the simulated trajectory error exceeds this threshold, it is flagged as having diverged.
         """
         super().__init__(
-            event_shape, 
-            neg_log_prob_target, 
+            event_shape,
+            neg_log_prob_target,
             target_acceptance_rate=target_acceptance_rate,
             **kwargs
         )
@@ -600,6 +601,8 @@ class NUTSKernel(LocalMHKernel):
                     min=0.0,
                     max=1.0
                 )
+                if not torch.isfinite(_ratio).all():
+                    raise ValueError("Acceptance ratio is NaN or Inf")
                 h_da = self._target_acceptance_rate - _ratio
                 self._update(h_da, nonzero_n_alpha_mask)
 
@@ -636,9 +639,12 @@ class NUTSKernel(LocalMHKernel):
 
     def pbar_repr(self, elapsed_time_seconds: float):
         if self._dual_averaging is not None:
-            eps_mean = torch.mean(torch.as_tensor(self._dual_averaging.error_sum))
-            eps_max = torch.max(torch.as_tensor(self._dual_averaging.error_sum))
-            eps_min = torch.min(torch.as_tensor(self._dual_averaging.error_sum))
+            eps_mean = torch.mean(torch.as_tensor(
+                self._dual_averaging.error_sum))
+            eps_max = torch.max(torch.as_tensor(
+                self._dual_averaging.error_sum))
+            eps_min = torch.min(torch.as_tensor(
+                self._dual_averaging.error_sum))
             da_str = f'DA[{eps_mean:.2f} ^{eps_max:.2f} v{eps_min:.2f}]'
         else:
             da_str = 'DA[None]'
