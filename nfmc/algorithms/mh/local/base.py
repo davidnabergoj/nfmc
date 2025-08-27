@@ -56,9 +56,7 @@ class LocalMHKernel(MHKernel):
 
     def reset_parameters(self):
         self.step_size = self._initial_step_size
-        self._dual_averaging: DualAveraging = DualAveraging(
-            self.step_size, **(self._initial_dual_averaging_kwargs or {})
-        )
+        self._create_dual_averaging_object(n_chains=self._n_warmup_chains)
 
     def finalize_parameters(self):
         """
@@ -68,13 +66,17 @@ class LocalMHKernel(MHKernel):
             self.step_size = self._dual_averaging.weighted_value().mean()
 
     def pbar_repr(self, elapsed_time_seconds: float):
-        eps_mean = torch.mean(torch.as_tensor(self._dual_averaging.error_sum))
-        eps_max = torch.max(torch.as_tensor(self._dual_averaging.error_sum))
-        eps_min = torch.min(torch.as_tensor(self._dual_averaging.error_sum))
+        if self._dual_averaging is not None:
+            eps_mean = torch.mean(torch.as_tensor(self._dual_averaging.error_sum))
+            eps_max = torch.max(torch.as_tensor(self._dual_averaging.error_sum))
+            eps_min = torch.min(torch.as_tensor(self._dual_averaging.error_sum))
+            da_str = f'DA[{eps_mean:.2f} ^{eps_max:.2f} v{eps_min:.2f}]'
+        else:
+            da_str = 'DA[None]'
         data = [
             self.name,
             f'log step: {torch.log(self.step_size):.3f}',
-            f'DA[{eps_mean:.2f} ^{eps_max:.2f} v{eps_min:.2f}]',
+            da_str,
             f'{self.calls_per_second(elapsed_time_seconds):.3f} c/s',
             f'{self.grads_per_second(elapsed_time_seconds):.3f} g/s',
             f'{self.acceptance_rate:.3f} acc',

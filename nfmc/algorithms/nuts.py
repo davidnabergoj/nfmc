@@ -635,13 +635,17 @@ class NUTSKernel(LocalMHKernel):
             raise ValueError("Step size is NaN or Inf (after update)")
 
     def pbar_repr(self, elapsed_time_seconds: float):
-        eps_mean = torch.mean(torch.as_tensor(self._dual_averaging.error_sum))
-        eps_max = torch.max(torch.as_tensor(self._dual_averaging.error_sum))
-        eps_min = torch.min(torch.as_tensor(self._dual_averaging.error_sum))
+        if self._dual_averaging is not None:
+            eps_mean = torch.mean(torch.as_tensor(self._dual_averaging.error_sum))
+            eps_max = torch.max(torch.as_tensor(self._dual_averaging.error_sum))
+            eps_min = torch.min(torch.as_tensor(self._dual_averaging.error_sum))
+            da_str = f'DA[{eps_mean:.2f} ^{eps_max:.2f} v{eps_min:.2f}]'
+        else:
+            da_str = 'DA[None]'
         data = [
             self.name,
             f'log step: {torch.log(self.step_size):.3f}',
-            f'DA[{eps_mean:.2f} ^{eps_max:.2f} v{eps_min:.2f}]',
+            da_str,
             f'{self.calls_per_second(elapsed_time_seconds):.3f} c/s',
             f'{self.grads_per_second(elapsed_time_seconds):.3f} g/s',
             f'{self.acceptance_rate:.3f} acc',
