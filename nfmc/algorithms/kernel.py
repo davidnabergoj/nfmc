@@ -53,14 +53,14 @@ class MarkovKernel:
 
     def end_warmup(self):
         self._warmup_flag = False
-        
 
     def reset_parameters(self):
         """
         Resets the parameters of this kernel to their default values.
+        To be used within `MarkovKernel.warmup(...)`.
         """
         raise NotImplementedError
-    
+
     def finalize_parameters(self):
         """
         Finalizes the parameters of this kernel after performing warmup.
@@ -221,6 +221,11 @@ class CompositionKernel(MarkovKernel):
         self.schedule_index = 0
         self.mode = mode
 
+    def start_warmup(self, n_chains):
+        for k in self.kernels:
+            k.start_warmup(n_chains)
+        super().start_warmup(n_chains)
+
     def reset_parameters(self):
         for k in self.kernels:
             k.reset_parameters()
@@ -338,10 +343,15 @@ class MixingKernel(MarkovKernel):
         # creates self.dist
         self.set_selection_probabilities(selection_probabilities)
 
+    def start_warmup(self, n_chains):
+        for k in self.kernels:
+            k.start_warmup(n_chains)
+        super().start_warmup(n_chains)
+
     @property
     def name(self) -> str:
         return f"Mix[{', '.join([k.name for k in self.kernels])}]"
-    
+
     def pbar_repr(self, elapsed_time_seconds):
         return ", ".join([
             f"[{k.pbar_repr(elapsed_time_seconds)}]"
