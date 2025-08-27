@@ -430,6 +430,7 @@ class NUTSKernel(LocalMHKernel):
                  neg_log_prob_target: callable,
                  max_tree_depth: int = 5,
                  max_delta: float = 1000.0,
+                 target_acceptance_rate: float = 0.8,
                  **kwargs):
         """
         NUTSKernel constructor.
@@ -442,7 +443,12 @@ class NUTSKernel(LocalMHKernel):
         :param float max_delta: maximum allowed value of the Hamiltonian dynamics energy error.
          If the simulated trajectory error exceeds this threshold, it is flagged as having diverged.
         """
-        super().__init__(event_shape, neg_log_prob_target, **kwargs)
+        super().__init__(
+            event_shape, 
+            neg_log_prob_target, 
+            target_acceptance_rate=target_acceptance_rate,
+            **kwargs
+        )
         self.max_tree_depth = max_tree_depth
         self.max_delta = max_delta
 
@@ -584,15 +590,18 @@ class NUTSKernel(LocalMHKernel):
         # Dual averaging statistic
         if update:
             nonzero_n_alpha_mask = (n_alpha > 0)
-            h_da = torch.zeros_like(alpha)
-            h_da[nonzero_n_alpha_mask] = (
-                self._target_acceptance_rate
-                - (
-                    alpha[nonzero_n_alpha_mask]
-                    / n_alpha[nonzero_n_alpha_mask].to(alpha.dtype)
+            if nonzero_n_alpha_mask.any():
+                h_da = torch.zeros_like(alpha)[nonzero_n_alpha_mask]
+                _ratio = torch.clip(
+                    torch.divide(
+                        alpha[nonzero_n_alpha_mask],
+                        n_alpha[nonzero_n_alpha_mask].to(alpha.dtype)
+                    ),
+                    min=0.0,
+                    max=1.0
                 )
-            )
-            self._update(h_da)
+                h_da = self._target_acceptance_rate - _ratio
+                self._update(h_da, nonzero_n_alpha_mask)
 
         self.increment_n_calls(nc)
         self.increment_n_grads(ng)
@@ -602,19 +611,28 @@ class NUTSKernel(LocalMHKernel):
 
         return x_prime
 
-    def _update(self, h: torch.Tensor):
+    def _update(self, h: torch.Tensor, update_mask: torch.Tensor):
         """
         Update kernel parameters.
 
         :param torch.Tensor h: statistic tensor after kernel transition.
         """
-        self._dual_averaging.step(h)
+        if not torch.isfinite(self.step_size).all():
+            raise ValueError("Step size is NaN or Inf")
+
+        if not torch.isfinite(h).all():
+            raise ValueError("Dual averaging statistic is NaN or Inf")
+
+        self._dual_averaging.step(h, update_mask)
+
         # Clip step size to avoid divergences during warmup
         self.step_size = torch.clip(
             torch.mean(self._dual_averaging.value),
             min=1e-6,
             max=1e+1
         )
+        if not torch.isfinite(self.step_size).all():
+            raise ValueError("Step size is NaN or Inf (after update)")
 
     def pbar_repr(self, elapsed_time_seconds: float):
         eps_mean = torch.mean(torch.as_tensor(self._dual_averaging.error_sum))
