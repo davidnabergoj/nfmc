@@ -185,12 +185,13 @@ class PreconditionedMCMCSampler(MCMCSampler):
 
             if cycle_index > 0:
                 # Transform current latent state to target space
+                # This could be unstable
                 x, _ = current_warmup_kernel._preconditioner.inverse_transform(
                     z.clone()
                 )
 
                 # Resample target states, hopefully getting rid of stuck chains over time
-                x = resample(x.clone(), method='divergence')  # TODO: try 'divergence'
+                x = resample(x.clone(), method='divergence')
 
                 self.advance_warmup_kernel()
                 current_warmup_kernel = self.active_warmup_kernel
