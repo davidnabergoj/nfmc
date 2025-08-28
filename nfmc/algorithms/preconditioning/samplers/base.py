@@ -1,4 +1,3 @@
-from matplotlib.pylab import uniform
 from nfmc.algorithms.kernel import MarkovKernel
 from nfmc.algorithms.base.sampler import MCMCSampler
 from nfmc.algorithms.util.samples import Samples
@@ -191,7 +190,7 @@ class PreconditionedMCMCSampler(MCMCSampler):
                 )
 
                 # Resample target states, hopefully getting rid of stuck chains over time
-                x = resample(x.clone(), method='density')  # TODO: try 'divergence'
+                x = resample(x.clone(), method='divergence')  # TODO: try 'divergence'
 
                 self.advance_warmup_kernel()
                 current_warmup_kernel = self.active_warmup_kernel
