@@ -1,3 +1,4 @@
+from matplotlib.pylab import uniform
 from nfmc.algorithms.kernel import MarkovKernel
 from nfmc.algorithms.base.sampler import MCMCSampler
 from nfmc.algorithms.util.samples import Samples
@@ -128,41 +129,55 @@ class PreconditionedMCMCSampler(MCMCSampler):
             disable=not show_progress
         )
 
-        def resample(states):
-            neg_log_prob_states = []
-            for chain_id in range(len(states)):
-                try:
-                    neg_log_prob_states.append(
-                        current_warmup_kernel.neg_log_prob_target(
-                            states[chain_id].unsqueeze(0)
-                        )
+        def resample(states, method: str):
+            if method == 'uniform':
+                return states[torch.randint(len(states), (len(states),), device=states.device)]
+            else:
+                neg_log_prob_states = []
+                if method == 'divergence':
+                    if isinstance(self.kernel._n_divergences_per_chain, int):
+                        # Fall-back
+                        return resample(states, method='uniform')
+                    neg_log_prob_states = self.kernel._n_divergences_per_chain.to(
+                        dtype=z0.dtype, 
+                        device=z0.device
                     )
-                except ValueError:
-                    neg_log_prob_states.append(
-                        torch.tensor([torch.inf], device=states.device)
-                    )
-            neg_log_prob_states = torch.cat(neg_log_prob_states, dim=0)
-            log_weights = -neg_log_prob_states
+                elif method == 'density':
+                    for chain_id in range(len(states)):
+                        try:
+                            neg_log_prob_states.append(
+                                current_warmup_kernel.neg_log_prob_target(
+                                    states[chain_id].unsqueeze(0)
+                                )
+                            )
+                        except ValueError:
+                            neg_log_prob_states.append(
+                                torch.tensor([torch.inf], device=states.device)
+                            )
+                    neg_log_prob_states = torch.cat(neg_log_prob_states, dim=0)
+                else:
+                    raise ValueError(f'Unknown resampling method {method}')
+                log_weights = -neg_log_prob_states
 
-            # Replace invalid values with -inf (so they get zero probability)
-            log_weights = torch.where(
-                torch.isfinite(log_weights),
-                log_weights,
-                -torch.inf
-            )
-            probabilities = torch.softmax(log_weights, dim=0)
-            # If all probabilities are NaN/zero, fall back to uniform
-            if not torch.isfinite(probabilities).any():
-                probabilities = torch.ones_like(
-                    probabilities
-                ) / len(probabilities)
+                # Replace invalid values with -inf (so they get zero probability)
+                log_weights = torch.where(
+                    torch.isfinite(log_weights),
+                    log_weights,
+                    -torch.inf
+                )
+                probabilities = torch.softmax(log_weights, dim=0)
+                # If all probabilities are NaN/zero, fall back to uniform
+                if not torch.isfinite(probabilities).any():
+                    probabilities = torch.ones_like(
+                        probabilities
+                    ) / len(probabilities)
 
-            indices = torch.multinomial(
-                probabilities, 
-                num_samples=len(states), 
-                replacement=True
-            )
-            return states[indices]
+                indices = torch.multinomial(
+                    probabilities, 
+                    num_samples=len(states), 
+                    replacement=True
+                )
+                return states[indices]
 
         for cycle_index in range(n_cycles):
             z = z.detach().clone()
@@ -175,9 +190,8 @@ class PreconditionedMCMCSampler(MCMCSampler):
                     z.clone()
                 )
 
-                # Resample target states according to the target log probability density
-                # This gets rid of stuck chains
-                x = resample(x.clone())
+                # Resample target states, hopefully getting rid of stuck chains over time
+                x = resample(x.clone(), method='density')  # TODO: try 'divergence'
 
                 self.advance_warmup_kernel()
                 current_warmup_kernel = self.active_warmup_kernel

@@ -75,6 +75,7 @@ class RWMHKernel(LocalMHKernel):
 
         n_valid_proposals = int(torch.sum((~divergence_mask).long()))
         self.increment_n_divergences(torch.sum(divergence_mask.long()))
+        self.increment_n_divergences_per_chain(divergence_mask)
 
         # Compute acceptance mask
         acceptance_mask = torch.zeros_like(divergence_mask)

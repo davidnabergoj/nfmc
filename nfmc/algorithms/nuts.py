@@ -509,6 +509,8 @@ class NUTSKernel(LocalMHKernel):
         alpha = torch.zeros(size=(n_chains,))
         n_alpha = torch.zeros(size=(n_chains,), dtype=torch.long)
 
+        divergence_mask = torch.zeros(size=(n_chains,), dtype=torch.bool)
+
         for j in range(self.max_tree_depth + 1):
             _active_mask = ~stop
             _n_active = int(torch.sum(_active_mask.long()))
@@ -542,6 +544,7 @@ class NUTSKernel(LocalMHKernel):
             )
             half_tree: ParallelTreeState
             self.increment_n_divergences(int(half_tree.diverged.long().sum()))
+            divergence_mask[_active_mask] |= half_tree.diverged
 
             set_idx_dst_pos = torch.arange(n_chains)
             set_idx_dst_pos = set_idx_dst_pos[_active_mask]
@@ -588,6 +591,8 @@ class NUTSKernel(LocalMHKernel):
 
             if stop.all():
                 break
+
+        self.increment_n_divergences_per_chain(divergence_mask)
 
         # Dual averaging statistic
         if update:
@@ -656,6 +661,6 @@ class NUTSKernel(LocalMHKernel):
             f'{self.calls_per_second(elapsed_time_seconds):.3f} c/s',
             f'{self.grads_per_second(elapsed_time_seconds):.3f} g/s',
             f'{self.acceptance_rate:.3f} acc',
-            f'{self._n_divergences} divs'
+            f'{self._n_divergences} divs ({self.divergence_rate:.3f})',
         ]
         return ', '.join(data)

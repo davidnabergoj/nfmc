@@ -110,6 +110,7 @@ class MALAKernel(LocalMHKernel):
             grad_u_x, self.event_shape)
         divergence_mask = divergence_mask_x | divergence_mask_u | divergence_mask_grad_u
         self.increment_n_divergences(int(divergence_mask.long().sum()))
+        self.increment_n_divergences_per_chain(divergence_mask)
 
         # Compute acceptance mask
         u_x_prime, grad_u_x_prime, nc, ng = grad_f(

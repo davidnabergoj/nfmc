@@ -31,6 +31,12 @@ class MHKernel(MarkovKernel):
         self._n_attempted_transitions: int = 0
         self._n_accepted_transitions: int = 0
 
+    @property
+    def divergence_rate(self):
+        if self._n_attempted_transitions == 0:
+            return torch.nan
+        return self._n_divergences / self._n_attempted_transitions
+
     def pbar_repr(self, elapsed_time_seconds: float):
         """
         Returns a string that represents this object in sampling/warmup progress bars.

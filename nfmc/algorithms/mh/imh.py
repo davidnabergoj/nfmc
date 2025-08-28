@@ -86,6 +86,7 @@ class IMHKernel(MHKernel):
         divergence_mask = compute_divergence_mask(x_prime, self.event_shape)
         n_valid_proposals = int((~divergence_mask).long().sum())
         self.increment_n_divergences(int(divergence_mask.long().sum()))
+        self.increment_n_divergences_per_chain(divergence_mask)
 
         # Compute acceptance mask
         acceptance_mask = torch.zeros_like(divergence_mask)

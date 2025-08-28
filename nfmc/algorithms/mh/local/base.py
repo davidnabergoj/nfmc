@@ -80,7 +80,7 @@ class LocalMHKernel(MHKernel):
             f'{self.calls_per_second(elapsed_time_seconds):.3f} c/s',
             f'{self.grads_per_second(elapsed_time_seconds):.3f} g/s',
             f'{self.acceptance_rate:.3f} acc',
-            f'{self._n_divergences} divs',
+            f'{self._n_divergences} divs ({self.divergence_rate:.3f})',
         ]
         return ', '.join(data)
 

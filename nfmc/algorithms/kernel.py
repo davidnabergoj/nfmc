@@ -34,6 +34,7 @@ class MarkovKernel:
         self._n_grads: int = 0  # Target density gradient evaluation counter
         # Counts the number of chains that diverged across all steps
         self._n_divergences: int = 0
+        self._n_divergences_per_chain: torch.Tensor = 0
 
         if preconditioner is None:
             preconditioner = IdentityPreconditioner(event_shape)
@@ -131,7 +132,10 @@ class MarkovKernel:
     def increment_n_divergences(self, n_divergences: int):
         self._n_divergences += n_divergences
         self._n_divergences = int(self._n_divergences)
-
+    
+    def increment_n_divergences_per_chain(self, divergence_mask: torch.Tensor):
+        self._n_divergences_per_chain += divergence_mask.long()
+    
     def step_with_preconditioner_inverse(self, *args, **kwargs):
         z = self.step(*args, **kwargs)
         x = self._preconditioner.inverse_transform(z)[0]
