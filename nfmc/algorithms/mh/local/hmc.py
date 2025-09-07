@@ -195,7 +195,7 @@ class HMCKernel(LocalMHKernel):
         p = torch.randn_like(x)
         x_prime, p_prime, nc, ng = hmc_trajectory(
             x=x.clone(),
-            momentum=p,
+            momentum=p.clone(),
             event_shape=self.event_shape,
             step_size=step_size,
             n_leapfrog_steps=self.n_leapfrog_steps,
