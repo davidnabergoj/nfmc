@@ -107,21 +107,21 @@ class ParallelTreeState:
         return ParallelTreeState(
             n_chains=int(mask.sum()),
             event_shape=self.event_shape,
-            x_minus=self.x_minus[mask],
-            x_plus=self.x_plus[mask],
+            x_minus=self.x_minus[mask.to(self.x_minus.device)],
+            x_plus=self.x_plus[mask.to(self.x_plus.device)],
 
-            p_minus=self.p_minus[mask],
-            p_plus=self.p_plus[mask],
+            p_minus=self.p_minus[mask.to(self.p_minus.device)],
+            p_plus=self.p_plus[mask.to(self.p_plus.device)],
 
-            x_prime=self.x_prime[mask],
-            log_prob_prime=self.log_prob_prime[mask],
+            x_prime=self.x_prime[mask.to(self.x_prime.device)],
+            log_prob_prime=self.log_prob_prime[mask.to(self.log_prob_prime.device)],
 
-            s_prime=self.s_prime[mask],
-            n_prime=self.n_prime[mask],
+            s_prime=self.s_prime[mask.to(self.s_prime.device)],
+            n_prime=self.n_prime[mask.to(self.n_prime.device)],
 
-            alpha_prime=self.alpha_prime[mask],
-            diverged=self.diverged[mask],
-            n_alpha_prime=self.n_alpha_prime[mask],
+            alpha_prime=self.alpha_prime[mask.to(self.alpha_prime.device)],
+            diverged=self.diverged[mask.to(self.diverged.device)],
+            n_alpha_prime=self.n_alpha_prime[mask.to(self.n_alpha_prime.device)],
         )
 
     def overwrite_with(self, other_state, mask: torch.Tensor):
@@ -153,6 +153,36 @@ class ParallelTreeState:
         self.diverged[mask] = other_state.diverged
         self.n_alpha_prime[mask] = other_state.n_alpha_prime
 
+    def to(self, device):
+        # Move all tensors to device
+
+        if self.x_minus is not None:
+            self.x_minus = self.x_minus.to(device)
+        if self.x_plus is not None:
+            self.x_plus = self.x_plus.to(device)
+        if self.p_minus is not None:
+            self.p_minus = self.p_minus.to(device)
+        if self.p_plus is not None:
+            self.p_plus = self.p_plus.to(device)
+        if self.x_prime is not None:
+            self.x_prime = self.x_prime.to(device)
+        if self.log_prob_prime is not None:
+            self.log_prob_prime = self.log_prob_prime.to(device)
+        
+        if self.s_prime is not None:
+            self.s_prime = self.s_prime.to(device)
+        if self.n_prime is not None:
+            self.n_prime = self.n_prime.to(device)
+        
+        if self.alpha_prime is not None:
+            self.alpha_prime = self.alpha_prime.to(device)
+        if self.diverged is not None:
+            self.diverged = self.diverged.to(device)
+        if self.n_alpha_prime is not None:
+            self.n_alpha_prime = self.n_alpha_prime.to(device)
+        
+        return self
+    
 
 def _log_acceptance_prob(log_prob_new,
                          momentum_new,
@@ -211,6 +241,8 @@ def _build_tree(x: torch.Tensor,
         n_chains=n_chains,
         event_shape=event_shape
     )
+    state = state.to(x.device)
+    
     state.x_minus = state.x_minus.to(x.dtype)
     state.x_plus = state.x_plus.to(x.dtype)
     state.p_minus = state.p_minus.to(x.dtype)
@@ -241,6 +273,7 @@ def _build_tree(x: torch.Tensor,
             neg_log_prob_target=neg_log_prob_target,
             return_neg_log_prob_and_grad=True
         )
+        neg_log_prob1 = neg_log_prob1.to(x.device)
         log_prob1 = -neg_log_prob1
         joint = log_prob1 - _kinetic_energy(p1, event_shape)
 
@@ -254,7 +287,7 @@ def _build_tree(x: torch.Tensor,
         # Set divergence variables
         state.n_prime[m_b] = (log_u_slice[m_b] <= joint).long()
         state.s_prime[m_b] = (log_u_slice[m_b] - max_delta < joint)
-        state.diverged[m_b] = ~torch.isfinite(joint)
+        state.diverged[m_b] = (~torch.isfinite(joint))
 
         # Set other
         _log_accept = _log_acceptance_prob(
@@ -362,16 +395,22 @@ def _build_tree(x: torch.Tensor,
             # Set proposed position
             # If1
             n_non_early_chains = int(m_g_non_early.long().sum())
-            _thresh = (right.n_prime.float()) / \
-                (left_continue.n_prime.float() + right.n_prime.float())
-            _rand = torch.rand((n_non_early_chains,), dtype=x.dtype)
+            _thresh = torch.divide(
+                right.n_prime.float(),
+                left_continue.n_prime.float() + right.n_prime.float()
+            )
+            _rand = torch.rand(
+                (n_non_early_chains,), 
+                dtype=x.dtype,
+                device=x.device
+            )
             rand_mask = _rand < _thresh
 
-            set_idx_dst_pos = torch.arange(n_chains)
+            set_idx_dst_pos = torch.arange(n_chains, device=x.device)
             set_idx_dst_pos = set_idx_dst_pos[m_g_non_early]
             set_idx_dst_pos = set_idx_dst_pos[rand_mask]
 
-            set_idx_dst_neg = torch.arange(n_chains)
+            set_idx_dst_neg = torch.arange(n_chains, device=x.device)
             set_idx_dst_neg = set_idx_dst_neg[m_g_non_early]
             set_idx_dst_neg = set_idx_dst_neg[~rand_mask]
 
@@ -468,6 +507,8 @@ class NUTSKernel(LocalMHKernel):
         :param bool update: if True, update kernel parameters.
         :return: new state tensor with shape `(*batch_shape, *event_shape)`.
         """
+        device = x.device
+
         x = x.clone()
         n_chains = x.shape[0]
 
@@ -488,8 +529,9 @@ class NUTSKernel(LocalMHKernel):
                 fill_value=step_size.item()
             )
         step_size = step_size.to(x.dtype)
+        step_size = step_size.to(device)
 
-        log_prob_x = -self.neg_log_prob_target(x).to(x.dtype)
+        log_prob_x = -self.neg_log_prob_target(x).to(x.dtype).to(device)
 
         # Sample momentum and slice variable
         p0 = torch.randn_like(x)
@@ -503,21 +545,46 @@ class NUTSKernel(LocalMHKernel):
         log_prob_x_prime = log_prob_x.clone()
 
         # Initialize other variables
-        stop = torch.zeros(size=(n_chains,), dtype=torch.bool)  # ~s_prime
-        n = torch.ones(size=(n_chains,), dtype=torch.long)
+        stop = torch.zeros(
+            size=(n_chains,), 
+            dtype=torch.bool,
+            device=device
+        )  # ~s_prime
+        n = torch.ones(
+            size=(n_chains,), 
+            dtype=torch.long,
+            device=device
+        )
 
-        alpha = torch.zeros(size=(n_chains,))
-        n_alpha = torch.zeros(size=(n_chains,), dtype=torch.long)
+        alpha = torch.zeros(
+            size=(n_chains,), 
+            device=device
+        )
+        n_alpha = torch.zeros(
+            size=(n_chains,), 
+            dtype=torch.long,
+            device=device
+        )
 
-        divergence_mask = torch.zeros(size=(n_chains,), dtype=torch.bool)
+        divergence_mask = torch.zeros(
+            size=(n_chains,), 
+            dtype=torch.bool,
+            device=device
+        )
 
         for j in range(self.max_tree_depth + 1):
             _active_mask = ~stop
             _n_active = int(torch.sum(_active_mask.long()))
 
             # Choose direction
-            _r = torch.randint(size=(_n_active,), low=0,
-                               high=2).to(step_size.dtype)
+            _r = torch.randint(
+                size=(_n_active,), 
+                low=0,
+                high=2
+            )
+            _r = _r.to(step_size.dtype)
+
+
             v = _r * 2 - 1
 
             # Build tree into negative/positive time directions
@@ -530,27 +597,32 @@ class NUTSKernel(LocalMHKernel):
             _p_build_tree[m_neg] = p_minus[_active_mask][m_neg]
 
             half_tree, nc, ng = _build_tree(
-                x=_x_build_tree,
-                p=_p_build_tree,
+                x=_x_build_tree.to(device),
+                p=_p_build_tree.to(device),
                 event_shape=self.event_shape,
-                log_u_slice=log_u_slice[_active_mask],
-                v=v,
-                j=torch.full(size=(_n_active,),
-                             fill_value=j, dtype=torch.long),
-                step_size=step_size[_active_mask],
+                log_u_slice=log_u_slice[_active_mask].to(device),
+                v=v.to(device),
+                j=torch.full(
+                    size=(_n_active,),
+                    fill_value=j, 
+                    dtype=torch.long,
+                    device=device
+                ),
+                step_size=step_size[_active_mask].to(device),
                 neg_log_prob_target=self.neg_log_prob_target,
-                log_prob_x=log_prob_x[_active_mask],
+                log_prob_x=log_prob_x[_active_mask].to(device),
                 max_delta=self.max_delta
             )
             half_tree: ParallelTreeState
+
             self.increment_n_divergences(int(half_tree.diverged.long().sum()))
             divergence_mask[_active_mask] |= half_tree.diverged
 
-            set_idx_dst_pos = torch.arange(n_chains)
+            set_idx_dst_pos = torch.arange(n_chains, device=device)
             set_idx_dst_pos = set_idx_dst_pos[_active_mask]
             set_idx_dst_pos = set_idx_dst_pos[~m_neg]
 
-            set_idx_dst_neg = torch.arange(n_chains)
+            set_idx_dst_neg = torch.arange(n_chains, device=device)
             set_idx_dst_neg = set_idx_dst_neg[_active_mask]
             set_idx_dst_neg = set_idx_dst_neg[m_neg]
 
@@ -573,11 +645,13 @@ class NUTSKernel(LocalMHKernel):
 
             # Update state (select state among valid states)
             _rand = torch.rand_like(step_size[_active_mask])
-            _thresh = half_tree.n_prime.to(
-                _rand.dtype) / n[_active_mask].to(_rand.dtype)
+            _thresh = torch.divide(
+                half_tree.n_prime.to(_rand.dtype),
+                n[_active_mask].to(_rand.dtype)
+            )
             m_update = (_rand < _thresh)
 
-            set_idx_dst_update = torch.arange(n_chains)
+            set_idx_dst_update = torch.arange(n_chains, device=device)
             set_idx_dst_update = set_idx_dst_update[_active_mask]
             set_idx_dst_update = set_idx_dst_update[m_update]
 
@@ -610,7 +684,7 @@ class NUTSKernel(LocalMHKernel):
                 if not torch.isfinite(_ratio).all():
                     raise ValueError("Acceptance ratio is NaN or Inf")
                 h_da = self._target_acceptance_rate - _ratio
-                self._update(h_da, nonzero_n_alpha_mask)
+                self._update(h_da.cpu(), nonzero_n_alpha_mask.cpu())
 
         self.increment_n_calls(nc)
         self.increment_n_grads(ng)
