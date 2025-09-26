@@ -17,18 +17,23 @@ class Samples:
     def __init__(self,
                  event_shape: Union[Tuple[int, ...], torch.Size],
                  max_samples: int = None,
+                 flatten: bool = False,
                  data_transform: callable = None):
         """
         Samples class constructor.
 
         :param Union[Tuple[int, ...], torch.Size] event_shape: shape of the event tensor.
         :param int max_samples: maximum number of samples to store in the reservoir. If None, all samples are stored.
+        :param bool flatten: if True, flatten samples when calling `as_tensor()`, i.e., return a tensor of shape
+         `(? , *event_shape)`. If False, return a tensor of shape `(n_steps, n_chains, *event_shape)`.
+         If False and samples have different `n_chains`, calling `as_tensor()` raises a ValueError.
         :param callable data_transform: functional that transforms each added sample of type torch.Tensor with shape 
          `(*batch_shape, *event_shape)` into a torch.Tensor with shape `(*batch_shape, *event_shape)`. If None, no 
           transformation is applied.
         """
         self.event_shape = event_shape
         self.max_samples = max_samples
+        self.flatten = flatten
 
         if data_transform is None:
             def data_transform(v): return v
@@ -106,6 +111,18 @@ class Samples:
         Returns stored samples as a `torch.Tensor` with shape `(n_steps, n_chains, *event_shape)`.
         """
         if self.n_samples > 0:
-            return torch.stack(self._running_samples, dim=0)
+            if self.flatten:
+                return torch.concat(self._running_samples, dim=0)
+            else:
+                if len(set([len(e) for e in self._running_samples])) > 1:
+                    raise ValueError(
+                        "Samples have different n_chains, cannot return a tensor of shape "
+                        "(n_steps, n_chains, *event_shape). Set flatten=True to concatenate samples along the first "
+                        "dimension."
+                    )
+                return torch.stack(self._running_samples, dim=0)
         else:
-            return torch.empty(size=(0, 0, *self.event_shape), dtype=torch.float)
+            if self.flatten:
+                return torch.empty(size=(0, *self.event_shape), dtype=torch.float)
+            else:
+                return torch.empty(size=(0, 0, *self.event_shape), dtype=torch.float)
