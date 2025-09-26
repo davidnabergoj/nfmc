@@ -70,7 +70,7 @@ class PreconditionedMCMCSampler(MCMCSampler):
                max_training_samples: int = None,
                data_transform: callable = None,
                return_latent_samples: bool = False,
-               outlier_boundary: Tuple[float, float] = (-100.0, 100.0),
+               outlier_boundary: Tuple[float, float] = None,
                **kwargs) -> Samples:
         """
         Optimize kernel parameters.
