@@ -231,7 +231,7 @@ class PreconditionedMCMCSampler(MCMCSampler):
                     update=do_update
                 )
                 if not do_update:
-                    training_candidates = x.detach().clone()
+                    training_candidates = x.detach().clone().view(-1, *self.kernel.event_shape)
                     if outlier_boundary is not None:
                         training_candidates = training_candidates[
                             (training_candidates >= outlier_boundary[0]).all(dim=-1)
