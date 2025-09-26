@@ -70,6 +70,7 @@ class PreconditionedMCMCSampler(MCMCSampler):
                max_training_samples: int = None,
                data_transform: callable = None,
                return_latent_samples: bool = False,
+               outlier_boundary: Tuple[float, float] = (-100.0, 100.0),
                **kwargs) -> Samples:
         """
         Optimize kernel parameters.
@@ -92,6 +93,8 @@ class PreconditionedMCMCSampler(MCMCSampler):
         :param bool return_latent_samples: if True, return tuple with two Samples objects. The first object holds samples
          from the target distribution, the second holds latent samples. The specified data_transform callable is still
          applied to samples in each object.
+        :param Tuple[float, float] outlier_boundary: lower and upper boundary for target samples. Samples with any
+         dimension outside this range are discarded and not used for training the preconditioner.
         :param kwargs: keyword arguments for `preconditioner.fit`.
         :return: Samples object with MCMC draws.
         """
@@ -204,7 +207,9 @@ class PreconditionedMCMCSampler(MCMCSampler):
                 if torch.numel(x_train) == 0:
                     raise ValueError("Got zero training data points")
                 current_warmup_kernel.fit_preconditioner(
-                    x_train.clone(), **kwargs)
+                    x_train.clone(), 
+                    **kwargs
+                )
 
                 # Reset state and kernel
                 z, _ = current_warmup_kernel._preconditioner.forward_transform(
@@ -226,7 +231,13 @@ class PreconditionedMCMCSampler(MCMCSampler):
                     update=do_update
                 )
                 if not do_update:
-                    training_samples.add(x.detach().clone())
+                    training_candidates = x.detach().clone()
+                    if outlier_boundary is not None:
+                        training_candidates = training_candidates[
+                            (training_candidates >= outlier_boundary[0]).all(dim=-1)
+                            & (training_candidates <= outlier_boundary[1]).all(dim=-1)
+                        ]
+                    training_samples.add(training_candidates)
 
                 target_samples.add(x.detach().clone())
                 if return_latent_samples:
