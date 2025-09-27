@@ -219,6 +219,7 @@ class PreconditionedMCMCSampler(MCMCSampler):
                 training_samples = Samples(
                     event_shape=self.kernel.event_shape,
                     max_samples=_adj_max,
+                    flatten=True
                 )
             
             for step_index in range(cycle_length):
