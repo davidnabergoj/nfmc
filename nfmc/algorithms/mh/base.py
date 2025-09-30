@@ -36,6 +36,14 @@ class MHKernel(MarkovKernel):
         if self._n_attempted_transitions == 0:
             return torch.nan
         return self._n_divergences / self._n_attempted_transitions
+    
+    @property
+    def divergence_rate_per_chain(self):
+        if self._n_attempted_transitions == 0:
+            return torch.nan
+        if isinstance(self._n_divergences_per_chain, int):
+            raise ValueError("Divergences per chain not tracked.")
+        return self._n_divergences_per_chain / (self._n_attempted_transitions / len(self._n_divergences_per_chain))
 
     def pbar_repr(self, elapsed_time_seconds: float):
         """
