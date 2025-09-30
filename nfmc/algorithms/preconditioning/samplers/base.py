@@ -204,7 +204,7 @@ class PreconditionedMCMCSampler(MCMCSampler):
 
                 indices = torch.multinomial(
                     probabilities, 
-                    num_samples=len(states), 
+                    num_samples=n_steps * n_chains, 
                     replacement=True
                 )
                 return states.flatten(0, 1)[indices].view_as(states)
