@@ -168,9 +168,29 @@ class NormalizingFlowPreconditioner(Preconditioner):
         self.flow.eval()
         return z, log_det
 
-    def fit(self, x: torch.Tensor, **kwargs):
+    def fit(self, x: torch.Tensor, lr: float = 1e-3, retries: int = 2, **kwargs):
         """
+        Fit the flow to samples x from the target space.
+
         Does not use a train/validation split.
+
+        :param torch.Tensor x: target space training data tensor with shape `(n_data, *event_shape)`.
+        :param float lr: learning rate for flow training.
+        :param int retries: number of retries with reduced learning rate if training fails.
+        :param kwargs: additional keyword arguments passed to `self.flow.fit`.
         """
         x_flat = x.view(-1, *self.event_shape)
-        self.flow.fit(x_flat, **kwargs)
+        try:
+            self.flow.fit(x_flat, lr=lr, **kwargs)
+        except ValueError as e:
+            print(f"Flow training failed with error: {e}.")
+            print('Reducing learning rate')
+            lr *= 0.1
+            for _ in range(retries):
+                try:
+                    self.flow.fit(x_flat, lr=lr, **kwargs)
+                    break
+                except ValueError as e:
+                    print(f"Flow training failed with error: {e}.")
+                    print('Reducing learning rate')
+                    lr *= 0.1
