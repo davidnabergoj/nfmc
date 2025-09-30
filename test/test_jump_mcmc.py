@@ -68,7 +68,7 @@ def test_step(event_shape,
     DiagonalJumpMALA
 ])
 @pytest.mark.parametrize('global_kernel', ['imh', 'i-sir'])
-@pytest.mark.parametrize('n_chains', [4])
+@pytest.mark.parametrize('n_chains', [10])
 @pytest.mark.parametrize('cycle_length', [2, 3, 4])
 def test_warmup(event_shape,
                 sampler_class,
