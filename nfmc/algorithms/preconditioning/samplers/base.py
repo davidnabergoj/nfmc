@@ -70,7 +70,6 @@ class PreconditionedMCMCSampler(MCMCSampler):
                max_training_samples: int = None,
                data_transform: callable = None,
                return_latent_samples: bool = False,
-               outlier_boundary: Tuple[float, float] = None,
                **kwargs) -> Samples:
         """
         Optimize kernel parameters.
@@ -93,9 +92,6 @@ class PreconditionedMCMCSampler(MCMCSampler):
         :param bool return_latent_samples: if True, return tuple with two Samples objects. The first object holds samples
          from the target distribution, the second holds latent samples. The specified data_transform callable is still
          applied to samples in each object.
-        :param Tuple[float, float] outlier_boundary: lower and upper boundary for target samples. Samples with any
-         dimension outside this range are discarded and not used for training the preconditioner.
-        :param kwargs: keyword arguments for `preconditioner.fit`.
         :return: Samples object with MCMC draws.
         """
         self.kernel.start_warmup(n_chains=len(z0))
@@ -118,8 +114,7 @@ class PreconditionedMCMCSampler(MCMCSampler):
             _adj_max /= len(z0)  # divide by number of chains
         training_samples = Samples(
             event_shape=self.kernel.event_shape,
-            max_samples=_adj_max,
-            flatten=True
+            max_samples=_adj_max
         )
 
         self.kernel.reset_statistics()
@@ -133,42 +128,74 @@ class PreconditionedMCMCSampler(MCMCSampler):
         )
 
         def resample(states, method: str):
+            """
+            Resample states according to method.
+
+            :param torch.Tensor states: tensor with shape `(n_steps, n_chains, *event_shape)`.
+            :param str method: resampling method. One of 'uniform', 'divergence', 'density'.
+            :return: resampled states with shape `(n_steps, n_chains, *event_shape)`.
+            """
+            if len(states.shape) != 2 + len(self.kernel.event_shape):
+                raise ValueError(
+                    f'Expected states to have shape (n_steps, n_chains, *event_shape), got {states.shape = }'
+                )
+            n_steps, n_chains = states.shape[:2]
+
             if method == 'uniform':
-                return states[torch.randint(len(states), (len(states),), device=states.device)]
+                flat_states = states.flatten(0, 1)
+                resampled_flat_states = flat_states[
+                    torch.randint(len(flat_states), (len(flat_states),), device=flat_states.device)
+                ]
+                return resampled_flat_states.view_as(states)
             else:
-                neg_log_prob_states = []
+                negative_log_weights: torch.Tensor  # (n_steps, n_chains)
                 if method == 'divergence':
                     if isinstance(self.kernel._n_divergences_per_chain, int):
                         # Fall-back
                         return resample(states, method='uniform')
-                    neg_log_prob_states = self.kernel._n_divergences_per_chain.to(
-                        dtype=z0.dtype, 
-                        device=z0.device
-                    )
+                    negative_log_weights = self.kernel._n_divergences_per_chain.to(
+                        dtype=states.dtype,
+                        device=states.device
+                    )  # (n_chains,)
+                    negative_log_weights = negative_log_weights[None].repeat(n_steps, 1)
+                    _s = negative_log_weights.std()
+                    if _s == 0:
+                        negative_log_weights = negative_log_weights - negative_log_weights.mean()
+                    else:
+                        negative_log_weights = torch.divide(
+                            negative_log_weights - negative_log_weights.mean(),
+                            negative_log_weights.std() + 1e-10
+                        )
                 elif method == 'density':
                     for chain_id in range(len(states)):
                         try:
-                            neg_log_prob_states.append(
+                            negative_log_weights.append(
                                 current_warmup_kernel.neg_log_prob_target(
                                     states[chain_id].unsqueeze(0)
                                 )
                             )
                         except ValueError:
-                            neg_log_prob_states.append(
+                            negative_log_weights.append(
                                 torch.tensor([torch.inf], device=states.device)
                             )
-                    neg_log_prob_states = torch.cat(neg_log_prob_states, dim=0)
+                    negative_log_weights = torch.cat(negative_log_weights, dim=0)
                 else:
                     raise ValueError(f'Unknown resampling method {method}')
-                log_weights = -neg_log_prob_states
+                
+                if negative_log_weights.shape != (n_steps, n_chains):
+                    raise ValueError(
+                        f'Expected negative_weights.shape to be {(n_steps, n_chains) = }, got {negative_log_weights.shape = }'
+                    )
+                log_weights = -negative_log_weights
+                log_weights_flat = log_weights.flatten()
 
                 # Replace invalid values with -inf (so they get zero probability)
-                log_weights = torch.where(
-                    torch.isfinite(log_weights),
-                    log_weights,
+                log_weights_flat = torch.where(
+                    torch.isfinite(log_weights_flat),
+                    log_weights_flat,
                     -torch.inf
                 )
-                probabilities = torch.softmax(log_weights, dim=0)
+                probabilities = torch.softmax(log_weights_flat, dim=0)
                 # If all probabilities are NaN/zero, fall back to uniform
                 if not torch.isfinite(probabilities).any():
                     probabilities = torch.ones_like(
@@ -180,7 +207,7 @@ class PreconditionedMCMCSampler(MCMCSampler):
                     num_samples=len(states), 
                     replacement=True
                 )
-                return states[indices]
+                return states.flatten(0, 1)[indices].view_as(states)
 
         for cycle_index in range(n_cycles):
             z = z.detach().clone()
@@ -195,7 +222,7 @@ class PreconditionedMCMCSampler(MCMCSampler):
                 )
 
                 # Resample target states, hopefully getting rid of stuck chains over time
-                x = resample(x.clone(), method='divergence')
+                x = resample(x[None].clone(), method='divergence')[0]
 
                 self.advance_warmup_kernel()
                 current_warmup_kernel = self.active_warmup_kernel
@@ -203,6 +230,10 @@ class PreconditionedMCMCSampler(MCMCSampler):
                 # Update the preconditioner first so drawn sample can contribute toward next preconditioner fit.
 
                 x_train = training_samples.as_tensor()  # Convert training data to torch.Tensor
+                x_train = resample(x_train.clone(), method='divergence')
+
+                # Resample training data according to divergence counts for each chain
+
                 # Flatten steps and chains
                 x_train = x_train.view(-1, *current_warmup_kernel.event_shape)
                 if torch.numel(x_train) == 0:
@@ -218,8 +249,7 @@ class PreconditionedMCMCSampler(MCMCSampler):
                 current_warmup_kernel.reset_parameters()
                 training_samples = Samples(
                     event_shape=self.kernel.event_shape,
-                    max_samples=_adj_max,
-                    flatten=True
+                    max_samples=_adj_max
                 )
             
             for step_index in range(cycle_length):
@@ -234,11 +264,6 @@ class PreconditionedMCMCSampler(MCMCSampler):
                 )
                 if not do_update:
                     training_candidates = x.detach().clone().view(-1, *self.kernel.event_shape)
-                    if outlier_boundary is not None:
-                        training_candidates = training_candidates[
-                            (training_candidates >= outlier_boundary[0]).all(dim=-1)
-                            & (training_candidates <= outlier_boundary[1]).all(dim=-1)
-                        ]
                     training_samples.add(training_candidates)
 
                 target_samples.add(x.detach().clone())
