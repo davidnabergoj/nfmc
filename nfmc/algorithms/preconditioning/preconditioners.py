@@ -182,15 +182,15 @@ class NormalizingFlowPreconditioner(Preconditioner):
         x_flat = x.view(-1, *self.event_shape)
         try:
             self.flow.fit(x_flat, lr=lr, **kwargs)
-        except ValueError as e:
-            print(f"Flow training failed with error: {e}.")
+        except RuntimeWarning as w:
+            print(f"Flow training failed with warning: {w}.")
             print('Reducing learning rate')
             lr *= 0.1
             for _ in range(retries):
                 try:
                     self.flow.fit(x_flat, lr=lr, **kwargs)
                     break
-                except ValueError as e:
-                    print(f"Flow training failed with error: {e}.")
+                except RuntimeWarning as w:
+                    print(f"Flow training failed with warning: {w}.")
                     print('Reducing learning rate')
                     lr *= 0.1
