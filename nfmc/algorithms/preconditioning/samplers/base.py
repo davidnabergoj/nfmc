@@ -236,6 +236,12 @@ class PreconditionedMCMCSampler(MCMCSampler):
 
                 # Flatten steps and chains
                 x_train = x_train.view(-1, *current_warmup_kernel.event_shape)
+
+                # Remove nan/inf training data
+                x_train = x_train[
+                    torch.isfinite(x_train).all(dim=tuple(range(1, x_train.ndim)))
+                ]
+
                 if torch.numel(x_train) == 0:
                     raise ValueError("Got zero training data points")
                 current_warmup_kernel.fit_preconditioner(
