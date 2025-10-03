@@ -253,10 +253,6 @@ class PreconditionedMCMCSampler(MCMCSampler):
                 z, _ = current_warmup_kernel._preconditioner.forward_transform(
                     x.clone())
                 current_warmup_kernel.reset_parameters()
-                training_samples = Samples(
-                    event_shape=self.kernel.event_shape,
-                    max_samples=_adj_max
-                )
             
             for step_index in range(cycle_length):
                 # Step. Update if in first half of cycle.
