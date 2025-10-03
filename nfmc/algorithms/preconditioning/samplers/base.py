@@ -224,7 +224,6 @@ class PreconditionedMCMCSampler(MCMCSampler):
                 )
                 if not torch.isfinite(x).all():
                     raise ValueError("Preconditioner inverse returned nan/inf values")
-
                 # Resample target states, hopefully getting rid of stuck chains over time
                 x = resample(x[None].clone(), method='divergence')[0]
 
@@ -235,8 +234,6 @@ class PreconditionedMCMCSampler(MCMCSampler):
 
                 x_train = training_samples.as_tensor()  # Convert training data to torch.Tensor
                 x_train = resample(x_train.clone(), method='divergence')
-
-                # Resample training data according to divergence counts for each chain
 
                 # Flatten steps and chains
                 x_train = x_train.view(-1, *current_warmup_kernel.event_shape)
@@ -257,6 +254,22 @@ class PreconditionedMCMCSampler(MCMCSampler):
                 z, _ = current_warmup_kernel._preconditioner.forward_transform(
                     x.clone()
                 )
+
+                # Mask invalid states (NaN or Inf anywhere along dimensions beyond the batch)
+                invalid_mask = ~torch.all(torch.isfinite(z), dim=tuple(range(1, z.ndim)))
+                valid_mask = ~invalid_mask
+
+                # Indices of valid states
+                valid_indices = valid_mask.nonzero(as_tuple=True)[0]
+
+                # Replace invalid states by sampling from valid states
+                if valid_indices.numel() > 0 and invalid_mask.any():
+                    # Randomly choose replacement indices from valid ones
+                    replacement_indices = torch.randint(
+                        0, valid_indices.numel(), size=(invalid_mask.sum(),), device=z.device
+                    )
+                    z[invalid_mask] = z[valid_indices[replacement_indices]]
+                
                 if not torch.isfinite(z).all():
                     raise ValueError("Preconditioner forward returned nan/inf values")
 
