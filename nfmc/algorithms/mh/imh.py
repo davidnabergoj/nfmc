@@ -72,6 +72,9 @@ class IMHKernel(MHKernel):
         :param torch.Tensor x: incoming state tensor with shape `(*batch_shape, *event_shape)`.
         :return: new state tensor with shape `(*batch_shape, *event_shape)`.
         """
+        if not torch.isfinite(x).all():
+            raise ValueError("Input state contains NaN or Inf values.")
+        
         # Propose new state
         batch_shape = x.shape[:-len(self.event_shape)]
         u_x = -self.proposal_log_prob(x)

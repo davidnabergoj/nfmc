@@ -347,6 +347,8 @@ class MixingKernel(MarkovKernel):
         # creates self.dist
         self.set_selection_probabilities(selection_probabilities)
 
+        self.next_index = self.dist.sample()
+
     def start_warmup(self, n_chains):
         for k in self.kernels:
             k.start_warmup(n_chains)
@@ -391,41 +393,43 @@ class MixingKernel(MarkovKernel):
             k.neg_log_prob_target = new_neg_log_prob_target
 
     def step(self,
-             x: torch.Tensor,
+             z: torch.Tensor,
              update: bool = False,
              **kwargs):
         """
         Performs a transition with a randomly chosen kernel.
 
-        :param torch.Tensor x: current target-space state tensor with shape `(*batch_shape, *event_shape)`.
+        :param torch.Tensor z: current latent-space state tensor with shape `(*batch_shape, *event_shape)`.
         :param bool update: if True, update this kernel's parameters.
         :return: new state tensor with shape `(*batch_shape, *event_shape)`.
         """
-        idx = self.dist.sample()
-        return self.kernels[idx].step(
-            x=x,
+        return self.step_with_preconditioner_inverse(
+            z,
             update=update,
             **kwargs
-        )
+        )[0]
 
     def step_with_preconditioner_inverse(self,
-                                         x: torch.Tensor,
+                                         z: torch.Tensor,
                                          update: bool = False,
                                          **kwargs):
         """
         Performs a transition with a randomly chosen kernel.
-        Returns the preconditioner-inverse of the new state.
+        Also returns the preconditioner-inverse of the new state as a second output.
 
-        :param torch.Tensor x: current target-space state tensor with shape `(*batch_shape, *event_shape)`.
+        :param torch.Tensor z: current latent-space state tensor with shape `(*batch_shape, *event_shape)`.
         :param bool update: if True, update this kernel's parameters.
         :return: new state tensor with shape `(*batch_shape, *event_shape)`.
         """
-        idx = self.dist.sample()
-        return self.kernels[idx].step_with_preconditioner_inverse(
-            x=x,
+        _, x = self.kernels[self.next_index].step_with_preconditioner_inverse(
+            z,
             update=update,
             **kwargs
         )
+        self.next_index = self.dist.sample()
+        # Prepare latent space state for next step
+        z = self.kernels[self.next_index]._preconditioner.forward_transform(x)[0]
+        return z, x
 
     def reset_statistics(self):
         for k in self.kernels:

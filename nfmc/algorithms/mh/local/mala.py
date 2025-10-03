@@ -88,6 +88,9 @@ class MALAKernel(LocalMHKernel):
         :param bool update: if True, update kernel parameters.
         :return: new state tensor with shape `(*batch_shape, *event_shape)`.
         """
+        if not torch.isfinite(x).all():
+            raise ValueError("Input state contains NaN or Inf values.")
+        
         if self.warmup_active:
             step_size = self._dual_averaging.value
         else:
