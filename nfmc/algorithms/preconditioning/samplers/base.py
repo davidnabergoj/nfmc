@@ -211,6 +211,8 @@ class PreconditionedMCMCSampler(MCMCSampler):
 
         for cycle_index in range(n_cycles):
             z = z.detach().clone()
+            if not torch.isfinite(z).all():
+                raise ValueError("Initial state has nan/inf values")
 
             current_warmup_kernel = self.active_warmup_kernel
 
@@ -220,6 +222,8 @@ class PreconditionedMCMCSampler(MCMCSampler):
                 x, _ = current_warmup_kernel._preconditioner.inverse_transform(
                     z.clone()
                 )
+                if not torch.isfinite(x).all():
+                    raise ValueError("Preconditioner inverse returned nan/inf values")
 
                 # Resample target states, hopefully getting rid of stuck chains over time
                 x = resample(x[None].clone(), method='divergence')[0]
@@ -251,7 +255,11 @@ class PreconditionedMCMCSampler(MCMCSampler):
 
                 # Reset state and kernel
                 z, _ = current_warmup_kernel._preconditioner.forward_transform(
-                    x.clone())
+                    x.clone()
+                )
+                if not torch.isfinite(z).all():
+                    raise ValueError("Preconditioner forward returned nan/inf values")
+
                 current_warmup_kernel.reset_parameters()
             
             for step_index in range(cycle_length):
@@ -264,6 +272,11 @@ class PreconditionedMCMCSampler(MCMCSampler):
                     z.clone(),
                     update=do_update
                 )
+                if not torch.isfinite(z).all():
+                    raise ValueError("Kernel step returned nan/inf values")
+                if not torch.isfinite(x).all():
+                    raise ValueError("Kernel step preconditioner inverse returned nan/inf values")
+
                 if not do_update:
                     training_candidates = x.detach().clone().view(-1, *self.kernel.event_shape)
                     training_samples.add(training_candidates)
