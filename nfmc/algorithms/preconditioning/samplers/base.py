@@ -167,6 +167,7 @@ class PreconditionedMCMCSampler(MCMCSampler):
                             negative_log_weights.std() + 1e-10
                         )
                 elif method == 'density':
+                    negative_log_weights = []
                     for chain_id in range(len(states)):
                         try:
                             negative_log_weights.append(
@@ -242,7 +243,6 @@ class PreconditionedMCMCSampler(MCMCSampler):
                 x_train = x_train[
                     torch.isfinite(x_train).all(dim=tuple(range(1, x_train.ndim)))
                 ]
-
                 if torch.numel(x_train) == 0:
                     raise ValueError("Got zero training data points")
                 current_warmup_kernel.fit_preconditioner(
