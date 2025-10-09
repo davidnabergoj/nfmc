@@ -141,3 +141,74 @@ def test_step(event_shape, n_chains, dtype):
     assert torch.isfinite(x_new).all()
     assert x_current.dtype == x_new.dtype
     assert torch.all(x_current != x_new)
+
+
+@pytest.mark.parametrize('n_chains', [1, 4, 20])
+@pytest.mark.parametrize('tree_depth', [0, 1, 4])
+@pytest.mark.parametrize('dtype', [torch.float32, torch.float64])
+def test_build_tree_full_trajectory(n_chains, tree_depth, dtype):
+    torch.manual_seed(0)
+
+    event_shape = (4,)
+
+    # n_chains = 20
+    # tree_depth: int = 3
+
+    def neg_log_prob_target(_tensor):
+        return sum_except_batch(_tensor ** 2, event_shape)
+
+    x0 = torch.randn(size=(n_chains, *event_shape), dtype=dtype)
+    p0 = torch.randn(size=(n_chains, *event_shape), dtype=dtype)
+    log_prob_x0 = -neg_log_prob_target(x0).to(x0)
+    joint0 = log_prob_x0 - _kinetic_energy(p0, event_shape)
+    log_u_slice = torch.log(torch.rand(size=(n_chains,), dtype=dtype)) + joint0
+
+    # {0, 1} -> {0, 2} -> {-1, 1}
+    v = torch.randint(low=0, high=2, size=(n_chains,)) * 2 - 1
+    step_size = torch.rand(size=(n_chains,), dtype=dtype) / 100
+    j = torch.full(size=(n_chains,), fill_value=tree_depth)
+
+    state, _, _, trajectory = _build_tree(
+        x=x0,
+        p=p0,
+        event_shape=event_shape,
+        log_u_slice=log_u_slice,
+        v=v,
+        j=j,
+        step_size=step_size,
+        neg_log_prob_target=neg_log_prob_target,
+        log_prob_x=log_prob_x0,
+        max_delta=1000.0,
+        return_full_trajectory=True
+    )
+    state: ParallelTreeState
+
+    assert isinstance(state, ParallelTreeState)
+    assert state.n_chains == n_chains
+    assert state.event_shape == event_shape
+    assert state.x_minus.shape == (n_chains, *event_shape)
+    assert state.x_plus.shape == (n_chains, *event_shape)
+    assert state.p_minus.shape == (n_chains, *event_shape)
+    assert state.p_plus.shape == (n_chains, *event_shape)
+
+    assert state.alpha_prime.shape == (n_chains,)
+    assert state.diverged.shape == (n_chains,)
+    assert state.n_alpha_prime.shape == (n_chains,)
+
+    assert torch.isfinite(state.x_minus).all()
+    assert torch.isfinite(state.x_plus).all()
+    assert torch.isfinite(state.p_minus).all()
+    assert torch.isfinite(state.p_plus).all()
+    assert torch.isfinite(state.x_prime).all()
+    assert torch.isfinite(state.log_prob_prime).all()
+
+    assert torch.isfinite(state.alpha_prime).all()
+    assert torch.isfinite(state.diverged).all()
+    assert torch.isfinite(state.n_alpha_prime).all()
+
+    assert torch.all(state.x_prime != x0)
+
+    # Assertions for the trajectory go here...
+    assert len(trajectory) == n_chains
+    for _c_id in range(n_chains):
+        assert len(trajectory[_c_id]) <= 2 ** (tree_depth)
