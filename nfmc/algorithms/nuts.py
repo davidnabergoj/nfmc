@@ -1,4 +1,4 @@
-from typing import Tuple, Union
+from typing import List, Optional, Tuple, Union
 from dataclasses import dataclass
 
 import torch
@@ -114,14 +114,16 @@ class ParallelTreeState:
             p_plus=self.p_plus[mask.to(self.p_plus.device)],
 
             x_prime=self.x_prime[mask.to(self.x_prime.device)],
-            log_prob_prime=self.log_prob_prime[mask.to(self.log_prob_prime.device)],
+            log_prob_prime=self.log_prob_prime[mask.to(
+                self.log_prob_prime.device)],
 
             s_prime=self.s_prime[mask.to(self.s_prime.device)],
             n_prime=self.n_prime[mask.to(self.n_prime.device)],
 
             alpha_prime=self.alpha_prime[mask.to(self.alpha_prime.device)],
             diverged=self.diverged[mask.to(self.diverged.device)],
-            n_alpha_prime=self.n_alpha_prime[mask.to(self.n_alpha_prime.device)],
+            n_alpha_prime=self.n_alpha_prime[mask.to(
+                self.n_alpha_prime.device)],
         )
 
     def overwrite_with(self, other_state, mask: torch.Tensor):
@@ -168,21 +170,21 @@ class ParallelTreeState:
             self.x_prime = self.x_prime.to(device)
         if self.log_prob_prime is not None:
             self.log_prob_prime = self.log_prob_prime.to(device)
-        
+
         if self.s_prime is not None:
             self.s_prime = self.s_prime.to(device)
         if self.n_prime is not None:
             self.n_prime = self.n_prime.to(device)
-        
+
         if self.alpha_prime is not None:
             self.alpha_prime = self.alpha_prime.to(device)
         if self.diverged is not None:
             self.diverged = self.diverged.to(device)
         if self.n_alpha_prime is not None:
             self.n_alpha_prime = self.n_alpha_prime.to(device)
-        
+
         return self
-    
+
 
 def _log_acceptance_prob(log_prob_new,
                          momentum_new,
@@ -205,6 +207,71 @@ def is_uturn(x_minus,
     return m1 | m2
 
 
+def _build_tree_base(x: torch.Tensor,
+                     p: torch.Tensor,
+                     event_shape: Union[torch.Size, Tuple[int, ...]],
+                     log_u_slice: torch.Tensor,
+                     v: torch.Tensor,
+                     step_size: torch.Tensor,
+                     neg_log_prob_target: callable,
+                     log_prob_x: torch.Tensor,
+                     max_delta: float):
+    # Perform a single leapfrog step
+    x1, p1, nc_b, ng_b, neg_log_prob1, _ = leapfrog_step(
+        x=x.clone(),
+        momentum=p.clone(),
+        event_shape=event_shape,
+        step_size=v * step_size,
+        neg_log_prob_target=neg_log_prob_target,
+        return_neg_log_prob_and_grad=True
+    )
+    neg_log_prob1 = neg_log_prob1.to(x.device)
+    log_prob1 = -neg_log_prob1
+    joint = log_prob1 - _kinetic_energy(p1, event_shape)
+
+    # Set position and momentum
+    x_minus, p_minus = x1, p1
+    x_plus, p_plus = x1, p1
+
+    # Set proposed state
+    x_prime, log_prob_prime = x1, log_prob1
+
+    # Set divergence variables
+    n_prime = (log_u_slice <= joint).long()
+    s_prime = (log_u_slice - max_delta < joint)
+    diverged = (~torch.isfinite(joint))
+
+    # Set other
+    _log_accept = _log_acceptance_prob(
+        log_prob1,
+        p1,
+        log_prob_x,
+        p,
+        event_shape
+    )
+    _log_accept[~torch.isfinite(_log_accept)] = -torch.inf
+    alpha_prime = torch.exp(torch.clamp(_log_accept, max=0.0))
+
+    return {
+        'x1': x1,
+        'p1': p1,
+        'nc_b': nc_b,
+        'ng_b': ng_b,
+        'log_prob1': log_prob1,
+        'neg_log_prob1': neg_log_prob1,
+        'x_minus': x_minus,
+        'x_plus': x_plus,
+        'p_minus': p_minus,
+        'p_plus': p_plus,
+        'x_prime': x_prime,
+        'log_prob_prime': log_prob_prime,
+        'n_prime': n_prime,
+        's_prime': s_prime,
+        'diverged': diverged,
+        'alpha_prime': alpha_prime,
+    }
+
+
 def _build_tree(x: torch.Tensor,
                 p: torch.Tensor,
                 event_shape: Union[torch.Size, Tuple[int, ...]],
@@ -214,7 +281,8 @@ def _build_tree(x: torch.Tensor,
                 step_size: torch.Tensor,
                 neg_log_prob_target: callable,
                 log_prob_x: torch.Tensor,
-                max_delta: float) -> Tuple[ParallelTreeState, int, int]:
+                max_delta: float,
+                return_full_trajectory: bool = False) -> Tuple[ParallelTreeState, int, int]:
     """
     Build a balanced binary tree.
     A separate tree is built individually for each chain state via vectorization.
@@ -231,6 +299,7 @@ def _build_tree(x: torch.Tensor,
         a negative log probability tensor with shape `(n_chains,)`.
     :param torch.Tensor log_prob_x: log probability density of incoming position tensor x with shape `(n_chains,)`.
     :param float max_delta: energy error divergence threshold.
+    :param bool return_full_trajectory: if True, return a list of all candidate points as a secondary output.
     """
     nc = 0
     ng = 0
@@ -242,7 +311,7 @@ def _build_tree(x: torch.Tensor,
         event_shape=event_shape
     )
     state = state.to(x.device)
-    
+
     state.x_minus = state.x_minus.to(x.dtype)
     state.x_plus = state.x_plus.to(x.dtype)
     state.p_minus = state.p_minus.to(x.dtype)
@@ -254,6 +323,11 @@ def _build_tree(x: torch.Tensor,
         raise ValueError(
             f"Expected v.shape = ({n_chains},), but got {v.shape=}")
 
+    # Prepare trajectory container (list of lists), only if requested
+    trajectories: Optional[List[List[torch.Tensor]]] = None
+    if return_full_trajectory:
+        trajectories = [[] for _ in range(n_chains)]
+
     m_b = (j == 0)  # Base case mask
     m_g = (j > 0)   # General case mask
 
@@ -264,50 +338,51 @@ def _build_tree(x: torch.Tensor,
 
     # Base case
     if m_b.any():
-        # Perform a single leapfrog step
-        x1, p1, nc_b, ng_b, neg_log_prob1, _ = leapfrog_step(
+        _o_b = _build_tree_base(
             x=x[m_b].clone(),
-            momentum=p[m_b].clone(),
+            p=p[m_b].clone(),
             event_shape=event_shape,
-            step_size=v[m_b] * step_size[m_b],
+            log_u_slice=log_u_slice[m_b],
+            v=v[m_b],
+            step_size=step_size[m_b],
             neg_log_prob_target=neg_log_prob_target,
-            return_neg_log_prob_and_grad=True
+            log_prob_x=log_prob_x[m_b],
+            max_delta=max_delta
         )
-        neg_log_prob1 = neg_log_prob1.to(x.device)
-        log_prob1 = -neg_log_prob1
-        joint = log_prob1 - _kinetic_energy(p1, event_shape)
 
         # Set position and momentum
-        state.x_minus[m_b], state.p_minus[m_b] = x1, p1
-        state.x_plus[m_b], state.p_plus[m_b] = x1, p1
+        state.x_minus[m_b], state.p_minus[m_b] = _o_b['x1'], _o_b['p1']
+        state.x_plus[m_b], state.p_plus[m_b] = _o_b['x1'], _o_b['p1']
 
         # Set proposed state
-        state.x_prime[m_b], state.log_prob_prime[m_b] = x1, log_prob1
+        state.x_prime[m_b], state.log_prob_prime[m_b] = _o_b['x1'], _o_b['log_prob1']
 
         # Set divergence variables
-        state.n_prime[m_b] = (log_u_slice[m_b] <= joint).long()
-        state.s_prime[m_b] = (log_u_slice[m_b] - max_delta < joint)
-        state.diverged[m_b] = (~torch.isfinite(joint))
+        state.n_prime[m_b] = _o_b['n_prime']
+        state.s_prime[m_b] = _o_b['s_prime']
+        state.diverged[m_b] = _o_b['diverged']
 
         # Set other
-        _log_accept = _log_acceptance_prob(
-            log_prob1,
-            p1,
-            log_prob_x[m_b],
-            p[m_b],
-            event_shape
-        ).to(state.alpha_prime.dtype)
-        _log_accept[~torch.isfinite(_log_accept)] = -torch.inf
-        state.alpha_prime[m_b] = torch.exp(torch.clamp(_log_accept, max=0.0))
+        state.alpha_prime[m_b] = _o_b['alpha_prime'].to(state.alpha_prime.dtype)
         state.n_alpha_prime[m_b] = 1
 
-        nc += nc_b
-        ng += ng_b
+        nc += _o_b['nc_b']
+        ng += _o_b['ng_b']
+
+        # Record trajectories for base-case chains
+        if return_full_trajectory:
+            _local_idx = 0
+            for _chain_idx in range(n_chains):
+                if m_b[_chain_idx]:
+                    trajectories[_chain_idx].append(
+                        _o_b['x1'][_local_idx].detach().clone()
+                    )
+                    _local_idx += 1
 
     # General case
     if m_g.any():
         # Build the left subtree (`n_g` chains)
-        left, nc_left, ng_left = _build_tree(
+        left_return = _build_tree(
             x=x[m_g],
             p=p[m_g],
             event_shape=event_shape,
@@ -317,8 +392,16 @@ def _build_tree(x: torch.Tensor,
             step_size=step_size[m_g],
             neg_log_prob_target=neg_log_prob_target,
             log_prob_x=log_prob_x[m_g],
-            max_delta=max_delta
+            max_delta=max_delta,
+            return_full_trajectory=return_full_trajectory
         )
+
+        # Unpack left result depending on return flag
+        if return_full_trajectory:
+            left, nc_left, ng_left, left_traj = left_return
+        else:
+            left, nc_left, ng_left = left_return
+
         nc += nc_left
         ng += ng_left
 
@@ -334,6 +417,15 @@ def _build_tree(x: torch.Tensor,
         # Overwrite the early-stopped chains in the main state
         state.overwrite_with(left_early, m_g_early)
         m_g_non_early = ~m_g_early  # Mask for non-early-stopped chains
+
+        # If collecting trajectories, copy left trajectories into main trajectories
+        if return_full_trajectory:
+            # Record trajectories for base-case chains
+            _local_idx = 0
+            for _chain_idx in range(len(m_g)):
+                if m_g[_chain_idx]:
+                    trajectories[_chain_idx] += left_traj[_local_idx]
+                    _local_idx += 1
 
         if m_g_non_early.any():
             left_continue = left.masked_copy(m_g_non_early)
@@ -358,7 +450,7 @@ def _build_tree(x: torch.Tensor,
                 left_continue.p_plus[m_g_positive[m_g_non_early]]
             )
 
-            right, nc_right, ng_right = _build_tree(
+            right_return = _build_tree(
                 x=x_start[m_g_non_early],
                 p=p_start[m_g_non_early],
                 event_shape=event_shape,
@@ -368,8 +460,14 @@ def _build_tree(x: torch.Tensor,
                 step_size=step_size[m_g_non_early],
                 neg_log_prob_target=neg_log_prob_target,
                 log_prob_x=log_prob_x[m_g_non_early],
-                max_delta=max_delta
+                max_delta=max_delta,
+                return_full_trajectory=return_full_trajectory
             )
+
+            if return_full_trajectory:
+                right, nc_right, ng_right, right_traj = right_return
+            else:
+                right, nc_right, ng_right = right_return
 
             # Combine
             # > Left (non early stopped)
@@ -400,19 +498,16 @@ def _build_tree(x: torch.Tensor,
                 left_continue.n_prime.float() + right.n_prime.float()
             )
             _rand = torch.rand(
-                (n_non_early_chains,), 
+                (n_non_early_chains,),
                 dtype=x.dtype,
                 device=x.device
             )
             rand_mask = _rand < _thresh
 
-            set_idx_dst_pos = torch.arange(n_chains, device=x.device)
-            set_idx_dst_pos = set_idx_dst_pos[m_g_non_early]
-            set_idx_dst_pos = set_idx_dst_pos[rand_mask]
-
-            set_idx_dst_neg = torch.arange(n_chains, device=x.device)
-            set_idx_dst_neg = set_idx_dst_neg[m_g_non_early]
-            set_idx_dst_neg = set_idx_dst_neg[~rand_mask]
+            idx_global = torch.arange(n_chains, device=x.device)[m_g_non_early]
+            
+            set_idx_dst_pos = idx_global[rand_mask]
+            set_idx_dst_neg = idx_global[~rand_mask]
 
             # If2
             (
@@ -458,6 +553,21 @@ def _build_tree(x: torch.Tensor,
             nc += nc_right
             ng += ng_right
 
+            if return_full_trajectory:
+                for _local_idx, _chain_idx in enumerate(idx_global.tolist()):
+                    lt = left_traj[_local_idx]
+                    rt = right_traj[_local_idx]
+
+                    if not state.s_prime[_chain_idx]:
+                        # Truncate at the first right element to indicate the stop point.
+                        # Keep left trajectory fully and include only the first element of right
+                        truncated = lt + (rt[:1] if len(rt) > 0 else [])
+                        trajectories[_chain_idx] = truncated
+                    else:
+                        # Full concatenation
+                        trajectories[_chain_idx] = lt + rt
+    if return_full_trajectory:
+        return state, nc, ng, trajectories
     return state, nc, ng
 
 
@@ -509,7 +619,7 @@ class NUTSKernel(LocalMHKernel):
         """
         if not torch.isfinite(x).all():
             raise ValueError("Input state contains NaN or Inf values.")
-        
+
         device = x.device
 
         x = x.clone()
@@ -549,28 +659,28 @@ class NUTSKernel(LocalMHKernel):
 
         # Initialize other variables
         stop = torch.zeros(
-            size=(n_chains,), 
+            size=(n_chains,),
             dtype=torch.bool,
             device=device
         )  # ~s_prime
         n = torch.ones(
-            size=(n_chains,), 
+            size=(n_chains,),
             dtype=torch.long,
             device=device
         )
 
         alpha = torch.zeros(
-            size=(n_chains,), 
+            size=(n_chains,),
             device=device
         )
         n_alpha = torch.zeros(
-            size=(n_chains,), 
+            size=(n_chains,),
             dtype=torch.long,
             device=device
         )
 
         divergence_mask = torch.zeros(
-            size=(n_chains,), 
+            size=(n_chains,),
             dtype=torch.bool,
             device=device
         )
@@ -581,12 +691,11 @@ class NUTSKernel(LocalMHKernel):
 
             # Choose direction
             _r = torch.randint(
-                size=(_n_active,), 
+                size=(_n_active,),
                 low=0,
                 high=2
             )
             _r = _r.to(step_size.dtype)
-
 
             v = _r * 2 - 1
 
@@ -607,7 +716,7 @@ class NUTSKernel(LocalMHKernel):
                 v=v.to(device),
                 j=torch.full(
                     size=(_n_active,),
-                    fill_value=j, 
+                    fill_value=j,
                     dtype=torch.long,
                     device=device
                 ),
@@ -716,7 +825,7 @@ class NUTSKernel(LocalMHKernel):
             torch.mean(self._dual_averaging.value),
             min=1e-6,
             max=1e+1
-        )
+        ).detach()
         if not torch.isfinite(self.step_size).all():
             raise ValueError("Step size is NaN or Inf (after update)")
 
