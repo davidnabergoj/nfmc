@@ -179,7 +179,7 @@ def test_warmup_and_sample(sampler_class, global_kernel):
         n_cycles=12,
         cycle_length=100,
         return_latent_samples=True,
-        n_epochs=2
+        n_epochs=100
     )
     sampling_draws, _ = sampler.sample(
         z0=latent_warmup_draws.last_sample,
