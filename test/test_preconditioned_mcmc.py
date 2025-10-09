@@ -221,7 +221,7 @@ def test_moments_warmup_and_sample_imh(preconditioner):
         n_cycles=8,
         cycle_length=50,
         return_latent_samples=True,
-        n_epochs=2
+        n_epochs=100
     )
     sampling_draws = sampler.sample(
         latent_warmup_draws.last_sample,
@@ -274,7 +274,7 @@ def test_moments_warmup_and_sample_isir(preconditioner):
         n_cycles=4,
         cycle_length=50,
         return_latent_samples=True,
-        n_epochs=2
+        n_epochs=100
     )
     sampling_draws = sampler.sample(
         latent_warmup_draws.last_sample,
