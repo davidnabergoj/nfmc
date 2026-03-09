@@ -44,6 +44,7 @@ class Samples:
 
         self._last_sample: torch.Tensor = None
         self._running_samples: List[torch.Tensor] = []
+        self._n_seen_samples: int = 0
 
     @property
     def last_sample(self) -> torch.Tensor:
@@ -94,14 +95,17 @@ class Samples:
         # Store samples inside a reservoir
         if self.max_samples is None or self.n_samples + len(x) <= self.max_samples:
             self._running_samples.extend(x.detach().cpu())
+            self._n_seen_samples += len(x)
         else:
             # Reservoir sampling
             for i in range(len(x)):
+                self._n_seen_samples += 1
                 if self.n_samples < self.max_samples:
                     self._running_samples.append(x[i])
                 else:
                     _idx = int(torch.randint(
-                        low=0, high=self.n_samples, size=()).detach())
+                        low=0, high=self._n_seen_samples - 1, size=()
+                    ).detach())
                     if _idx < self.max_samples:
                         self._running_samples[_idx] = x[i]
         return x
