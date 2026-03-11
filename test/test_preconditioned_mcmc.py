@@ -12,7 +12,8 @@ from nfmc.algorithms.preconditioning.samplers.base import PreconditionedMCMCSamp
 from nfmc.algorithms.util.samples import Samples
 from nfmc.util import create_flow_object
 from test.util import DiagonalGaussian, StandardGaussian
-from torchflows import Flow, ElementwiseAffine
+from torchflows.flows import Flow
+from torchflows.bijections.finite.autoregressive.layers import ElementwiseAffine
 from torchflows.bijections.finite.matrix.identity import IdentityMatrix
 
 

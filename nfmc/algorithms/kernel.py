@@ -337,7 +337,7 @@ class MixingKernel(MarkovKernel):
             neg_log_prob_target=kernels[0].neg_log_prob_target
         )
         self.kernels = kernels
-        self.dist = None  # Categorical distribution for kernel selection
+        self.dist: torch.distributions.Distribution = None  # Categorical distribution for kernel selection
 
         if selection_probabilities is None:
             selection_probabilities = [

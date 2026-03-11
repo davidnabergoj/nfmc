@@ -5,7 +5,7 @@ from nfmc.algorithms.mh.local.mala import MALAKernel
 from nfmc.algorithms.mh.local.rwmh import RWMHKernel
 from nfmc.algorithms.preconditioning.preconditioners import NormalizingFlowPreconditioner
 from nfmc.algorithms.preconditioning.samplers.base import PreconditionedMCMCSampler
-from torchflows import Flow
+from torchflows.flows import Flow
 
 
 class NeuTraRWMH(PreconditionedMCMCSampler):

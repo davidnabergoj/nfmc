@@ -70,7 +70,7 @@ class PreconditionedMCMCSampler(MCMCSampler):
                max_training_samples: int = None,
                data_transform: callable = None,
                return_latent_samples: bool = False,
-               **kwargs) -> Samples:
+               **kwargs) -> Union[Samples, Tuple[Samples, Samples]]:
         """
         Optimize kernel parameters.
 

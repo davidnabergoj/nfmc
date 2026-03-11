@@ -5,7 +5,9 @@ from nfmc.algorithms.preconditioning.samplers.neutra import NeuTraMALA, NeuTraRW
 from test.util import DiagonalGaussian
 
 from torchflows.flows import Flow
-from torchflows.architectures import ResFlow, RNODE, RealNVP
+from torchflows.bijections.finite.autoregressive.architectures import RealNVP
+from torchflows.bijections.finite.residual.architectures import ResFlow
+from torchflows.bijections.continuous.rnode import RNODE
 
 
 @pytest.mark.local_only

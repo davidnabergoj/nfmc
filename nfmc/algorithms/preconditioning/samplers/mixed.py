@@ -2,7 +2,7 @@ from copy import deepcopy
 import time
 from typing import Union
 import torch
-from torchflows import Flow
+from torchflows.flows import Flow
 from tqdm import tqdm
 from nfmc.algorithms.kernel import MixingKernel
 from nfmc.algorithms.mh.base import MHKernel
@@ -41,7 +41,8 @@ class BinaryMixedPreconditionedMCMCSampler(PreconditionedMCMCSampler):
 
     def warmup(self,
                x0: torch.Tensor,
-               n_steps: int,
+               n_cycles: int,
+               cycle_length: int,
                preconditioner_update_interval: int,
                show_progress: bool = True,
                time_limit_seconds: Union[float, int] = None,

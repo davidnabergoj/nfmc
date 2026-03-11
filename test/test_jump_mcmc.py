@@ -16,7 +16,8 @@ from nfmc.algorithms.jump.kernels import (
 from nfmc.algorithms.util.samples import Samples
 from nfmc.util import create_flow_object
 from test.util import DiagonalGaussian, StandardGaussian
-from torchflows import Flow, ElementwiseAffine
+from torchflows.flows import Flow
+from torchflows.bijections.finite.autoregressive.layers import ElementwiseAffine
 
 
 def create_small_flow(event_shape):
