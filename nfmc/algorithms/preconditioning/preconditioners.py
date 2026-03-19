@@ -3,6 +3,9 @@ import torch
 import torch.nn as nn
 from nfmc.util import diag_mult, flatten_event
 from torchflows.flows import Flow
+from torchflows.bijections.base import BijectiveComposition
+from torchflows.bijections.finite.autoregressive.layers import ElementwiseScale, ElementwiseShift
+from torchflows.bijections.finite.autoregressive.transformers.linear.affine import Scale
 
 
 class Preconditioner(nn.Module):
@@ -39,6 +42,10 @@ class Preconditioner(nn.Module):
         """
         raise NotImplementedError
 
+    def as_dist(self) -> Flow:
+        """Convert to distribution (via the normalizing flow class)."""
+        raise NotImplementedError
+
 
 class IdentityPreconditioner(Preconditioner):
     """
@@ -57,6 +64,37 @@ class IdentityPreconditioner(Preconditioner):
 
     def fit(self, x: torch.Tensor, **kwargs):
         pass
+
+    def as_dist(self) -> Flow:
+        from torchflows.bijections.finite.matrix import IdentityMatrix
+        return Flow(IdentityMatrix(event_shape=self.event_shape))
+
+
+class ElementwiseAffine(BijectiveComposition):
+    def __init__(self, event_shape, context_shape=None, **kwargs):
+        super().__init__([
+            ElementwiseShift(event_shape=event_shape,
+                             context_shape=context_shape, **kwargs),
+            ElementwiseScale(event_shape=event_shape,
+                             context_shape=context_shape, **kwargs),
+        ])
+
+    @torch.no_grad()
+    def set_shift(self, shift: torch.Tensor):
+        self.layers[0] = ElementwiseShift(
+            event_shape=self.event_shape,
+            fill_value=shift.reshape(self.layers[0].transformer.parameter_shape),
+            context_shape=self.context_shape,
+        )
+
+    @torch.no_grad()
+    def set_scale(self, scale: torch.Tensor):
+        fill = Scale(torch.Size((1,))).unconstrain_alpha(scale)
+        self.layers[1] = ElementwiseScale(
+            event_shape=self.event_shape,
+            fill_value=fill.reshape(self.layers[1].transformer.parameter_shape),
+            context_shape=self.context_shape,
+        )
 
 
 class DiagonalLinearPreconditioner(Preconditioner):
@@ -93,6 +131,12 @@ class DiagonalLinearPreconditioner(Preconditioner):
         batch_dims = list(range(n_batch_dims))
         self.v = torch.std(x, dim=batch_dims) + 1e-8
         self.loc = torch.mean(x, dim=batch_dims)
+
+    def as_dist(self) -> Flow:
+        bijection = ElementwiseAffine(event_shape=self.event_shape)
+        bijection.set_shift(-self.loc)
+        bijection.set_scale(1 / self.v)
+        return Flow(bijection)
 
 
 class DenseLinearPreconditioner(Preconditioner):
@@ -149,6 +193,42 @@ class DenseLinearPreconditioner(Preconditioner):
         )
         self.loc = torch.mean(x, dim=batch_dims)
 
+    def as_dist(self) -> Flow:
+        from torchflows.bijections.base import Bijection
+
+        tril_mat = self.tril_mat
+        loc = self.loc
+
+        class DenseForwardTransformBijection(Bijection):
+            """forward: z = L^-1 @ (x - loc)  [matches forward_transform]
+               inverse: x = L @ z + loc        [matches inverse_transform]"""
+            def __init__(self):
+                super().__init__(event_shape=loc.shape)
+                self.register_buffer('loc', loc)
+                self.register_buffer('tril_mat', tril_mat)
+
+            def forward(self, x, context=None):
+                batch_shape = x.shape[:-len(self.event_shape)]
+                x_flat = (x - self.loc).view(*batch_shape, -1)
+                z_flat = torch.linalg.solve_triangular(
+                    self.tril_mat, x_flat.T, upper=False
+                ).T
+                z = z_flat.view_as(x)
+                log_det_val = -torch.log(torch.diag(self.tril_mat)).sum()
+                log_det = torch.full(batch_shape, log_det_val.item()).to(x)
+                return z, log_det
+
+            def inverse(self, z, context=None):
+                batch_shape = z.shape[:-len(self.event_shape)]
+                z_flat = z.view(*batch_shape, -1)
+                x_flat = (self.tril_mat @ z_flat.T).T
+                x = x_flat.view_as(z) + self.loc
+                log_det_val = torch.log(torch.diag(self.tril_mat)).sum()
+                log_det = torch.full(batch_shape, log_det_val.item()).to(z)
+                return x, log_det
+
+        return Flow(DenseForwardTransformBijection())
+
 
 class NormalizingFlowPreconditioner(Preconditioner):
     def __init__(self,
@@ -194,3 +274,6 @@ class NormalizingFlowPreconditioner(Preconditioner):
                     print(f"Flow training failed with warning: {w}.")
                     print('Reducing learning rate')
                     lr *= 0.1
+
+    def as_dist(self) -> Flow:
+        return self.flow
