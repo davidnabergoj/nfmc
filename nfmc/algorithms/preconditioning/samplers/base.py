@@ -65,6 +65,7 @@ class PreconditionedMCMCSampler(MCMCSampler):
                n_cycles: int,
                cycle_length: int,
                show_progress: bool = True,
+               show_fit_progress: bool = False,
                time_limit_seconds: Union[float, int] = None,
                max_samples: int = None,
                max_training_samples: int = None,
@@ -246,7 +247,8 @@ class PreconditionedMCMCSampler(MCMCSampler):
                 if torch.numel(x_train) == 0:
                     raise ValueError("Got zero training data points")
                 current_warmup_kernel.fit_preconditioner(
-                    x_train.clone(), 
+                    x_train.clone(),
+                    show_progress=show_fit_progress,
                     **kwargs
                 )
 
