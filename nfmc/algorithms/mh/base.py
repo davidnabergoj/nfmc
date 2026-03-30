@@ -1,6 +1,6 @@
 from copy import deepcopy
 import time
-from typing import Tuple, Union
+from typing import Tuple, Union, Callable
 import torch
 from tqdm import tqdm
 
@@ -16,7 +16,7 @@ class MHKernel(MarkovKernel):
 
     def __init__(self,
                  event_shape: Union[Tuple[int, ...], torch.Size],
-                 neg_log_prob_target: callable, 
+                 neg_log_prob_target: Callable[[torch.Tensor], torch.Tensor], 
                  **kwargs):
         """
         MHKernel constructor.

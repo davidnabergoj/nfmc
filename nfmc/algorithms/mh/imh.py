@@ -1,5 +1,6 @@
-from typing import Tuple, Union
+from typing import Callable, List, Tuple, Union, Optional
 import torch
+from torchflows.flows import Flow
 from nfmc.algorithms.mh.base import MHKernel
 from nfmc.util import compute_divergence_mask, metropolis_acceptance_log_ratio, sum_except_batch
 
@@ -11,9 +12,9 @@ class IMHKernel(MHKernel):
 
     def __init__(self,
                  event_shape: Union[Tuple[int, ...], torch.Size],
-                 neg_log_prob_target: callable,
-                 proposal_log_prob: callable = None,
-                 proposal_sample_with_log_prob: callable = None, 
+                 neg_log_prob_target: Callable[[torch.Tensor], torch.Tensor],
+                 proposal_log_prob: Optional[Callable[[torch.Tensor], torch.Tensor]] = None,
+                 proposal_sample_with_log_prob: Optional[Callable[[Tuple[int, ...]], torch.Tensor]] = None,
                  **kwargs):
         """
         IMH kernel constructor.
@@ -66,15 +67,106 @@ class IMHKernel(MHKernel):
         return 'IMH'
 
     def step(self, x: torch.Tensor, **kwargs) -> torch.Tensor:
-        """
-        Perform one IMH transition.
+        """Perform one IMH transition.
 
         :param torch.Tensor x: incoming state tensor with shape `(*batch_shape, *event_shape)`.
         :return: new state tensor with shape `(*batch_shape, *event_shape)`.
         """
         if not torch.isfinite(x).all():
             raise ValueError("Input state contains NaN or Inf values.")
-        
+
+        # Propose new state
+        batch_shape = x.shape[:-len(self.event_shape)]
+        u_x = -self.proposal_log_prob(x)
+        x_prime, log_prob_x_prime = self.proposal_sample_with_log_prob(
+            batch_shape
+        )
+        x_prime = x_prime.to(x)
+        log_prob_x_prime = log_prob_x_prime.to(x)
+        u_x_prime = -log_prob_x_prime
+
+        # Compute divergence mask
+        divergence_mask = compute_divergence_mask(x_prime, self.event_shape)
+        n_valid_proposals = int((~divergence_mask).long().sum())
+        self.increment_n_divergences(int(divergence_mask.long().sum()))
+        self.increment_n_divergences_per_chain(divergence_mask)
+
+        # Compute acceptance mask
+        acceptance_mask = torch.zeros_like(divergence_mask)
+        log_prob_accept = metropolis_acceptance_log_ratio(
+            -self.neg_log_prob_target(x[~divergence_mask]),
+            -self.neg_log_prob_target(x_prime[~divergence_mask]),
+            -u_x[~divergence_mask],
+            -u_x_prime[~divergence_mask],
+        )
+        self.increment_n_calls(n_valid_proposals * 2)
+
+        log_u = torch.rand_like(log_prob_accept).log()
+        acceptance_mask[~divergence_mask] = log_u < log_prob_accept
+        x_new = x.clone()
+        x_new[acceptance_mask] = x_prime[acceptance_mask]
+
+        self.increment_n_steps()
+        self.increment_n_attempted_transitions(n_chains=x.shape[0])
+        self.increment_n_accepted_transitions(
+            int(acceptance_mask.long().sum()))
+
+        return x_new
+
+
+class MixingIMHKernel(MHKernel):
+    def __init__(self,
+                 proposals: List[Flow],
+                 neg_log_prob_target: Callable[[torch.Tensor], torch.Tensor],
+                 **kwargs):
+        if len(proposals) < 2:
+            raise ValueError
+        self.proposals = proposals
+        self.categorical = torch.distributions.Categorical(
+            probs=torch.tensor([
+                1 / len(proposals)
+                for _ in range(len(proposals))
+            ])
+        )
+        self.proposal_index = self.categorical.sample()
+
+        def _prop_lp(_in):
+            proposal = self.proposals[self.proposal_index]
+            return proposal.log_prob(_in).detach()
+
+        def _prop_swlp(batch_shape):
+            proposal = self.proposals[self.proposal_index]
+            _x, _lp = proposal.sample(batch_shape, return_log_prob=True)
+            return _x.detach(), _lp.detach()
+
+        self.proposal_log_prob = _prop_lp
+        self.proposal_sample_with_log_prob = _prop_swlp
+
+        super().__init__(
+            event_shape=proposals[0].event_shape,
+            neg_log_prob_target=neg_log_prob_target,
+            preconditioner=None,
+            **kwargs
+        )
+
+    @property
+    def name(self):
+        return 'MixingIMH'
+    
+    def advance_index(self):
+        self.proposal_index = self.categorical.sample()
+
+    def step(self, x: torch.Tensor, **kwargs) -> torch.Tensor:
+        """Perform one IMH transition.
+
+        :param torch.Tensor x: incoming state tensor with shape `(*batch_shape, *event_shape)`.
+        :return: new state tensor with shape `(*batch_shape, *event_shape)`.
+        """
+        self.advance_index()
+
+        if not torch.isfinite(x).all():
+            raise ValueError("Input state contains NaN or Inf values.")
+
         # Propose new state
         batch_shape = x.shape[:-len(self.event_shape)]
         u_x = -self.proposal_log_prob(x)
