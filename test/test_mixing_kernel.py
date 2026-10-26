@@ -9,15 +9,16 @@ from nfmc.algorithms.mh.local.hmc import HMCKernel
 from nfmc.algorithms.mh.local.mala import MALAKernel
 from nfmc.algorithms.mh.local.rwmh import RWMHKernel
 from nfmc.algorithms.preconditioning.samplers.base import PreconditionedMCMCSampler
-from nfmc.algorithms.preconditioning.samplers.mixed import BinaryMixedPreconditionedMCMCSampler
 from test.util import StandardGaussian
 
+@pytest.mark.local_only  # uses experimental mixed.py
 @pytest.mark.parametrize('event_shape', [(1,), (4,), (2, 3)])
 @pytest.mark.parametrize('kernel_class', [RWMHKernel, HMCKernel, IMHKernel, MALAKernel])
 @pytest.mark.parametrize('n_cycles', [1, 4])
 @pytest.mark.parametrize('n_steps', [5, 15])
 @pytest.mark.parametrize('n_chains', [1, 4])
 def test_warmup(event_shape, kernel_class, n_cycles, n_chains, n_steps):
+    from nfmc.algorithms.preconditioning.samplers.mixed import BinaryMixedPreconditionedMCMCSampler
     torch.manual_seed(0)
 
     kernel1 = kernel_class(
