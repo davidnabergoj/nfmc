@@ -41,4 +41,5 @@ class ChEES:
         )
         return h * self.tlen
 
-    def step(self, )
+    def step(self, *args, **kwargs):
+        raise NotImplementedError

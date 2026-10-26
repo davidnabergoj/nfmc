@@ -1,4 +1,4 @@
-from typing import Tuple, Union, List
+from typing import Tuple, Union, List, Callable, Optional
 import math
 import warnings
 import numpy as np
@@ -15,8 +15,8 @@ class MarkovKernel:
 
     def __init__(self,
                  event_shape: Union[Tuple[int, ...], torch.Size],
-                 neg_log_prob_target: callable,
-                 preconditioner: Preconditioner = None):
+                 neg_log_prob_target: Callable[[torch.Tensor], torch.Tensor],
+                 preconditioner: Optional[Preconditioner] = None):
         """
         MarkovKernel constructor.
 
