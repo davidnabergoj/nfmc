@@ -12,6 +12,7 @@ import pytest
 import torch
 
 
+@pytest.mark.local_only
 @pytest.mark.parametrize('event_shape', [(1,), (4,), (2, 3)])
 @pytest.mark.parametrize('kernel_class', [
     RWMHKernel,

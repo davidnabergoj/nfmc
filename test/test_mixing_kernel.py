@@ -51,6 +51,7 @@ def test_warmup(event_shape, kernel_class, n_cycles, n_chains, n_steps):
     assert torch.all(torch.isfinite(draws.as_tensor()))
 
 # @pytest.mark.skip("Mixing kernels not supported yet")
+@pytest.mark.local_only
 @pytest.mark.parametrize('event_shape', [(1,), (4,), (2, 3)])
 @pytest.mark.parametrize('kernel_class', [RWMHKernel, HMCKernel, IMHKernel, MALAKernel])
 @pytest.mark.parametrize('n_chains', [1, 4])

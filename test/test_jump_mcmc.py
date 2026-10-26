@@ -46,6 +46,7 @@ def test_mixing_imh_step(event_shape, n_chains):
     assert torch.isfinite(z_new).all()
     assert z_current.dtype == z_new.dtype
 
+@pytest.mark.local_only
 @pytest.mark.parametrize('event_shape', [(2,), (10,), (2, 3, 5)])
 @pytest.mark.parametrize('kernel_class', [
     NeuTraJumpRWMHKernel,
