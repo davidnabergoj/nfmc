@@ -274,6 +274,10 @@ class NormalizingFlowPreconditioner(Preconditioner):
                     print(f"Flow training failed with warning: {w}.")
                     print('Reducing learning rate')
                     lr *= 0.1
+        finally:
+            self.flow.eval()
+        
+        self.flow.eval()
 
     def as_dist(self) -> Flow:
         return self.flow

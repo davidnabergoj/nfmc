@@ -322,7 +322,7 @@ class MixingKernel(MarkovKernel):
         if len(kernels) < 1:
             raise ValueError("At least one kernel must be provided.")
         for k in kernels[1:]:
-            if not (k.event_shape is kernels[0].event_shape):
+            if not (k.event_shape == kernels[0].event_shape):
                 raise ValueError(
                     "All kernels must have the same event shape."
                 )
@@ -421,15 +421,70 @@ class MixingKernel(MarkovKernel):
         :param bool update: if True, update this kernel's parameters.
         :return: new state tensor with shape `(*batch_shape, *event_shape)`.
         """
-        _, x = self.kernels[self.next_index].step_with_preconditioner_inverse(
+        current_index = self.next_index
+        z, x = self.kernels[current_index].step_with_preconditioner_inverse(
             z,
             update=update,
             **kwargs
         )
         self.next_index = self.dist.sample()
-        # Prepare latent space state for next step
-        z = self.kernels[self.next_index]._preconditioner.forward_transform(x)[0]
+        if current_index != self.next_index:
+            # Prepare latent space state for next step
+            z = self.kernels[self.next_index]._preconditioner.forward_transform(x)[0]
         return z, x
+
+    def reset_statistics(self):
+        for k in self.kernels:
+            k.reset_statistics()
+
+    def fit_preconditioner(self, x_train, **kwargs):
+        # Do not train the same preconditioner twice
+        unique_preconditioners = list(
+            set([k._preconditioner for k in self.kernels]))
+        for p in unique_preconditioners:
+            p.fit(x=x_train, **kwargs)
+
+class IndependentMixingKernel(MixingKernel):
+    """
+    Mixing of two or more independent Markov kernels (IMH or i-SIR).
+    Operates in target space.
+
+    This means applying one Markov kernel at each step of a Markov chain. Each kernel has an associated selection 
+    probability. These probabilities determine which kernel is chosen for the transition.
+    Note: All kernels must leave the target distribution invariant. A warning is shown if the kernels use a different 
+     target log probability density callable object (checked by object identity).
+    """
+    @property
+    def name(self) -> str:
+        return f"IndMix[{', '.join([k.name for k in self.kernels])}]"
+
+    def step(self,
+             *args,
+             **kwargs):
+        """
+        Performs a transition with a randomly chosen kernel.
+
+        :param torch.Tensor z: current latent-space state tensor with shape `(*batch_shape, *event_shape)`.
+        :param bool update: if True, update this kernel's parameters.
+        :return: new state tensor with shape `(*batch_shape, *event_shape)`.
+        """
+        current_index = self.next_index
+        self.next_index = self.dist.sample()
+        return self.kernels[current_index].step(*args, **kwargs)
+
+    def step_with_preconditioner_inverse(self,
+                                         z: torch.Tensor,
+                                         update: bool = False,
+                                         **kwargs):
+        """
+        Performs a transition with a randomly chosen kernel.
+        Also returns the preconditioner-inverse of the new state as a second output.
+
+        :param torch.Tensor z: current latent-space state tensor with shape `(*batch_shape, *event_shape)`.
+        :param bool update: if True, update this kernel's parameters.
+        :return: new state tensor with shape `(*batch_shape, *event_shape)`.
+        """
+        raise NotImplementedError
 
     def reset_statistics(self):
         for k in self.kernels:
