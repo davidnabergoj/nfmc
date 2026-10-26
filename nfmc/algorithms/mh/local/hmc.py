@@ -186,6 +186,9 @@ class HMCKernel(LocalMHKernel):
         :param bool update: if True, update kernel parameters.
         :return: new state tensor with shape `(*batch_shape, *event_shape)`.
         """
+        if not torch.isfinite(x).all():
+            raise ValueError("Input state contains NaN or Inf values.")
+
         if self.warmup_active:
             step_size = self._dual_averaging.value
         else:
@@ -195,7 +198,7 @@ class HMCKernel(LocalMHKernel):
         p = torch.randn_like(x)
         x_prime, p_prime, nc, ng = hmc_trajectory(
             x=x.clone(),
-            momentum=p,
+            momentum=p.clone(),
             event_shape=self.event_shape,
             step_size=step_size,
             n_leapfrog_steps=self.n_leapfrog_steps,
@@ -211,6 +214,7 @@ class HMCKernel(LocalMHKernel):
 
         n_valid_proposals = int((~divergence_mask).long().sum())
         self.increment_n_divergences(int(divergence_mask.long().sum()))
+        self.increment_n_divergences_per_chain(divergence_mask)
 
         # Compute acceptance mask
         acceptance_mask = torch.zeros_like(divergence_mask)

@@ -228,7 +228,7 @@ def create_flow_object(flow_string: str, event_shape, **kwargs):
         raise ValueError
 
     from torchflows.flows import Flow
-    from torchflows.architectures import (
+    from torchflows.bijections.finite.autoregressive.architectures import (
         RealNVP,
         MAF,
         IAF,
@@ -247,17 +247,31 @@ def create_flow_object(flow_string: str, event_shape, **kwargs):
         CouplingDeepDenseSF,
         InverseAutoregressiveDeepDenseSF,
         MaskedAutoregressiveDeepDenseSF,
-        OTFlow,
+        NICE
+    )
+    
+    from torchflows.bijections.continuous import (
+        OTFlowBijection as OTFlow,
+        DDNF as DeepDiffeomorphicBijection,
         FFJORD,
+        RNODE,
+        ConvolutionalRNODE,
+        ConvolutionalFFJORD,
+        ConvolutionalDDNF as ConvolutionalDeepDiffeomorphicBijection,
+    )
+    
+    from torchflows.bijections.finite.residual import (
         ResFlow,
         InvertibleResNet,
-        DeepDiffeomorphicBijection,
-        NICE,
         ProximalResFlow,
-        RNODE,
-        PlanarFlow,
-        RadialFlow,
-        SylvesterFlow,
+        PlanarBijection as PlanarFlow,
+        RadialBijection as RadialFlow,
+        SylvesterBijection as SylvesterFlow,
+        ConvolutionalResFlow,
+        ConvolutionalInvertibleResNet
+    )
+
+    from torchflows.bijections.finite.multiscale import (
         MultiscaleLRSNSF,
         MultiscaleRQNSF,
         MultiscaleNICE,
@@ -271,12 +285,7 @@ def create_flow_object(flow_string: str, event_shape, **kwargs):
         LRSGlow,
         DeepSigmoidGlow,
         DeepDenseSigmoidGlow,
-        DenseSigmoidGlow,
-        ConvolutionalRNODE,
-        ConvolutionalFFJORD,
-        ConvolutionalDeepDiffeomorphicBijection,
-        ConvolutionalResFlow,
-        ConvolutionalInvertibleResNet
+        DenseSigmoidGlow
     )
 
     if flow_name in FLOW_NAMES['realnvp']:

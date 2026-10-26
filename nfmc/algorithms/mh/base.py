@@ -1,6 +1,6 @@
 from copy import deepcopy
 import time
-from typing import Tuple, Union
+from typing import Tuple, Union, Callable
 import torch
 from tqdm import tqdm
 
@@ -16,7 +16,7 @@ class MHKernel(MarkovKernel):
 
     def __init__(self,
                  event_shape: Union[Tuple[int, ...], torch.Size],
-                 neg_log_prob_target: callable, 
+                 neg_log_prob_target: Callable[[torch.Tensor], torch.Tensor], 
                  **kwargs):
         """
         MHKernel constructor.
@@ -30,6 +30,20 @@ class MHKernel(MarkovKernel):
 
         self._n_attempted_transitions: int = 0
         self._n_accepted_transitions: int = 0
+
+    @property
+    def divergence_rate(self):
+        if self._n_attempted_transitions == 0:
+            return torch.nan
+        return self._n_divergences / self._n_attempted_transitions
+    
+    @property
+    def divergence_rate_per_chain(self):
+        if self._n_attempted_transitions == 0:
+            return torch.nan
+        if isinstance(self._n_divergences_per_chain, int):
+            raise ValueError("Divergences per chain not tracked.")
+        return self._n_divergences_per_chain / (self._n_attempted_transitions / len(self._n_divergences_per_chain))
 
     def pbar_repr(self, elapsed_time_seconds: float):
         """
@@ -87,7 +101,7 @@ class MHSampler(MCMCSampler):
                time_limit_seconds: Union[float, int] = None,
                max_samples: int = None,
                data_transform: callable = None):
-        self.kernel.start_warmup()
+        self.kernel.start_warmup(n_chains=len(x0))
         out = self.sample(
             x0=x0,
             n_steps=n_steps,

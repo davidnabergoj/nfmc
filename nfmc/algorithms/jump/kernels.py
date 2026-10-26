@@ -9,7 +9,7 @@ from nfmc.algorithms.mh.local.mala import MALAKernel
 from nfmc.algorithms.mh.local.rwmh import RWMHKernel
 from nfmc.algorithms.nuts import NUTSKernel
 from nfmc.algorithms.preconditioning.preconditioners import DenseLinearPreconditioner, DiagonalLinearPreconditioner, NormalizingFlowPreconditioner
-from torchflows import Flow
+from torchflows.flows import Flow
 
 
 def _create_latent_global_kernel(name: str,

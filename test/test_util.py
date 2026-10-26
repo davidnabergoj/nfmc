@@ -1,6 +1,7 @@
 import torch
 import pytest
 from nfmc.util import grad_f
+from nfmc.algorithms.util.samples import Samples
 from test.util import StandardGaussian
 
 
@@ -31,3 +32,17 @@ def test_grad_f(batch_shape, event_shape, dtype):
 
     assert isinstance(ng, int)
     assert ng >= 0
+
+@pytest.mark.parametrize('flatten', [True, False])
+def test_samples_different_shapes(flatten: bool):
+    event_shape = (2,)
+    samples = Samples(event_shape, flatten=flatten)
+    samples.add(torch.ones(5, *event_shape))
+    samples.add(torch.ones(6, *event_shape))
+
+    if flatten:
+        x = samples.as_tensor()
+        assert x.shape == (11, *event_shape)
+    else:
+        with pytest.raises(ValueError):
+            samples.as_tensor()

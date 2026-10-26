@@ -4,7 +4,7 @@ import torch
 
 class DualAveraging:
     """
-    Nesterov dual averaging class for Metropolis-Hastings step size tuning.
+    Nesterov dual averaging class for local MCMC step size tuning.
     Each chain's step size is tuned separately.
 
     The class requires space in the order of O(n_chains * n_steps) if storing errors or step sizes; and O(n_chains) if 
@@ -13,6 +13,7 @@ class DualAveraging:
 
     def __init__(self,
                  initial_step_size: float,
+                 n_chains: int,
                  kappa: float = 0.75,
                  gamma: float = 0.05,
                  t0: int = 10,
@@ -22,7 +23,7 @@ class DualAveraging:
         DualAveraging constructor.
 
         :param float initial_step_size: initial positive step size for all chains.
-        :param int n_chains: number of independent Metropolis-Hastings chains.
+        :param int n_chains: number of independent chains.
         :param float kappa:
         :param float gamma:
         :param int t0:
@@ -35,10 +36,19 @@ class DualAveraging:
         self.kappa = kappa
         self.gamma = gamma
 
-        self.error_sum = 0.0
-        self.log_step_averaged = math.log(initial_step_size)
-        self.log_step = torch.inf
-        self.mu = math.log(10 * initial_step_size)
+        self.error_sum = torch.zeros(size=(n_chains,))
+        self.log_step_averaged = torch.full(
+            size=(n_chains,),
+            fill_value=math.log(initial_step_size)
+        )
+        self.log_step = torch.full(
+            size=(n_chains,),
+            fill_value=torch.inf
+        )
+        self.mu = torch.full(
+            size=(n_chains,),
+            fill_value=math.log(10 * initial_step_size)
+        )
 
         self._store_step_sizes = store_step_sizes
         self._step_size_history = []
@@ -64,41 +74,62 @@ class DualAveraging:
             return self._error_history
         return torch.stack(self._error_history)
 
-    def step(self, statistic: torch.Tensor):
+    def step(self, statistic: torch.Tensor, mask: torch.Tensor = None):
         """
         Update step size based on an incoming statistic.
 
-        :param torch.Tensor statistic: float tensor with shape `(n_chains,)`.
+        :param torch.Tensor statistic: float tensor with shape `(n_chains,)` or `(n_updated_chains,)`.
+         In the first case, step sizes for all chains are updated. In the second case,
+         only the step sizes for the updated chains are modified.
+        :param torch.Tensor mask: boolean tensor with shape `(n_chains,)` indicating which chains are updated.
         """
         if not isinstance(statistic, torch.Tensor):
             raise ValueError(
-                f"Acceptance mask must be a tensor but got {type(statistic)}"
+                f"Statistic must be a tensor but got {type(statistic)}"
             )
         if len(statistic.shape) != 1:
             raise ValueError(
-                f"Incorrect acceptance mask shape: {statistic.shape}"
+                f"Incorrect statistic shape: {statistic.shape}"
             )
+        
+        if mask is not None:
+            if not isinstance(mask, torch.Tensor):
+                raise ValueError(
+                    f"Update mask must be a tensor but got {type(mask)}"
+                )
+            if len(mask.shape) != 1:
+                raise ValueError(
+                    f"Incorrect mask shape: {mask.shape}"
+                )
+        else:
+            mask = torch.ones_like(statistic, dtype=torch.bool)
 
         # This will eventually converge to 0 if all is well
-        self.error_sum += statistic
+        self.error_sum[mask] += statistic
 
         # Update raw step
-        self.log_step = (
-            (self.mu - self.error_sum) / (math.sqrt(self.t) * self.gamma)
+        self.log_step[mask] = (
+            (self.mu[mask] - self.error_sum[mask]) / (math.sqrt(self.t) * self.gamma)
         )
 
         # Update smoothed step
         eta = self.t ** -self.kappa
-        self.log_step_averaged = (
-            (eta * self.log_step)
-            + (1 - eta) * self.log_step_averaged
+        self.log_step_averaged[mask] = (
+            (eta * self.log_step[mask])
+            + (1 - eta) * self.log_step_averaged[mask]
         )
         self.t += 1
 
         if self._store_step_sizes:
             self._step_size_history.append(self.value)
         if self._store_errors:
-            self._error_history.append(statistic)
+            padded_statistic = torch.full_like(
+                mask, 
+                fill_value=torch.nan,
+                dtype=statistic.dtype
+            )
+            padded_statistic[mask] = statistic
+            self._error_history.append(padded_statistic)
 
     @property
     def value(self):
@@ -133,7 +164,8 @@ class DualAveraging:
 
         # Compute weighted step
         _w_log_step = torch.sum(_ws * _log_steps, dim=0) / _w_sum
-        _w_log_step[_w_sum == 0] = _log_steps[-1][_w_sum == 0]  # Use last log step size if weights are zero for a chain
+        # Use last log step size if weights are zero for a chain
+        _w_log_step[_w_sum == 0] = _log_steps[-1][_w_sum == 0]
 
         _w_step = torch.exp(_w_log_step)
         return _w_step

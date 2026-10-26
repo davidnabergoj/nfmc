@@ -13,16 +13,40 @@ from nfmc.algorithms.jump.kernels import (
     DenseJumpMALAKernel,
     DenseJumpRWMHKernel,
 )
+from nfmc.algorithms.mh.imh import MixingIMHKernel
+from nfmc.algorithms.preconditioning.samplers.base import PreconditionedMCMCSampler
 from nfmc.algorithms.util.samples import Samples
 from nfmc.util import create_flow_object
 from test.util import DiagonalGaussian, StandardGaussian
-from torchflows import Flow, ElementwiseAffine
+from torchflows.flows import Flow
+from torchflows.bijections.finite.autoregressive.layers import ElementwiseAffine
 
 
 def create_small_flow(event_shape):
     return Flow(ElementwiseAffine(event_shape))
 
+@pytest.mark.parametrize('event_shape', [(2,), (10,), (2, 3, 5)])
+@pytest.mark.parametrize('n_chains', [1, 2, 4])
+def test_mixing_imh_step(event_shape, n_chains):
+    torch.manual_seed(0)
 
+    flow0 = create_small_flow(event_shape)
+    flow1 = create_small_flow(event_shape)
+    kernel = MixingIMHKernel(
+        neg_log_prob_target=StandardGaussian(event_shape).neg_log_prob,
+        proposals=[flow0, flow1]
+    )
+
+    z_current = torch.randn(size=(n_chains, *event_shape))
+    z_new = kernel.step(z_current)
+
+    assert z_new is not z_current
+    assert not z_new.requires_grad
+    assert z_new.shape == z_current.shape
+    assert torch.isfinite(z_new).all()
+    assert z_current.dtype == z_new.dtype
+
+@pytest.mark.local_only
 @pytest.mark.parametrize('event_shape', [(2,), (10,), (2, 3, 5)])
 @pytest.mark.parametrize('kernel_class', [
     NeuTraJumpRWMHKernel,
@@ -68,7 +92,7 @@ def test_step(event_shape,
     DiagonalJumpMALA
 ])
 @pytest.mark.parametrize('global_kernel', ['imh', 'i-sir'])
-@pytest.mark.parametrize('n_chains', [4])
+@pytest.mark.parametrize('n_chains', [10])
 @pytest.mark.parametrize('cycle_length', [2, 3, 4])
 def test_warmup(event_shape,
                 sampler_class,
@@ -149,6 +173,31 @@ def test_sample(event_shape,
     assert samples.as_tensor().shape == (n_steps, n_chains, *event_shape)
     assert samples.as_tensor().dtype == z_initial.dtype
 
+@pytest.mark.parametrize('event_shape', [(2,), (10,), (2, 3, 5)])
+@pytest.mark.parametrize('n_chains', [1, 2, 4])
+@pytest.mark.parametrize('n_steps', [1, 2, 4])
+def test_mixing_imh_sample(event_shape, n_chains, n_steps):
+    torch.manual_seed(0)
+
+    flow0 = create_small_flow(event_shape)
+    flow1 = create_small_flow(event_shape)
+    kernel = MixingIMHKernel(
+        neg_log_prob_target=StandardGaussian(event_shape).neg_log_prob,
+        proposals=[flow0, flow1]
+    )
+    sampler = PreconditionedMCMCSampler(kernel=kernel)
+
+    z_initial = torch.randn(size=(n_chains, *event_shape))
+    samples = sampler.sample(
+        z_initial,
+        n_steps=n_steps,
+        show_progress=False
+    )
+
+    assert isinstance(samples, Samples)
+    assert torch.isfinite(samples.as_tensor()).all()
+    assert samples.as_tensor().shape == (n_steps, n_chains, *event_shape)
+    assert samples.as_tensor().dtype == z_initial.dtype
 
 @pytest.mark.local_only
 @pytest.mark.parametrize(
@@ -179,7 +228,7 @@ def test_warmup_and_sample(sampler_class, global_kernel):
         n_cycles=12,
         cycle_length=100,
         return_latent_samples=True,
-        n_epochs=2
+        n_epochs=100
     )
     sampling_draws, _ = sampler.sample(
         z0=latent_warmup_draws.last_sample,

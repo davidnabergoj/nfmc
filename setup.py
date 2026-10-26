@@ -52,7 +52,7 @@ setup(
         'torch>=2.0.1',
         'numpy>=1.26.0, < 2',
         'tqdm>=4.65.0',
-        'torchflows'
+        'torchflows>=1.2.1'
     ],
     project_urls={
         "Bug Reports": "https://github.com/davidnabergoj/nfmc/issues",

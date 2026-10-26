@@ -29,15 +29,15 @@ def test_mcmc(kernel, n_chains):
     'jump_hmc',
     'jump_rwmh',
     'jump_mala',
-    'jump_nuts',
+    pytest.param('jump_nuts', marks=pytest.mark.local_only),  # slow
     'neutra_hmc',
     'neutra_rwmh',
     'neutra_mala',
-    'neutra_nuts',
+    pytest.param('neutra_nuts', marks=pytest.mark.local_only),  # slow
     'ex2_hmc',
     'ex2_rwmh',
     'ex2_mala',
-    'ex2_nuts',
+    pytest.param('ex2_nuts', marks=pytest.mark.local_only),  # slow
 ])
 @pytest.mark.parametrize('n_chains', [1, 4])
 def test_preconditioned_mcmc(kernel, n_chains):

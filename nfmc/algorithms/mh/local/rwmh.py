@@ -62,6 +62,9 @@ class RWMHKernel(LocalMHKernel):
         :param bool update: if True, update kernel parameters.
         :return: new state tensor with shape `(*batch_shape, *event_shape)`.
         """
+        if not torch.isfinite(x).all():
+            raise ValueError("Input state contains NaN or Inf values.")
+        
         if self.warmup_active:
             step_size = self._dual_averaging.value
         else:
@@ -75,6 +78,7 @@ class RWMHKernel(LocalMHKernel):
 
         n_valid_proposals = int(torch.sum((~divergence_mask).long()))
         self.increment_n_divergences(torch.sum(divergence_mask.long()))
+        self.increment_n_divergences_per_chain(divergence_mask)
 
         # Compute acceptance mask
         acceptance_mask = torch.zeros_like(divergence_mask)

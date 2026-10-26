@@ -76,6 +76,9 @@ class IteratedSIRKernel(MarkovKernel):
              x: torch.Tensor,
              update: bool = False,
              **kwargs):
+        if not torch.isfinite(x).all():
+            raise ValueError("Input state contains NaN or Inf values.")
+        
         x_flat = x.view(-1, *self.event_shape)
         batch_size = len(x_flat)
 

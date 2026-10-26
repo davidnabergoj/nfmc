@@ -1,4 +1,4 @@
-from typing import Tuple, Union, List
+from typing import Tuple, Union, List, Callable, Optional
 import math
 import warnings
 import numpy as np
@@ -15,8 +15,8 @@ class MarkovKernel:
 
     def __init__(self,
                  event_shape: Union[Tuple[int, ...], torch.Size],
-                 neg_log_prob_target: callable,
-                 preconditioner: Preconditioner = None):
+                 neg_log_prob_target: Callable[[torch.Tensor], torch.Tensor],
+                 preconditioner: Optional[Preconditioner] = None):
         """
         MarkovKernel constructor.
 
@@ -34,6 +34,7 @@ class MarkovKernel:
         self._n_grads: int = 0  # Target density gradient evaluation counter
         # Counts the number of chains that diverged across all steps
         self._n_divergences: int = 0
+        self._n_divergences_per_chain: torch.Tensor = 0
 
         if preconditioner is None:
             preconditioner = IdentityPreconditioner(event_shape)
@@ -41,24 +42,26 @@ class MarkovKernel:
 
         # Used to determine warmup behavior in kernel implementations
         self._warmup_flag = False
+        self._n_warmup_chains: int = None
 
     @property
     def warmup_active(self):
         return self._warmup_flag
 
-    def start_warmup(self):
+    def start_warmup(self, n_chains: int):
         self._warmup_flag = True
+        self._n_warmup_chains = n_chains
 
     def end_warmup(self):
         self._warmup_flag = False
-        
 
     def reset_parameters(self):
         """
         Resets the parameters of this kernel to their default values.
+        To be used within `MarkovKernel.warmup(...)`.
         """
         raise NotImplementedError
-    
+
     def finalize_parameters(self):
         """
         Finalizes the parameters of this kernel after performing warmup.
@@ -129,7 +132,10 @@ class MarkovKernel:
     def increment_n_divergences(self, n_divergences: int):
         self._n_divergences += n_divergences
         self._n_divergences = int(self._n_divergences)
-
+    
+    def increment_n_divergences_per_chain(self, divergence_mask: torch.Tensor):
+        self._n_divergences_per_chain += divergence_mask.long()
+    
     def step_with_preconditioner_inverse(self, *args, **kwargs):
         z = self.step(*args, **kwargs)
         x = self._preconditioner.inverse_transform(z)[0]
@@ -218,6 +224,11 @@ class CompositionKernel(MarkovKernel):
         self.kernels = kernels
         self.schedule_index = 0
         self.mode = mode
+
+    def start_warmup(self, n_chains):
+        for k in self.kernels:
+            k.start_warmup(n_chains)
+        super().start_warmup(n_chains)
 
     def reset_parameters(self):
         for k in self.kernels:
@@ -311,7 +322,7 @@ class MixingKernel(MarkovKernel):
         if len(kernels) < 1:
             raise ValueError("At least one kernel must be provided.")
         for k in kernels[1:]:
-            if not (k.event_shape is kernels[0].event_shape):
+            if not (k.event_shape == kernels[0].event_shape):
                 raise ValueError(
                     "All kernels must have the same event shape."
                 )
@@ -326,7 +337,7 @@ class MixingKernel(MarkovKernel):
             neg_log_prob_target=kernels[0].neg_log_prob_target
         )
         self.kernels = kernels
-        self.dist = None  # Categorical distribution for kernel selection
+        self.dist: torch.distributions.Distribution = None  # Categorical distribution for kernel selection
 
         if selection_probabilities is None:
             selection_probabilities = [
@@ -336,10 +347,17 @@ class MixingKernel(MarkovKernel):
         # creates self.dist
         self.set_selection_probabilities(selection_probabilities)
 
+        self.next_index = self.dist.sample()
+
+    def start_warmup(self, n_chains):
+        for k in self.kernels:
+            k.start_warmup(n_chains)
+        super().start_warmup(n_chains)
+
     @property
     def name(self) -> str:
         return f"Mix[{', '.join([k.name for k in self.kernels])}]"
-    
+
     def pbar_repr(self, elapsed_time_seconds):
         return ", ".join([
             f"[{k.pbar_repr(elapsed_time_seconds)}]"
@@ -375,41 +393,98 @@ class MixingKernel(MarkovKernel):
             k.neg_log_prob_target = new_neg_log_prob_target
 
     def step(self,
-             x: torch.Tensor,
+             z: torch.Tensor,
              update: bool = False,
              **kwargs):
         """
         Performs a transition with a randomly chosen kernel.
 
-        :param torch.Tensor x: current target-space state tensor with shape `(*batch_shape, *event_shape)`.
+        :param torch.Tensor z: current latent-space state tensor with shape `(*batch_shape, *event_shape)`.
         :param bool update: if True, update this kernel's parameters.
         :return: new state tensor with shape `(*batch_shape, *event_shape)`.
         """
-        idx = self.dist.sample()
-        return self.kernels[idx].step(
-            x=x,
+        return self.step_with_preconditioner_inverse(
+            z,
             update=update,
             **kwargs
-        )
+        )[0]
 
     def step_with_preconditioner_inverse(self,
-                                         x: torch.Tensor,
+                                         z: torch.Tensor,
                                          update: bool = False,
                                          **kwargs):
         """
         Performs a transition with a randomly chosen kernel.
-        Returns the preconditioner-inverse of the new state.
+        Also returns the preconditioner-inverse of the new state as a second output.
 
-        :param torch.Tensor x: current target-space state tensor with shape `(*batch_shape, *event_shape)`.
+        :param torch.Tensor z: current latent-space state tensor with shape `(*batch_shape, *event_shape)`.
         :param bool update: if True, update this kernel's parameters.
         :return: new state tensor with shape `(*batch_shape, *event_shape)`.
         """
-        idx = self.dist.sample()
-        return self.kernels[idx].step_with_preconditioner_inverse(
-            x=x,
+        current_index = self.next_index
+        z, x = self.kernels[current_index].step_with_preconditioner_inverse(
+            z,
             update=update,
             **kwargs
         )
+        self.next_index = self.dist.sample()
+        if current_index != self.next_index:
+            # Prepare latent space state for next step
+            z = self.kernels[self.next_index]._preconditioner.forward_transform(x)[0]
+        return z, x
+
+    def reset_statistics(self):
+        for k in self.kernels:
+            k.reset_statistics()
+
+    def fit_preconditioner(self, x_train, **kwargs):
+        # Do not train the same preconditioner twice
+        unique_preconditioners = list(
+            set([k._preconditioner for k in self.kernels]))
+        for p in unique_preconditioners:
+            p.fit(x=x_train, **kwargs)
+
+class IndependentMixingKernel(MixingKernel):
+    """
+    Mixing of two or more independent Markov kernels (IMH or i-SIR).
+    Operates in target space.
+
+    This means applying one Markov kernel at each step of a Markov chain. Each kernel has an associated selection 
+    probability. These probabilities determine which kernel is chosen for the transition.
+    Note: All kernels must leave the target distribution invariant. A warning is shown if the kernels use a different 
+     target log probability density callable object (checked by object identity).
+    """
+    @property
+    def name(self) -> str:
+        return f"IndMix[{', '.join([k.name for k in self.kernels])}]"
+
+    def step(self,
+             *args,
+             **kwargs):
+        """
+        Performs a transition with a randomly chosen kernel.
+
+        :param torch.Tensor z: current latent-space state tensor with shape `(*batch_shape, *event_shape)`.
+        :param bool update: if True, update this kernel's parameters.
+        :return: new state tensor with shape `(*batch_shape, *event_shape)`.
+        """
+        current_index = self.next_index
+        self.next_index = self.dist.sample()
+        return self.kernels[current_index].step(*args, **kwargs)
+
+    def step_with_preconditioner_inverse(self,
+                                         z: torch.Tensor,
+                                         update: bool = False,
+                                         **kwargs):
+        """
+        Performs a transition with a randomly chosen kernel.
+        Also returns the preconditioner-inverse of the new state as a second output.
+
+        :param torch.Tensor z: current latent-space state tensor with shape `(*batch_shape, *event_shape)`.
+        :param bool update: if True, update this kernel's parameters.
+        :return: new state tensor with shape `(*batch_shape, *event_shape)`.
+        """
+        raise NotImplementedError
 
     def reset_statistics(self):
         for k in self.kernels:

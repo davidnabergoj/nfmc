@@ -65,12 +65,13 @@ class PreconditionedMCMCSampler(MCMCSampler):
                n_cycles: int,
                cycle_length: int,
                show_progress: bool = True,
+               show_fit_progress: bool = False,
                time_limit_seconds: Union[float, int] = None,
                max_samples: int = None,
                max_training_samples: int = None,
                data_transform: callable = None,
                return_latent_samples: bool = False,
-               **kwargs) -> Samples:
+               **kwargs) -> Union[Samples, Tuple[Samples, Samples]]:
         """
         Optimize kernel parameters.
 
@@ -92,10 +93,11 @@ class PreconditionedMCMCSampler(MCMCSampler):
         :param bool return_latent_samples: if True, return tuple with two Samples objects. The first object holds samples
          from the target distribution, the second holds latent samples. The specified data_transform callable is still
          applied to samples in each object.
-        :param kwargs: keyword arguments for `preconditioner.fit`.
         :return: Samples object with MCMC draws.
         """
-        self.kernel.start_warmup()
+        self.kernel.start_warmup(n_chains=len(z0))
+        for i in range(len(self.extra_warmup_kernels)):
+            self.extra_warmup_kernels[i][0].start_warmup(n_chains=len(z0))
 
         target_samples = Samples(
             event_shape=self.kernel.event_shape,
@@ -113,7 +115,7 @@ class PreconditionedMCMCSampler(MCMCSampler):
             _adj_max /= len(z0)  # divide by number of chains
         training_samples = Samples(
             event_shape=self.kernel.event_shape,
-            max_samples=_adj_max,
+            max_samples=_adj_max
         )
 
         self.kernel.reset_statistics()
@@ -126,36 +128,106 @@ class PreconditionedMCMCSampler(MCMCSampler):
             disable=not show_progress
         )
 
-        def resample(states):
-            neg_log_prob_states = current_warmup_kernel.neg_log_prob_target(
-                states)
-            log_weights = -neg_log_prob_states
-            log_weights[~torch.isfinite(log_weights)] = 1e-8
-            weights = torch.exp(
-                log_weights - torch.max(log_weights))  # for stability
-            probabilities = weights / torch.sum(weights)
+        def resample(states, method: str):
+            """
+            Resample states according to method.
 
-            # Sample indices with replacement
-            indices = torch.multinomial(
-                probabilities,
-                num_samples=len(states),
-                replacement=True
-            )
-            return states[indices]
+            :param torch.Tensor states: tensor with shape `(n_steps, n_chains, *event_shape)`.
+            :param str method: resampling method. One of 'uniform', 'divergence', 'density'.
+            :return: resampled states with shape `(n_steps, n_chains, *event_shape)`.
+            """
+            if len(states.shape) != 2 + len(self.kernel.event_shape):
+                raise ValueError(
+                    f'Expected states to have shape (n_steps, n_chains, *event_shape), got {states.shape = }'
+                )
+            n_steps, n_chains = states.shape[:2]
+
+            if method == 'uniform':
+                flat_states = states.flatten(0, 1)
+                resampled_flat_states = flat_states[
+                    torch.randint(len(flat_states), (len(flat_states),), device=flat_states.device)
+                ]
+                return resampled_flat_states.view_as(states)
+            else:
+                negative_log_weights: torch.Tensor  # (n_steps, n_chains)
+                if method == 'divergence':
+                    if isinstance(self.kernel._n_divergences_per_chain, int):
+                        # Fall-back
+                        return resample(states, method='uniform')
+                    negative_log_weights = self.kernel._n_divergences_per_chain.to(
+                        dtype=states.dtype,
+                        device=states.device
+                    )  # (n_chains,)
+                    negative_log_weights = negative_log_weights[None].repeat(n_steps, 1)
+                    _s = negative_log_weights.std()
+                    if _s == 0:
+                        negative_log_weights = negative_log_weights - negative_log_weights.mean()
+                    else:
+                        negative_log_weights = torch.divide(
+                            negative_log_weights - negative_log_weights.mean(),
+                            negative_log_weights.std() + 1e-10
+                        )
+                elif method == 'density':
+                    negative_log_weights = []
+                    for chain_id in range(len(states)):
+                        try:
+                            negative_log_weights.append(
+                                current_warmup_kernel.neg_log_prob_target(
+                                    states[chain_id].unsqueeze(0)
+                                )
+                            )
+                        except ValueError:
+                            negative_log_weights.append(
+                                torch.tensor([torch.inf], device=states.device)
+                            )
+                    negative_log_weights = torch.cat(negative_log_weights, dim=0)
+                else:
+                    raise ValueError(f'Unknown resampling method {method}')
+                
+                if negative_log_weights.shape != (n_steps, n_chains):
+                    raise ValueError(
+                        f'Expected negative_weights.shape to be {(n_steps, n_chains) = }, got {negative_log_weights.shape = }'
+                    )
+                log_weights = -negative_log_weights
+                log_weights_flat = log_weights.flatten()
+
+                # Replace invalid values with -inf (so they get zero probability)
+                log_weights_flat = torch.where(
+                    torch.isfinite(log_weights_flat),
+                    log_weights_flat,
+                    -torch.inf
+                )
+                probabilities = torch.softmax(log_weights_flat, dim=0)
+                # If all probabilities are NaN/zero, fall back to uniform
+                if not torch.isfinite(probabilities).any():
+                    probabilities = torch.ones_like(
+                        probabilities
+                    ) / len(probabilities)
+
+                indices = torch.multinomial(
+                    probabilities, 
+                    num_samples=n_steps * n_chains, 
+                    replacement=True
+                )
+                return states.flatten(0, 1)[indices].view_as(states)
 
         for cycle_index in range(n_cycles):
             z = z.detach().clone()
+            if not torch.isfinite(z).all():
+                raise ValueError("Initial state has nan/inf values")
 
             current_warmup_kernel = self.active_warmup_kernel
 
             if cycle_index > 0:
                 # Transform current latent state to target space
+                # This could be unstable
                 x, _ = current_warmup_kernel._preconditioner.inverse_transform(
-                    z.clone())
-
-                # Resample target states according to the target log probability density
-                # This gets rid of stuck chains
-                x = resample(x.clone())
+                    z.clone()
+                )
+                if not torch.isfinite(x).all():
+                    raise ValueError("Preconditioner inverse returned nan/inf values")
+                # Resample target states, hopefully getting rid of stuck chains over time
+                x = resample(x[None].clone(), method='divergence')[0]
 
                 self.advance_warmup_kernel()
                 current_warmup_kernel = self.active_warmup_kernel
@@ -163,22 +235,48 @@ class PreconditionedMCMCSampler(MCMCSampler):
                 # Update the preconditioner first so drawn sample can contribute toward next preconditioner fit.
 
                 x_train = training_samples.as_tensor()  # Convert training data to torch.Tensor
+                x_train = resample(x_train.clone(), method='divergence')
+
                 # Flatten steps and chains
                 x_train = x_train.view(-1, *current_warmup_kernel.event_shape)
+
+                # Remove nan/inf training data
+                x_train = x_train[
+                    torch.isfinite(x_train).all(dim=tuple(range(1, x_train.ndim)))
+                ]
                 if torch.numel(x_train) == 0:
                     raise ValueError("Got zero training data points")
                 current_warmup_kernel.fit_preconditioner(
-                    x_train.clone(), **kwargs)
+                    x_train.clone(),
+                    show_progress=show_fit_progress,
+                    **kwargs
+                )
 
                 # Reset state and kernel
                 z, _ = current_warmup_kernel._preconditioner.forward_transform(
-                    x.clone())
-                current_warmup_kernel.reset_parameters()
-                training_samples = Samples(
-                    event_shape=self.kernel.event_shape,
-                    max_samples=_adj_max,
+                    x.clone()
                 )
 
+                # Mask invalid states (NaN or Inf anywhere along dimensions beyond the batch)
+                invalid_mask = ~torch.all(torch.isfinite(z), dim=tuple(range(1, z.ndim)))
+                valid_mask = ~invalid_mask
+
+                # Indices of valid states
+                valid_indices = valid_mask.nonzero(as_tuple=True)[0]
+
+                # Replace invalid states by sampling from valid states
+                if valid_indices.numel() > 0 and invalid_mask.any():
+                    # Randomly choose replacement indices from valid ones
+                    replacement_indices = torch.randint(
+                        0, valid_indices.numel(), size=(invalid_mask.sum(),), device=z.device
+                    )
+                    z[invalid_mask] = z[valid_indices[replacement_indices]]
+                
+                if not torch.isfinite(z).all():
+                    raise ValueError("Preconditioner forward returned nan/inf values")
+
+                current_warmup_kernel.reset_parameters()
+            
             for step_index in range(cycle_length):
                 # Step. Update if in first half of cycle.
                 do_update = step_index < cycle_length // 2
@@ -189,8 +287,14 @@ class PreconditionedMCMCSampler(MCMCSampler):
                     z.clone(),
                     update=do_update
                 )
+                if not torch.isfinite(z).all():
+                    raise ValueError("Kernel step returned nan/inf values")
+                if not torch.isfinite(x).all():
+                    raise ValueError("Kernel step preconditioner inverse returned nan/inf values")
+
                 if not do_update:
-                    training_samples.add(x.detach().clone())
+                    training_candidates = x.detach().clone().view(-1, *self.kernel.event_shape)
+                    training_samples.add(training_candidates)
 
                 target_samples.add(x.detach().clone())
                 if return_latent_samples:
